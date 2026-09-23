@@ -22,10 +22,12 @@
 
 ## 通知コンテンツ拡張
 - `UNNotificationContentExtension` + `SKView`。`PachinkoPresentation.PresentationScene(entry:, seed:, pattern:)` を再生。
-- メモリ: テクスチャ合計 20MB 以内（実測で調整, P0-T5）。音は `AVAudioPlayer` 1本。
+- メモリ: テクスチャ合計 20MB 以内（実測で調整, P0-T5）。音は `PlayerSoundBus`（`AVAudioPlayer` 1本, spec 43）。
+- 通知自体の音は `UNNotificationSound(named:)`（CueSheet の山場 SE、30秒未満）。
 - 再生後に結果表示 →「アプリで見る」ボタン。
 
 ## PachinkoPresentation
 - SpriteKit シーン群。入力は `(pattern, result, seed)` のみ。**Core の抽選結果を変えない**。
 - 演出の分岐乱数は `RNGStream(seed, .presentation, index: serial)`。
 - MVP 演出: 通常リーチ / SP リーチ / 激アツ（疑似連 + 群予告）/ 確定（プレミア）。素材は図形とテキストのみ。
+- 音・光・振動はシーンに直書きせず CueSheet（spec 43）で与える。シーンは CuePlayer が出すキューを描画するだけ。

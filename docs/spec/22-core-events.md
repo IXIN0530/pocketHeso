@@ -47,7 +47,7 @@ public final class Engine {
 
 ## Projection（純関数。拡張・UI はこれだけを見る）
 ```swift
-public struct SurfaceProjection: Codable, Sendable {  // ≤ 1KB（Live Activity の ContentState に流用）
+public struct SurfaceProjection: Codable, Sendable {  // ≤ 1KB（Live Activity の ContentState.projection に入る, spec 40）
   var at: SimTime; var mode: Mode; var stRemaining: Int
   var holds: [HoldColor]            // 最大4
   var spin: SpinView?               // pattern, endsAt, hot

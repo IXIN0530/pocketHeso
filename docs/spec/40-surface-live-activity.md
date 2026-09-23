@@ -3,7 +3,10 @@
 ## Attributes
 ```swift
 struct HesoActivityAttributes: ActivityAttributes {   // PachinkoShared
-  typealias ContentState = SurfaceProjection          // ≤ 1KB
+  struct ContentState: Codable, Hashable {             // ≤ 1KB
+    var projection: SurfaceProjection
+    var fx: SurfaceFX                                  // accent(.none/.red/.gold/.rainbow) 等。spec 43
+  }
   var machineName: String
   var startedAt: SimTime
 }
@@ -22,6 +25,7 @@ struct HesoActivityAttributes: ActivityAttributes {   // PachinkoShared
 - 即時送信するイベント: `holdAdded`（色が white 以外）、`spinStarted`（hot ≥ 1）、`jackpotStarted`、`modeChanged`。
   ただし minInterval は守る（守らないと捨てられる）。
 - `AlertConfiguration` を付ける条件: hot ≥ 設定値（既定 3）、または金保留。1時間あたり上限（既定 6 回）。
+  音は CueSheet の指定（`.named`）、失敗・未指定は `.default`（spec 43）。
 - `staleDate` = 次の予定イベント時刻 + 60秒。
 - ローテーション: 開始から 7時間45分で新しい Activity を request → 旧を `.immediate` で end。
   プロセスが死んでいた場合は次の起動時に張り直す。

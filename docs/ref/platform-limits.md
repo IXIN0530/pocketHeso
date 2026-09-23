@@ -38,6 +38,21 @@
 - 通常の `UIViewController`。SpriteKit / 動画 / 操作可能。
 - メモリ上限は厳しい（公称値不明）→ 実測して記録。テクスチャは最小限。 ☐ P0-T5
 
+## 演出（音・光・振動）
+| 項目 | 値 | 実測 |
+|---|---|---|
+| ローカル通知の音 | `UNNotificationSound(named:)`。30秒未満、aiff/wav/caf。メインバンドル or `Library/Sounds` | |
+| LA 更新アラートの音 | `AlertConfiguration.AlertSound.named(_:)`。置き場所は通知と同じ。更新時に鳴らないという報告あり | ☐ P6-T7 |
+| AlarmKit の音 | `AlarmConfiguration(sound: .named(_:))`。iOS 26.0 でカスタム音が鳴らない不具合報告あり → 既定音にフォールバック | ☐ P6-T7 |
+| 拡張から `Library/Sounds` を参照できるか | 「アプリのデータコンテナ」とあり、Widgets 拡張から鳴らす時の参照先が不明 | ☐ P6-T7 |
+| 背景での音再生 | KeepAlive の `.playback` セッション中は可。消音スイッチを無視する。消音スイッチ状態の取得 API はない | ☐ P6-T7 |
+| 通知コンテンツ拡張での音・振動 | AVAudioPlayer / Core Haptics が動くか、消音スイッチの扱い | ☐ P6-T7 |
+| Core Haptics | 前面のみ。背景では再生されない前提で設計 | |
+| 背面ライト（torch） | `AVCaptureDevice.torchMode`。前面のみ。カメラ権限の要否 | ☐ P6-T7 |
+| LA のアニメーション | 遷移時のみ・最大2秒（上の Live Activity 節）。常時点滅は不可 → 静的グラデで表現 | |
+- 出典: https://developer.apple.com/documentation/activitykit/alertconfiguration/alertsound /
+  https://developer.apple.com/forums/thread/802620（AlarmKit カスタム音の不具合報告）
+
 ## バックグラウンド
 | 手段 | 用途 | 注意 |
 |---|---|---|

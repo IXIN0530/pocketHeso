@@ -7,8 +7,9 @@ App (PocketHeso)            Widgets ext            NotificationContent ext
   ├──────────────┬────────────┴──────────┬────────────┘
   ▼              ▼                       ▼
 PachinkoPresentation ──────────► PachinkoShared
-  (SpriteKit 演出シーン)          (App Group 永続化, ActivityAttributes,
-  │                               Projection の Codable 型, 設定)
+  (SpriteKit 演出シーン,          (App Group 永続化, ActivityAttributes,
+   CuePlayer/SoundBus/            Projection の Codable 型, 設定,
+   FlashRenderer/HapticPlayer)    CueSheet・SurfaceFX の純データ型)
   ▼                                      │
 PachinkoCore ◄───────────────────────────┘
   (純 Swift。物理・抽選・Engine・Atlas・Projection。macOS/iOS 両対応)
@@ -22,6 +23,8 @@ PachinkoCore ◄─────────────────────�
 | PocketHesoWidgets | Widget Extension | Core, Shared | App Groups。Live Activity + ロック画面ウィジェット + AlarmKit の Live Activity |
 | PocketHesoNotificationContent | Notification Content Ext | Shared, Presentation | App Groups |
 
+- 演出（spec 43）: AVFoundation（AVAudioEngine）/ Core Haptics / SpriteKit（SKShader, SKEmitterNode）は Presentation と App のみ。
+  Widgets 拡張は CueSheet から作られた `SurfaceFX`（Shared の純データ）を読むだけ。演出パックは App バンドルの `Packs/`。
 - Deployment target: iOS 26.0。Swift 6。Bundle prefix / Team / App Group は project.yml の settings で一元管理。
 - App Group: `group.$(BUNDLE_PREFIX).pocketheso`
 

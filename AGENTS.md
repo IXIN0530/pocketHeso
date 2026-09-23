@@ -2,7 +2,7 @@
 
 通知欄に常駐し、歩数に応じて自動で打ち続けるパチンコシミュレーター。
 対象: iPhone 16e (A18, **Dynamic Island 非搭載**) / iOS 26.x / 非脱獄。個人利用＋GitHub配布。
-Stack: Swift 6 / SwiftUI / SpriteKit / ActivityKit / WidgetKit / AlarmKit / XcodeGen。
+Stack: Swift 6 / SwiftUI / SpriteKit / ActivityKit / WidgetKit / AlarmKit / AVFoundation / Core Haptics / XcodeGen。
 
 ## 読み込みルール（トークン節約・厳守）
 1. このファイルは自動で読まれている。追加で読むのは次の順だけ。
@@ -29,7 +29,7 @@ Stack: Swift 6 / SwiftUI / SpriteKit / ActivityKit / WidgetKit / AlarmKit / Xcod
 
 ## コマンド
 `scripts/gen.sh`（Xcodeプロジェクト生成）/ `scripts/build.sh [sim|device]` /
-`scripts/test.sh [core|all]` / `scripts/sim.sh <pachisim args>`
+`scripts/test.sh [core|all]` / `scripts/sim.sh <pachisim args>` / `scripts/agy.sh`（Antigravity CLI 起動）
 
 ## ドキュメント索引（必要な時だけ開く）
 | ファイル | 開くタイミング |
@@ -46,4 +46,5 @@ Stack: Swift 6 / SwiftUI / SpriteKit / ActivityKit / WidgetKit / AlarmKit / Xcod
 | docs/spec/40-surface-live-activity.md | Live Activity |
 | docs/spec/41-surface-widgets.md | ロック画面ウィジェット |
 | docs/spec/42-surface-hot-events.md | 激アツ演出・通知拡張・AlarmKit |
+| docs/spec/43-presentation-effects.md | 音・光（虹フラッシュ等）・振動、CueSheet、演出パック |
 | docs/spec/50-app-rendering.md | アプリ内 SpriteKit 描画 |

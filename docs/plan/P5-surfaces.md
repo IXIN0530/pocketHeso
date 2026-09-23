@@ -3,7 +3,7 @@
 
 ### P5-T1 共有型
 Owner: Claude Code | Read: spec/40-surface-live-activity（Attributes 節）, spec/22-core-events（Projection 節）
-Do: `HesoActivityAttributes`（PachinkoShared）、Projection を ContentState に流用。
+Do: `HesoActivityAttributes`（PachinkoShared）、ContentState = `{projection, fx}`（spec 40, D-008。fx は P6-T6 までは `.none` 固定）。
 Accept:
 - [ ] 最大状態の ContentState エンコード長を単体テストで検証（≤ 1KB）
 

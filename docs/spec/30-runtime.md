@@ -25,6 +25,7 @@
 
 ## KeepAlive
 - `AVAudioSession`: category `.playback`, options `.mixWithOthers`。`AVAudioEngine` でゼロ埋めバッファをループ。
+  この engine は演出音の `EngineSoundBus` と共用する（spec 43）。KeepAlive が off でも演出用に engine は持つ。
 - 監視: `interruptionNotification`（終了時に再開）、`routeChangeNotification`、`mediaServicesWereReset`。
 - 停止を検知できないケースに備え、tick が 30秒以上空いたら次の起動時に CatchUp が埋める（結果は同一: 決定論）。
 - 設定: `keepAlive: on | off | chargingOnly`。既定 `on`（優先度1）。
