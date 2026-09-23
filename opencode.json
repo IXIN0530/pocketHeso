@@ -1,0 +1,11 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "opencode/muse-spark-1-3-contributor-free",
+  "mcp": {
+    "xcode": {
+      "type": "local",
+      "command": ["xcrun", "mcpbridge"],
+      "enabled": false
+    }
+  }
+}
