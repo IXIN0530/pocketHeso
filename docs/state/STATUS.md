@@ -7,9 +7,9 @@
 - Owner hint: Claude Code
 
 ## Blockers
-- P0-T3 Accept 残り2項目が実機待ち: 歩数一致（README §1-2）、ロック中オートメーション（§2）。結果を platform-limits の実測列へ。
+- P0-T3 Accept 残り2項目が実機待ち: 歩数一致（コードの 10,368 / 10,231 / 10,340 をヘルスケアアプリと照合）、ロック中オートメーション（§2）。結果を platform-limits の実測列へ。
 
 ## Notes（最新3件まで）
+- P0-T3 実測: 本番版ショートカット完成。PWA へ往復し、sig 一致・3日分の days を確認（コード例は README 末尾、P4-T2 の fixture 用）。
 - P0-T3 実測: iOS 26 のショートカットはワークアウトを読めない（種類に無し、アクションは開始/記録/終了のみ）→ D-022 で取得をやめ、README 1-3 を削除して 1-4 を繰り上げ。
-- P0-T3 実測: 起動・復帰検知・手動ペーストは OK。他アプリ由来のクリップボードは API 読み取りが不安定（platform-limits に記入）。残り: 本番版ショートカット（歩数一致・種類名）とロック中オートメーション。
-- P0-T3: spike は `apps/web/src/spikes/`（lazy chunk）。ホーム画面アプリは start_url 起動で `?spike=` が落ちるため、本番以外では本体下部に入口リンク（`__SHOW_SPIKES__`）。手順書 `resources/shortcut/README.md`、まず §0 最小版で往復確認。
+- P0-T3 実測: 起動・復帰検知・手動ペーストは OK。他アプリ由来のクリップボードは API 読み取りが不安定（platform-limits に記入）。
