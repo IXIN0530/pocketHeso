@@ -29,7 +29,7 @@ Do: `resources/shortcut/README.md` に作成手順（spec/31 の中身）を書�
 Accept:
 - [x] ホーム画面 PWA → `shortcuts://` 起動 → 戻る → `readText()` でコードを取得、の可否と手順を platform-limits に記入
 - [x] 歩数合計が「ヘルスケア」アプリの表示と一致するか記録（ワークアウトは取得不可のため対象外: D-022）
-- [ ] ロック中のオートメーション実行の成否を記録
+- [x] ~~ロック中のオートメーション実行の成否を記録~~ オートメーション自体を廃止（D-023）
 
 ### P0-T4 スパイク: 位置情報と Overpass
 Owner: Claude Code（実機は人間）| Read: spec/32-training-checkin, ref/platform-limits（PWA・OSM 節）
