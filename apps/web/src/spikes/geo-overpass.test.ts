@@ -37,6 +37,9 @@ test('evaluates range by bbox+margin, type radius, or none; sorted by distance',
     ['way/2', 'bbox', false],
   ]);
   expect(r[1]?.centerM).toBeCloseTo(33.4, 0);
+  // fitness_station（半径 40m）: 約 55.6m 先は外だが、accuracy 20m を足すと内。
+  const far = parseOverpass({ elements: [{ type: 'node', id: 5, lat: 35.0005, lon: 139.0, tags: { leisure: 'fitness_station' } }] });
+  expect(evaluate(35.0, 139.0, 20, far)[0]).toMatchObject({ rule: 'radius', inRange: false, inRangePlusAcc: true });
   // bbox の南端まで約 56m: margin 50m では外、accuracy 50m（margin 80m）なら内。
   expect(evaluate(35.0, 139.0, 50, parseOverpass(sample)).find((f) => f.id === 'way/2')?.inRange).toBe(true);
 });

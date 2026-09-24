@@ -2,6 +2,9 @@
 
 export const DEFAULT_ENDPOINT = 'https://overpass-api.de/api/interpreter';
 
+/** spec/32 の最大件数。Overpass の `out N` は近い順ではなく ID 順で切るので、到達したら取りこぼしがあり得る。 */
+export const QUERY_LIMIT = 50;
+
 const LEISURE = 'fitness_centre|fitness_station|sports_centre|park|pitch|track|swimming_pool';
 
 /** 種類別の既定半径（m）。載っていない種類は bbox が必須。 */
@@ -14,7 +17,7 @@ export const TYPE_RADIUS_M: Readonly<Record<string, number>> = {
 const EARTH_R = 6371008.8;
 const DEG = Math.PI / 180;
 
-export function buildQuery(lat: number, lon: number, radiusM = 300, limit = 50): string {
+export function buildQuery(lat: number, lon: number, radiusM = 300, limit = QUERY_LIMIT): string {
   return `[out:json][timeout:10];nwr["leisure"~"^(${LEISURE})$"](around:${radiusM},${lat},${lon});out tags center bb ${limit};`;
 }
 
@@ -91,9 +94,11 @@ export interface Evaluated extends Facility {
   bboxDiagM: number | null;
   rule: RangeRule;
   inRange: boolean;
+  /** 比較用: 種類別半径に accuracy を足した場合の判定（spec/32 に明記なし。bbox / none は inRange と同じ） */
+  inRangePlusAcc: boolean;
 }
 
-/** spec/32 の OSM 施設の範囲判定: bbox を accuracy+30m 広げた範囲内、bbox が無ければ種類別半径（+accuracy は付けない）。 */
+/** spec/32 の OSM 施設の範囲判定: bbox を accuracy+30m 広げた範囲内、bbox が無ければ種類別半径。 */
 export function evaluate(lat: number, lon: number, accuracyM: number, list: readonly Facility[]): Evaluated[] {
   const cosLat = Math.cos(lat * DEG);
   const marginM = accuracyM + 30;
@@ -107,11 +112,11 @@ export function evaluate(lat: number, lon: number, accuracyM: number, list: read
         const inRange =
           lat >= b.minlat - dLat && lat <= b.maxlat + dLat && lon >= b.minlon - dLon && lon <= b.maxlon + dLon;
         const bboxDiagM = distanceM(b.minlat, b.minlon, cosLat, b.maxlat, b.maxlon);
-        return { ...f, centerM, bboxDiagM, rule: 'bbox', inRange };
+        return { ...f, centerM, bboxDiagM, rule: 'bbox', inRange, inRangePlusAcc: inRange };
       }
       const r = TYPE_RADIUS_M[f.leisure];
-      if (r === undefined) return { ...f, centerM, bboxDiagM: null, rule: 'none', inRange: false };
-      return { ...f, centerM, bboxDiagM: null, rule: 'radius', inRange: centerM <= r };
+      if (r === undefined) return { ...f, centerM, bboxDiagM: null, rule: 'none', inRange: false, inRangePlusAcc: false };
+      return { ...f, centerM, bboxDiagM: null, rule: 'radius', inRange: centerM <= r, inRangePlusAcc: centerM <= r + accuracyM };
     })
     .sort((a, b) => a.centerM - b.centerM || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }

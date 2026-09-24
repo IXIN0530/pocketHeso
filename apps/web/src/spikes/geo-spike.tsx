@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { isStandalone } from '../platform/pwa.ts';
-import { buildQuery, DEFAULT_ENDPOINT, evaluate, type Facility, parseOverpass } from './geo-overpass.ts';
+import { buildQuery, DEFAULT_ENDPOINT, evaluate, type Facility, parseOverpass, QUERY_LIMIT } from './geo-overpass.ts';
 import styles from './spike.module.css';
 
 const stamp = () => new Date().toISOString().slice(11, 23);
@@ -23,6 +23,7 @@ export function GeoSpike() {
   const [endpoint, setEndpoint] = useState(DEFAULT_ENDPOINT);
   const [facilities, setFacilities] = useState<Facility[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showNames, setShowNames] = useState(false);
   const accuracies = useRef<number[]>([]);
 
   const add = (line: string) => setLog((l) => [`${stamp()} ${line}`, ...l].slice(0, 50));
@@ -82,6 +83,7 @@ export function GeoSpike() {
       const list = parseOverpass(await res.json());
       setFacilities(list);
       add(`Overpass OK ${list.length} 件 (${ms}ms)`);
+      if (list.length >= QUERY_LIMIT) add(`※上限 ${QUERY_LIMIT} 件に到達: ID 順で切られるので近くの施設が漏れている可能性あり`);
     } catch (e) {
       add(`Overpass 失敗: ${errText(e)}`);
     } finally {
@@ -93,6 +95,7 @@ export function GeoSpike() {
   const accs = accuracies.current;
   const summary = accs.length ? `n=${accs.length} 最小 ${Math.min(...accs)}m / 最大 ${Math.max(...accs)}m / 直近 ${accs.join(', ')}` : '未取得';
   const inRange = evaluated.filter((f) => f.inRange).length;
+  const inRangePlusAcc = evaluated.filter((f) => f.inRangePlusAcc).length;
 
   return (
     <main className={styles.main}>
@@ -126,14 +129,22 @@ export function GeoSpike() {
       {facilities && (
         <>
           <h2>
-            施設 {evaluated.length} 件（範囲内 {inRange}）
+            施設 {evaluated.length} 件（範囲内 {inRange} / 半径+accuracy なら {inRangePlusAcc}）
           </h2>
+          <p>
+            左の ●/○ = spec の判定、右の ●/○ = 種類別半径に accuracy を足した場合。記録に残すのは件数・accuracy・判定の内訳だけで、
+            名前と ID は書かない（リポジトリは公開）。
+          </p>
+          <label>
+            <input type="checkbox" checked={showNames} onChange={(e) => setShowNames(e.target.checked)} /> 名前と ID を表示（確認用）
+          </label>
           <pre className={styles.pre}>
             {evaluated
               .map(
                 (f) =>
-                  `${f.inRange ? '●' : '○'} ${f.centerM.toFixed(0).padStart(4)}m ${f.leisure} ${f.name || '(名前なし)'}` +
-                  ` [${f.rule}${f.bboxDiagM === null ? '' : ` 対角${f.bboxDiagM.toFixed(0)}m`}] ${f.id}`,
+                  `${f.inRange ? '●' : '○'}${f.inRangePlusAcc ? '●' : '○'} ${f.centerM.toFixed(0).padStart(4)}m ${f.leisure}` +
+                  ` [${f.rule}${f.bboxDiagM === null ? '' : ` 対角${f.bboxDiagM.toFixed(0)}m`}]` +
+                  (showNames ? ` ${f.name || '(名前なし)'} ${f.id}` : ''),
               )
               .join('\n') || '0 件'}
           </pre>
