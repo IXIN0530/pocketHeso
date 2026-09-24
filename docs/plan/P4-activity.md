@@ -4,14 +4,14 @@ T1〜T3 は P1〜P3 と並行可（`packages/claims` は Core の `Grant` 型だ
 ### P4-T1 台帳と変換規則
 Owner: Claude Code | Read: spec/30-activity-claims
 Do: `ClaimRecord`・`ClaimRules`（economy json の claims 節）、累計差分方式、claimId 重複排除、受け取り可能日（今日＋2日）、
-逓減・上限、時間帯の和集合（ワークアウト×チェックイン）、streak（休養日パス含む）、`planGrants`。
+逓減・上限、streak（休養日パス含む）、`planGrants`。
 Accept:
 - [ ] 同じ日の歩数を 3000→8000→8000→7000 と3回同期して、報酬が 3000 分＋5000 分だけになるテスト
-- [ ] 重なるワークアウトとチェックインが二重に数えられないテスト / streak と休養日パスのテスト
+- [ ] streak と休養日パスのテスト
 
 ### P4-T2 ショートカットのコード
 Owner: Claude Code | Read: spec/31-shortcut-health, spec/30-activity-claims（API 節）
-Do: `parseShortcutCode`（形式・sig・鮮度・範囲・種類名の正規化）。P0-T3 で得た実機のコード例を fixture にする。
+Do: `parseShortcutCode`（形式・sig・鮮度・範囲）。P0-T3 で得た実機のコード例を fixture にする。
 `resources/shortcut/README.md` を利用者向け手順として完成させる（iCloud リンクは人間が作成して記入）。
 Accept:
 - [ ] 実機由来 fixture 3件以上が通り、壊れたコード・別の鍵・古いコードがそれぞれ別のエラーになる
