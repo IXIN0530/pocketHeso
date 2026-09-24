@@ -1,6 +1,8 @@
-import { expect, test } from 'vitest';
-import { App } from './app.tsx';
+import { expect, test, vi } from 'vitest';
 
-test('App is a component', () => {
+vi.mock('virtual:pwa-register', () => ({ registerSW: () => async () => {} }));
+
+test('App is a component', async () => {
+  const { App } = await import('./app.tsx');
   expect(typeof App).toBe('function');
 });

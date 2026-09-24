@@ -1,0 +1,23 @@
+.main {
+  min-height: 100dvh;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px 16px;
+  background: #121630;
+  color: #f2f2f7;
+  font-family: -apple-system, system-ui, sans-serif;
+}
+
+.status {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+}
+
+.update {
+  margin-top: 24px;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 12px;
+  background: #e8b840;
+  color: #121630;
+  font-size: 16px;
+}
