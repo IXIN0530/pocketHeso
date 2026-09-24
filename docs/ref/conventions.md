@@ -3,7 +3,7 @@
 
 ## TypeScript
 - `strict: true`、`noUncheckedIndexedAccess: true`、`exactOptionalPropertyTypes: true`。`any` 禁止（`unknown` から絞る）。
-- ESM のみ。Node 22 LTS、pnpm 9。
+- ESM のみ。Node 22 以上、pnpm 10。TypeScript は 6.0 系に固定（D-020）。パッケージ名は `@ph/<name>`。
 - Core の型は `interface` / `type` の純データ＋関数。`class` は Engine・BallSimulator など状態を持つものだけ。
 - 公開 API（パッケージの `index.ts` から export するもの）には1行の TSDoc。内部実装には原則コメント不要（意図が非自明な箇所のみ）。
 - 単位は変数名に入れる: `timeMs`, `posMM`, `velMMs`, `fuelMs`, `distM`。

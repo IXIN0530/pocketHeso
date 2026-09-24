@@ -2,7 +2,7 @@
 （Xcode / XcodeGen 時代の内容は docs/archive/native-v1/ref/tooling.md）
 
 ## 前提
-- Node 22 LTS、pnpm 9（`corepack enable`）。macOS / Linux / Windows のどこでも開発できる。
+- Node 22 以上（開発機は 25）、pnpm 10（`npm i -g pnpm`。Node 25 は corepack 非同梱）。macOS / Linux / Windows のどこでも開発できる。
 - 実機確認: iPhone の Safari で開発サーバー（同一 LAN）か GitHub Pages のプレビューを開き、ホーム画面に追加する。
   - 開発サーバーは `pnpm dev --host`。位置情報・クリップボード・SW は HTTPS が必要 → 実機確認は Pages か
     `pnpm preview` をトンネル（例: `cloudflared tunnel --url`）で HTTPS 化して行う。
@@ -12,11 +12,11 @@
 ## スクリプト（P0-T1 で作成。出力は最後の40行だけ表示し、全文は `logs/` に保存する）
 | コマンド | 内容 |
 |---|---|
-| `scripts/dev.sh` | `pnpm --filter web dev --host` |
+| `scripts/dev.sh` | `pnpm --filter @ph/web dev --host` |
 | `scripts/build.sh` | 型検査＋lint＋`vite build`（全パッケージ） |
-| `scripts/test.sh core` | `pnpm --filter core --filter claims test`（Node, 決定論テスト含む） |
+| `scripts/test.sh core` | `pnpm --filter @ph/core --filter @ph/claims test`（Node, 決定論テスト含む） |
 | `scripts/test.sh all` | 全パッケージのテスト |
-| `scripts/sim.sh ...` | `pnpm --filter pachisim start ...`（Atlas 生成・統計・経済試算） |
+| `scripts/sim.sh ...` | `pnpm --filter @ph/pachisim start ...`（tsx で実行）（Atlas 生成・統計・経済試算） |
 | `scripts/agy.sh [agy の引数]` | Antigravity CLI をリポジトリルートをワークスペースにして起動 |
 
 ## デプロイ

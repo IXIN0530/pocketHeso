@@ -10,5 +10,5 @@ React + TypeScript の PWA。iPhone ではホーム画面に追加し、ヘル�
 - 旧 iOS ネイティブ版の設計: `docs/archive/native-v1/`
 
 ## セットアップ（人間向け, P0-T1 以降）
-1. Node 22 LTS、`corepack enable`（pnpm）
+1. Node 22 以上、`npm i -g pnpm`
 2. `pnpm install && scripts/dev.sh`

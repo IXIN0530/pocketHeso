@@ -1,14 +1,7 @@
-*.xcodeproj/
-*.xcworkspace/
-!Packages/**/*.xcworkspace/
-DerivedData/
-.build/
-.swiftpm/
-xcuserdata/
-*.ipa
-build/
+node_modules/
+dist/
+coverage/
 logs/
+*.tsbuildinfo
 .DS_Store
-# xcodegen が project.yml から生成
-App/Info.plist
-Extensions/*/Info.plist
+.vite/

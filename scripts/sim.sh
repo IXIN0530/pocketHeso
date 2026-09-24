@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# usage: scripts/sim.sh <pachisim args>
+# pachisim（Atlas 生成・統計・経済試算）
 set -euo pipefail
-source "$(dirname "$0")/_lib.sh"
-cd "$ROOT"
-run_logged sim swift run --package-path Packages/PachinkoCore -c release pachisim "$@"
+cd "$(dirname "$0")/.."
+exec pnpm --silent --filter @ph/pachisim start "$@"
