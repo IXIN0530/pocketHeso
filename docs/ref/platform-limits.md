@@ -29,16 +29,16 @@ iOS ネイティブ時代の制限値は docs/archive/native-v1/ref/platform-lim
 ## PWA（iOS Safari / ホーム画面 Web アプリ）
 | 項目 | 値 | 実測 |
 |---|---|---|
-| 保存領域 | ホーム画面アプリと Safari タブは別。`storage.persist()` の結果 | ☐ P0-T5 |
+| 保存領域 | ホーム画面アプリと Safari タブは別。`storage.persist()` の結果 | ✅ ホーム画面アプリは要求前から `persisted()=true`（quota 約38GB）。Safari タブは未計測 |
 | 背景実行 | 不可（タイマー・位置・音はすべて止まる前提） | |
 | 位置情報 | 前面の `getCurrentPosition` のみ。許可が毎回聞かれるか | ⚠ ホーム画面アプリでも**起動のたびに許可を聞かれる**（起動時の `permissions.query` は `prompt`）。前面にいる間は2回目以降が数 ms で返る |
 | 屋内の位置精度 | `coords.accuracy` の実測（ジム・公園） | ✅ 自宅（屋外・窓際）7〜17m（計9回）。初回の取得は約1.8秒。屋内ジムは未計測（P4） |
 | クリップボード読み取り | ユーザー操作内で `readText()`、iOS は「ペースト」確認 UI | ⚠ 自アプリが書いた内容は `readText()` 可。他アプリ（ショートカット）由来は `NotAllowedError` が即時に返ることが多い（`readText` 4/4 失敗、`read()` 1回目失敗・2回目成功）。確認 UI は未観測 → API を試し、失敗時は手動ペーストへ誘導する |
-| Web Audio | 最初のタップで resume。消音スイッチ時の挙動 | ☐ P0-T5 |
+| Web Audio | 最初のタップで resume。消音スイッチ時の挙動 | ⚠ 最初のタップで `suspended`→`running`（48kHz）。消音 OFF は全部鳴る。**消音 ON では Web Audio は鳴らない**（`audioSession.type` を auto/ambient/playback に変えても。ただし type の変更は AudioContext 作成後）。`<audio>` は消音 ON でも auto/playback なら鳴り、ambient だと鳴らない。背面→前面後も state は running のまま（消音 ON なので音は未確認）→ 消音時は無音で正しいとする |
 | Web Push | iOS 16.4+、ホーム画面 Web アプリのみ。サーバーと VAPID が必要 | （P8） |
 | バッジ | `navigator.setAppBadge`（ホーム画面 Web アプリ、通知許可が必要な場合あり） | ☐ P8 |
 | 振動 | `navigator.vibrate` 非対応 | |
-| 描画性能 | Pixi で 20玉＋フィルタ 60fps | ☐ P0-T5 |
+| 描画性能 | Pixi で 20玉＋フィルタ 60fps | ✅ 16e（iOS 26.6.1）で玉20・役物8・液晶・全画面の虹・画面全体の色相フィルタ、resolution 3 / WebGL で 59.9fps（1秒ごとの最低値 59.8、p95 17.0ms） |
 
 ## 施設検索（YOLP / OpenStreetMap）
 | 項目 | 値 |
