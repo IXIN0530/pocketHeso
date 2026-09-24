@@ -1,10 +1,10 @@
 # STATUS
 <!-- 30行以内を維持。古い Notes は削除してよい（履歴は git log にある） -->
 
-- Current phase: P1 → `docs/plan/P1-core-physics.md`
+- Current phase: P0 → `docs/plan/P0-bootstrap.md`
 - Last done: P0-T5（描画・保存・音のスパイク。16e で 60fps、persist 済み、消音時は Web Audio 無音）
-- Next: P1-T1（数学・乱数）
-- Owner hint: Muse Spark
+- Next: P0-T6（Three.js の見た目と性能のスパイク。良ければ全面移行）→ その後 P1-T1
+- Owner hint: Claude Code
 
 ## Blockers
 - なし

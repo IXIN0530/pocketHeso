@@ -1,6 +1,10 @@
-import { GeoSpike } from './geo-spike.tsx';
-import { PerfSpike } from './perf-spike.tsx';
-import { ShortcutSpike } from './shortcut-spike.tsx';
+import { lazy } from 'react';
+
+// スパイクごとに別チャンクにする（Pixi と Three のバンドルサイズを比べるため）。
+const ShortcutSpike = lazy(() => import('./shortcut-spike.tsx').then((m) => ({ default: m.ShortcutSpike })));
+const GeoSpike = lazy(() => import('./geo-spike.tsx').then((m) => ({ default: m.GeoSpike })));
+const PerfSpike = lazy(() => import('./perf-spike.tsx').then((m) => ({ default: m.PerfSpike })));
+const ThreeSpike = lazy(() => import('./three-spike.tsx').then((m) => ({ default: m.ThreeSpike })));
 
 /** `?spike=<name>` で表示するスパイク画面の振り分け（P0 限定）。 */
 export default function SpikeRoot({ name }: { name: string }) {
@@ -11,6 +15,8 @@ export default function SpikeRoot({ name }: { name: string }) {
       return <GeoSpike />;
     case 'perf':
       return <PerfSpike />;
+    case 'three':
+      return <ThreeSpike />;
     default:
       return <p>unknown spike: {name}</p>;
   }

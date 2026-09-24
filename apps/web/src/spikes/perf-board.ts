@@ -1,3 +1,4 @@
+import { summarize, type FrameStats } from './frame-stats.ts';
 import { Application, ColorMatrixFilter, Container, Graphics, RenderTexture, Sprite, Text, Texture } from 'pixi.js';
 
 export interface PerfOptions {
@@ -7,12 +8,7 @@ export interface PerfOptions {
   hueFilter: boolean;
 }
 
-export interface FrameStats {
-  fps: number;
-  p95Ms: number;
-  maxMs: number;
-  frames: number;
-}
+export type { FrameStats } from './frame-stats.ts';
 
 interface Ball {
   s: Sprite;
@@ -105,15 +101,7 @@ export class PerfBoard {
   takeStats(): FrameStats {
     const f = this.frameMs;
     this.frameMs = [];
-    if (f.length === 0) return { fps: 0, p95Ms: 0, maxMs: 0, frames: 0 };
-    const total = f.reduce((a, b) => a + b, 0);
-    const sorted = [...f].sort((a, b) => a - b);
-    return {
-      fps: (f.length * 1000) / total,
-      p95Ms: sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ?? 0,
-      maxMs: sorted[sorted.length - 1] ?? 0,
-      frames: f.length,
-    };
+    return summarize(f);
   }
 
   destroy(): void {
