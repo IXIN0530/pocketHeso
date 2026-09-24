@@ -2,7 +2,7 @@
 制限値の出典と実測は ref/platform-limits.md。
 
 ## 配布
-- GitHub Pages（`https://<user>.github.io/PocketHeso/`、Vite の `base` を合わせる）。GitHub Actions で main への push ごとにデプロイ。
+- GitHub Pages（`https://ixin0530.github.io/pocketHeso/`、Vite の `base` を合わせる）。GitHub Actions で main への push ごとにデプロイ（作業は `dev`, D-019）。
 - `manifest.webmanifest`: `display: standalone`、縦固定、アイコン 180/192/512、`start_url` と `scope` は base 配下。
 - iOS はホーム画面に追加して使う（通常の Safari タブでも動くが、保存領域が別になる旨をオンボーディングで説明）。
 

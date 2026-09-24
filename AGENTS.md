@@ -3,14 +3,14 @@
 良い行動（運動・トレーニング）で「営業時間」を得て、放置で玉が増えるパチンコ放置ゲーム（PWA）。
 対象: iPhone 16e / iOS 26.x Safari（ホーム画面 Web アプリ）＋ iOS ショートカット。個人利用＋GitHub Pages 配布。
 Stack: TypeScript / React 19 / Vite / PixiJS v8 / IndexedDB / Service Worker / Vitest / pnpm workspace。
-（2026-09-24 に iOS ネイティブから転換: D-010。旧資料は docs/archive/ と archive/）
+（2026-09-24 に iOS ネイティブから転換: D-010。旧資料は docs/archive/、旧コードはタグ `native-v1`）
 
 ## 読み込みルール（トークン節約・厳守）
 1. このファイルは自動で読まれている。追加で読むのは次の順だけ。
 2. `docs/state/STATUS.md` を読む（短い）。
 3. STATUS の `Current` が指すフェーズファイル `docs/plan/Pn-*.md` を **1つだけ** 読む。
 4. タスクの `Read:` に列挙された spec/ref **だけ** を読む。列挙外の docs は開かない。
-5. `docs/` の一括 grep・一括読み込み禁止。追加で必要なら理由を1行書いてから1ファイルずつ。`docs/archive/`・`archive/` は読まない。
+5. `docs/` の一括 grep・一括読み込み禁止。追加で必要なら理由を1行書いてから1ファイルずつ。`docs/archive/` は読まない。
 6. ソースは作業対象パッケージのみ。他パッケージは公開 API（`index.ts` の export）だけ確認する。
 
 ## 絶対ルール
@@ -19,6 +19,7 @@ Stack: TypeScript / React 19 / Vite / PixiJS v8 / IndexedDB / Service Worker / V
   時刻と乱数は必ず引数で受け取る（乱数は `RNGStream`）。
 - Core の数値計算は `+ - * /`・`Math.sqrt`・`Math.floor`・比較のみ。`Math.sin/cos/pow/exp/log/hypot/cbrt`・`**` は禁止（事前計算表を使う）。
 - 行動データ・位置情報は端末外に送らない（Overpass への問い合わせ座標を除く）。生の座標は保存しない。
+- 作業は `dev` ブランチ。`main` は公開版なので直接コミットしない（D-019）。
 - 1タスク = 1コミット。メッセージは `[P1-T3] 要約`。
 - 仕様から外れる判断は `docs/state/DECISIONS.md` に3行以内で追記。
 - タスク終了時に `docs/state/STATUS.md` を更新（Last done / Next / Blockers / Notes）。

@@ -5,15 +5,15 @@
 ### P0-T1 旧コード退避と TS 骨組み
 Owner: Claude Code | Read: spec/10-architecture, ref/tooling, ref/conventions
 Do:
-- `App/ Extensions/ Packages/ Resources/ project.yml scripts/{gen,install}.sh` を `git mv` で `archive/native-v1/` へ。
-  `.gitignore` から Xcode 系を整理。`opencode.json` の xcode MCP は無効のまま残す。
+- `App/ Extensions/ Packages/ Resources/ PocketHeso.xcodeproj project.yml scripts/{gen,install,build,test,sim}.sh` を削除
+  （タグ `native-v1` に保存済み, D-018）。`.gitignore` から Xcode 系を整理。`opencode.json` の xcode MCP は無効のまま残す。
 - pnpm workspace: `apps/web`（Vite + React 19 + TS）、`packages/{core,claims,fx,shared}`、`tools/pachisim`。
 - tsconfig（strict ほか ref/conventions）、ESLint（禁止 API・import 境界）、Vitest、各パッケージにダミーテスト1件。
 - `scripts/{dev,build,test,sim}.sh` を ref/tooling どおりに作り直す（出力末尾40行＋`logs/`）。
 Accept:
 - [ ] `scripts/build.sh` と `scripts/test.sh all` が通る
 - [ ] `packages/core` に `Math.random()` を書くと lint が落ちる（確認後に削除）
-- [ ] `archive/native-v1/README.md` に「commit 96f4fcb 時点の Swift 骨組み」と1行
+- [ ] リポジトリ直下に Swift / Xcode の残骸が無い（`git ls-files | grep -E '\.swift$|project\.yml'` が空）
 
 ### P0-T2 PWA と GitHub Pages
 Owner: Claude Code | Read: spec/41-pwa-platform（配布・Service Worker 節）

@@ -20,8 +20,12 @@
 | `scripts/agy.sh [agy の引数]` | Antigravity CLI をリポジトリルートをワークスペースにして起動 |
 
 ## デプロイ
+- **ブランチ（D-019）**: 作業は `dev`。`main` は公開版（push で Pages に自動デプロイ）。
+  `dev` で `scripts/build.sh` と `scripts/test.sh all` が通り、実機で動く状態の時だけ `main` へ fast-forward マージする
+  （目安: フェーズ末、または人間の指示）。エージェントは `main` に直接コミットしない。
 - GitHub Actions: main への push → `scripts/build.sh` → `apps/web/dist` を GitHub Pages に公開。
-- Vite の `base` は `/PocketHeso/`（リポジトリ名に合わせる。フォークした人は環境変数 `PH_BASE` で変更）。
+  `dev` への push はビルドとテストだけ行う（デプロイしない）。
+- Vite の `base` は `/pocketHeso/`（リポジトリ名 `IXIN0530/pocketHeso` に合わせる。大文字小文字を区別。フォークした人は環境変数 `PH_BASE` で変更）。
 
 ## エージェント分担
 | 担当 | 向いている仕事 | フェーズ |
@@ -39,4 +43,4 @@
 ## トークン節約の設計
 - 毎セッションの固定読み込み: AGENTS.md（+CLAUDE.md / GEMINI.md）+ STATUS.md ≒ 2K トークン以内。
 - フェーズファイルは 2K、spec は各 2.5K トークン以内を目安に保つ。超えたら分割。
-- `docs/archive/` と `archive/` は読まない（転換前の資料。必要な内容は新 spec に移植済み）。
+- `docs/archive/` は読まない（転換前の資料。必要な内容は新 spec に移植済み）。
