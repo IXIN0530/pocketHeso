@@ -3,11 +3,11 @@
 
 - Current phase: P0 → `docs/plan/P0-bootstrap.md`
 - Last done: P0-T4（位置情報と施設検索のスパイク。YOLP 補助＋登録地点主役を採用, D-025）
-- Next: P0-T5（保存・音・描画性能のスパイク）
+- Next: P0-T5（保存・音・描画性能のスパイク）— 実装・push 済み、実機計測待ち
 - Owner hint: Claude Code
 
 ## Blockers
-- なし
+- P0-T5: 16e 実機での fps・persist・消音モード時の音の挙動を人間が計測中（`?spike=perf`）。結果を platform-limits に記入して完了
 
 ## Notes（最新3件まで）
 - P0-T4 実測: 位置の許可はホーム画面アプリでも起動のたびに聞かれる。accuracy は自宅（屋外・窓際）7〜17m。屋内ジムは未計測 → P4 で測る。
