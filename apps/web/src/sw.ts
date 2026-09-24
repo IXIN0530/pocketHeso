@@ -7,6 +7,8 @@ declare const self: ServiceWorkerGlobalScope;
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 
-self.addEventListener('message', (event) => {
-  if (event.data === 'SKIP_WAITING') void self.skipWaiting();
+// workbox-window の messageSkipWaiting() は文字列ではなく `{ type: 'SKIP_WAITING' }` を送る。
+self.addEventListener('message', (event: ExtendableMessageEvent) => {
+  const data = event.data as { type?: unknown } | null;
+  if (data?.type === 'SKIP_WAITING') void self.skipWaiting();
 });
