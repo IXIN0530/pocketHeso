@@ -46,7 +46,7 @@ tools/pachisim (Node CLI。Atlas 生成・統計・経済バランス試算。co
 | `claims` | ClaimLedger（追記のみ、キー = `claimId`） |
 | `actions` | ActionLog（追記のみ、時刻昇順） |
 | `snapshot` | Engine スナップショット（直近1件＋1日1件を7日分） |
-| `places` | 登録地点・OSM キャッシュ（spec/32） |
+| `places` | 登録地点（YOLP の結果は保存しない, spec/32） |
 | `settings` | 設定 |
 - 起動時に `navigator.storage.persist()` を要求。**セーブの書き出し/読み込み**（`PH-SAVE1:` + base64(gzip(JSON))）を必須機能にする。
 - スナップショットは「seed + claims + actions」から必ず再生成できること（壊れても復元できる）。

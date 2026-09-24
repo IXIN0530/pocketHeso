@@ -18,7 +18,7 @@ Stack: TypeScript / React 19 / Vite / PixiJS v8 / IndexedDB / Service Worker / V
 - 決定論を壊さない: Core 内で `Date.now()`・`Math.random`・非同期・`Map`/`Set`/オブジェクトの反復順依存を使わない。
   時刻と乱数は必ず引数で受け取る（乱数は `RNGStream`）。
 - Core の数値計算は `+ - * /`・`Math.sqrt`・`Math.floor`・比較のみ。`Math.sin/cos/pow/exp/log/hypot/cbrt`・`**` は禁止（事前計算表を使う）。
-- 行動データ・位置情報は端末外に送らない（Overpass への問い合わせ座標を除く）。生の座標は保存しない。
+- 行動データ・位置情報は端末外に送らない（YOLP への問い合わせ座標を除く, D-025）。生の座標は保存しない。
 - 作業は `dev` ブランチ。`main` は公開版なので直接コミットしない（D-019）。
 - 実機確認は Vercel のプレビュー URL（`dev` への push ごとに発行）で行う。人間に実機確認を頼む前に必ず `dev` を push する
   （`dev` への push は許可済み。push しないと実機に届かない）。`main` への push・マージは人間の指示がある時だけ。
@@ -38,7 +38,7 @@ Stack: TypeScript / React 19 / Vite / PixiJS v8 / IndexedDB / Service Worker / V
 ## ドキュメント索引（必要な時だけ開く）
 | ファイル | 開くタイミング |
 |---|---|
-| docs/ref/platform-limits.md | Web / iOS / ショートカット / OSM の制限と可否を判断する時（推測で書かない） |
+| docs/ref/platform-limits.md | Web / iOS / ショートカット / 施設検索（YOLP）の制限と可否を判断する時（推測で書かない） |
 | docs/ref/conventions.md | 新規ファイル作成・命名・テスト・lint ルールに迷った時 |
 | docs/ref/tooling.md | ビルド・実機確認・デプロイ・エージェント分担 |
 | docs/spec/00-overview.md | 機能の全体像を確認する時のみ |
@@ -49,7 +49,7 @@ Stack: TypeScript / React 19 / Vite / PixiJS v8 / IndexedDB / Service Worker / V
 | docs/spec/23-core-economy.md | 放置経済（役物・強化・予告・燃料・閉店・バランス目標） |
 | docs/spec/30-activity-claims.md | 行動→報酬の台帳・換算・上限・連続日数 |
 | docs/spec/31-shortcut-health.md | iOS ショートカットとヘルスケア同期 |
-| docs/spec/32-training-checkin.md | トレーニングのチェックイン（位置・OSM） |
+| docs/spec/32-training-checkin.md | トレーニングのチェックイン（位置・登録地点・YOLP） |
 | docs/spec/40-app-ui.md | React 画面・状態管理・前面/背面 |
 | docs/spec/41-pwa-platform.md | 配布・Service Worker・保存・OS 連携・（任意）Web Push |
 | docs/spec/43-presentation-effects.md | 音・光・振動、CueSheet、演出パック |

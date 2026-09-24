@@ -18,13 +18,13 @@ Accept:
 
 ### P4-T3 チェックイン判定
 Owner: Claude Code | Read: spec/32-training-checkin
-Do: 範囲判定（登録地点・OSM bbox/半径、accuracy 加味）、セッションの開始/終了/失効、報酬の判定表、Overpass 応答のパース（fixture）。
+Do: 範囲判定（登録地点・YOLP 業種別半径、accuracy 加味）、セッションの開始/終了/失効、報酬の判定表、YOLP 応答のパース（fixture、同一 Gid の重複まとめ）。
 Accept:
-- [ ] 判定表の各行をテストで網羅（成立・20分未満・範囲外・失効・初訪問・後からボーナス）
+- [ ] 判定表の各行をテストで網羅（成立・20分未満・範囲外・失効・登録地点の初成立・後からボーナス）
 
 ### P4-T4 ブラウザ側の配線
 Owner: Claude Code | Read: spec/31-shortcut-health（利用者の流れ）, spec/32-training-checkin（流れ・施設の候補）, spec/41-pwa-platform（OS 連携節）
-Do: `platform/{shortcut,clipboard,geo,overpass}.ts`（Overpass のセルキャッシュ・2回制限）、ペアリング鍵生成、
+Do: `platform/{shortcut,clipboard,geo,yolp}.ts`（YOLP は JSONP・保存しない・2回制限、クレジット表示）、ペアリング鍵生成、
 行動画面と受け取り確認モーダル（P5 の画面枠が未完なら最小 UI）。
 Accept:
 - [ ] 実機で「運動を受け取る」→ 燃料が増える、「トレーニング開始→20分後に終了」→ 燃料とメダルが増える（人間が確認し Notes へ）

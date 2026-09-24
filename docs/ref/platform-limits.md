@@ -31,8 +31,8 @@ iOS ネイティブ時代の制限値は docs/archive/native-v1/ref/platform-lim
 |---|---|---|
 | 保存領域 | ホーム画面アプリと Safari タブは別。`storage.persist()` の結果 | ☐ P0-T5 |
 | 背景実行 | 不可（タイマー・位置・音はすべて止まる前提） | |
-| 位置情報 | 前面の `getCurrentPosition` のみ。許可が毎回聞かれるか | ☐ P0-T4 |
-| 屋内の位置精度 | `coords.accuracy` の実測（ジム・公園） | ☐ P0-T4 |
+| 位置情報 | 前面の `getCurrentPosition` のみ。許可が毎回聞かれるか | ⚠ ホーム画面アプリでも**起動のたびに許可を聞かれる**（起動時の `permissions.query` は `prompt`）。前面にいる間は2回目以降が数 ms で返る |
+| 屋内の位置精度 | `coords.accuracy` の実測（ジム・公園） | ✅ 自宅（屋外・窓際）7〜17m（計9回）。初回の取得は約1.8秒。屋内ジムは未計測（P4） |
 | クリップボード読み取り | ユーザー操作内で `readText()`、iOS は「ペースト」確認 UI | ⚠ 自アプリが書いた内容は `readText()` 可。他アプリ（ショートカット）由来は `NotAllowedError` が即時に返ることが多い（`readText` 4/4 失敗、`read()` 1回目失敗・2回目成功）。確認 UI は未観測 → API を試し、失敗時は手動ペーストへ誘導する |
 | Web Audio | 最初のタップで resume。消音スイッチ時の挙動 | ☐ P0-T5 |
 | Web Push | iOS 16.4+、ホーム画面 Web アプリのみ。サーバーと VAPID が必要 | （P8） |
@@ -40,12 +40,16 @@ iOS ネイティブ時代の制限値は docs/archive/native-v1/ref/platform-lim
 | 振動 | `navigator.vibrate` 非対応 | |
 | 描画性能 | Pixi で 20玉＋フィルタ 60fps | ☐ P0-T5 |
 
-## OpenStreetMap / Overpass API
+## 施設検索（YOLP / OpenStreetMap）
 | 項目 | 値 |
 |---|---|
-| 公開サーバー | 無料だが高負荷。キャッシュ必須、連打しない（1セッション2回まで, spec/32） |
-| タグ | `leisure=fitness_centre`（ジム）/ `fitness_station`（公園の健康器具, 自治体設置が多い）/ `sports_centre` / `park` / `pitch` / `track` / `swimming_pool` |
-- 出典: https://wiki.openstreetmap.org/wiki/Overpass_API , https://wiki.openstreetmap.org/wiki/Tag:leisure=fitness_station
+| YOLP ローカルサーチ（採用, D-025） | `lat`/`lon`/`dist`(km)/`gc` で検索、0.1〜0.2秒。CORS 非対応（`Access-Control-Allow-Origin` 無し）→ JSONP（`application/javascript`）。1アプリ 50,000件/日。結果は点のみ |
+| YOLP の規約 | 取得データの保存（キャッシュ含む）禁止。クレジット「Webサービス by Yahoo! JAPAN」を画面下部に表示 |
+| YOLP の網羅 | 公開 API は Yahoo!マップのアプリよりデータが少ない（自宅周辺の公園・ジム各1件がキーワード検索でも0件, 2026-09 実測） |
+| 公開 Overpass（不採用） | overpass-api.de は 2026-09 に Wi-Fi・モバイルとも全リクエスト 406（CORS 無し → Safari では `Load failed`）。ミラーは 10〜57秒か 504 |
+| OSM のタグ | 小さな公園は `park` でなく `leisure=playground` で載っていることがある（自宅周辺 1km で名前なし3件） |
+- 出典: https://developer.yahoo.co.jp/webapi/map/openlocalplatform/v1/localsearch.html , https://developer.yahoo.co.jp/attribution/ ,
+  https://wiki.openstreetmap.org/wiki/Overpass_API
 
 ## JS の決定論
 - `+ - * /` と `Math.sqrt` は IEEE 754 で正しく丸められる（どのエンジンでも同じ結果）。

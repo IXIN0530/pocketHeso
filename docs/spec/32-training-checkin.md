@@ -1,26 +1,33 @@
 # 32 Training Check-in（スマホを持たないトレーニング）
 開始時と終了時の**2回だけ前面で位置を取る**。背景の位置追跡はしない（PWA では不可, D-013）。
-判定ロジックは `packages/claims/checkin`（純関数）、位置取得と Overpass 通信は `apps/web/platform`。
+判定ロジックは `packages/claims/checkin`（純関数）、位置取得と YOLP 通信は `apps/web/platform`。
+施設の主役は**登録地点**、YOLP（Yahoo!ローカルサーチ API）は候補を出す補助（D-025）。
 
 ## 流れ
 ```
-[開始] 「今からトレーニング」→ getCurrentPosition → 候補施設を一覧（近い順）→ 選ぶ →
-       セッション保存 {sessionId, placeId, startAt, startAccuracyM}（生の座標は保存しない）。アプリは閉じてよい。
-[終了] 「トレーニング終了」→ getCurrentPosition → 同じ施設の範囲内か判定 → 時間を計算 → 確認画面 → Grant
+[開始] 「今からトレーニング」→ getCurrentPosition → 範囲内の登録地点と YOLP 候補を一覧（近い順）→ 選ぶ
+       （候補に無ければ「ここを登録」）→ セッション保存 {sessionId, placeRef, startAt, startAccuracyM}
+       （生の座標・YOLP の座標は保存しない）。アプリは閉じてよい。
+[終了] 「トレーニング終了」→ getCurrentPosition → 同じ施設の範囲内か判定（YOLP 施設は再問い合わせ）→ 時間を計算 → 確認画面 → Grant
 ```
 - 同時に開けるセッションは1つ。`getCurrentPosition({enableHighAccuracy: true, timeout: 15000, maximumAge: 0})`。
 - `accuracy > 150m` なら「屋外に近づいて再取得」を促す（3回まで）。
+- 位置の許可はホーム画面アプリでも**起動のたびに聞かれる**（P0-T4 実測）。開始・終了で1回ずつ許可を押す前提で画面を作る。
 
 ## 施設の候補
 | 種類 | 取得 | 範囲判定 | trust |
 |---|---|---|---|
-| 登録地点 | 利用者が「ここを◯◯として登録」（名前・種類・半径 既定 80m） | 中心からの距離 ≤ 半径 + accuracy | 0.8（`checkin-own`） |
-| OSM 施設 | Overpass API（下記） | bbox を `accuracy + 30m` 広げた範囲内、bbox が無ければ中心から種類別半径 | 1.0（`checkin`） |
-- Overpass クエリ（半径 300m、最大 50件）:
-  `[out:json][timeout:10];nwr["leisure"~"^(fitness_centre|fitness_station|sports_centre|park|pitch|track|swimming_pool)$"](around:300,{lat},{lon});out tags center bb 50;`
-  種類別の既定半径: fitness_centre 60m / sports_centre 120m / fitness_station 40m / その他 bbox 必須。
-- 結果は約 500m 格子のセル単位で IndexedDB に 30日キャッシュ。公開サーバーの負荷に配慮し、1セッションで最大2回の問い合わせ。
-  失敗・オフライン時は登録地点だけで判定する。エンドポイントは設定で変更可。
+| 登録地点 | 利用者が「ここを◯◯として登録」（名前・種類・半径 既定 80m）。中心は登録時の端末の実測位置 | 中心からの距離 ≤ 半径 + accuracy | 0.8（`checkin-own`） |
+| YOLP 施設 | Yahoo!ローカルサーチ API（下記）。開始時と終了時に問い合わせる | 中心からの距離 ≤ 業種別半径 + accuracy（YOLP は点のみ） | 1.0（`checkin`） |
+- 問い合わせ: `https://map.yahooapis.jp/search/local/V1/localSearch`、`lat`/`lon`/`dist=0.3`（km）/`sort=dist`/`results=100`/`output=json`。
+  CORS 非対応のため **JSONP**（`callback`）で呼ぶ。タイムアウト 15秒。1セッションで最大2回（開始・終了）。
+- 業種コード（`gc`）と業種別半径: 0405003 スポーツクラブ 60m / 0301001 スポーツ施設 120m / 0301013 スポーツ（その他）120m /
+  0303010 プール 60m / 0305007 公園 100m（仮。P4 の実機で見直す）。同じ `Gid` が複数業種で重複して返るので1件にまとめる。
+- **YOLP の結果は保存しない**（規約でキャッシュを含む保存が禁止）。終了時の判定は再問い合わせで行い、セッションには `Gid` だけを終了まで持つ。
+  登録地点に YOLP の名前を初期値として出すのはよいが、YOLP の座標・ID は保存しない。
+- 失敗・オフライン時は登録地点だけで判定する。終了時に YOLP が失敗した YOLP 施設のセッションは「施設外で終了」と同じ扱い。
+- Client ID はビルド時の環境変数 `VITE_YOLP_APPID`（Vercel に設定、リポジトリには置かない。配信物には含まれる）。
+- 施設一覧の画面下部にクレジット「Webサービス by Yahoo! JAPAN」（https://developer.yahoo.co.jp/sitemap/ へのリンク）を表示する。
 - 距離は正距円筒近似（`cos(lat)` を1回だけ計算）。claims は Core ではないので三角関数を使ってよいが、結果は純関数にする。
 
 ## 判定と報酬（spec/30 の checkin 行に合算）
@@ -30,12 +37,13 @@
 | 20分未満 | 報酬なし（記録のみ） |
 | 終了地点が範囲外 | 「施設外で終了」: 成立させない。自己申告に切り替えることはできる（trust 0.3、上限 60分） |
 | 開始から 3時間で未終了 | 自動失効。「終了し忘れ」を自己申告（trust 0.3、上限 60分） |
-| 初めての施設（OSM, 1日1回まで） | メダル +1 |
+| 登録地点での初めての成立（登録地点ごとに1回、1日1回まで） | メダル +1 |
 
 ## プライバシー
-- 生の緯度経度は保存しない（登録地点の中心のみ保存）。Overpass には問い合わせ時の座標だけが送られることを初回に説明。
+- 生の緯度経度は保存しない（登録地点の中心のみ保存）。YOLP（LINEヤフー）には問い合わせ時の座標だけが送られることを初回に説明。
 - 位置情報の許可が拒否された場合は、チェックイン機能を無効化して自己申告のみにする。
 
-## 実機で確認が必要（P0-T4）
-- ホーム画面 PWA で位置情報の許可が毎回聞かれないか。屋内ジムでの `accuracy` の実測値（半径既定値の根拠）。
-- `out tags center bb` の応答形式と、近所の施設が OSM に載っているか。
+## 実機の結果（P0-T4）
+- 屋外・窓際の accuracy は 7〜17m。2回目以降の取得は数 ms で返る（前面では iOS が測位を続けている）。屋内ジムは未計測（P4 で測る）。
+- 公開 Overpass は本家が 406（CORS 無し）、ミラーは 10〜57秒か 504 → 不採用。YOLP は 0.1〜0.2秒。
+- 自宅周辺では、隣の公園と最寄りのジムが YOLP・OSM のどちらにも無い（Yahoo!マップには有る）→ 登録地点を主役にした理由。

@@ -35,8 +35,8 @@ Accept:
 Owner: Claude Code（実機は人間）| Read: spec/32-training-checkin, ref/platform-limits（PWA・OSM 節）
 Do: `?spike=geo`: 現在地の accuracy 表示、spec/32 の Overpass クエリ結果一覧、許可状態の表示。
 Accept:
-- [ ] 許可が毎回聞かれるか、屋内ジム/公園での accuracy を platform-limits に記入
-- [ ] 近所の施設が何件ヒットするか記録。半径の既定値を見直す必要があれば DECISIONS へ
+- [x] 許可が毎回聞かれるか、屋内ジム/公園での accuracy を platform-limits に記入（屋内ジムは未計測 → P4）
+- [x] 近所の施設が何件ヒットするか記録。半径の既定値を見直す必要があれば DECISIONS へ（D-025）
 
 ### P0-T5 スパイク: 保存・音・描画性能
 Owner: Claude Code | Read: spec/41-pwa-platform（保存節）, spec/50-app-rendering（性能目標）
