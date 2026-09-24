@@ -4,6 +4,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 // 配信は Vercel のルート `/`（D-021）。PWA は spec/41。
 export default defineConfig({
+  // ホーム画面 Web アプリは start_url から起動し `?spike=` を保持しないため、本番以外では本体にスパイクへの入口を出す。
+  define: { __SHOW_SPIKES__: JSON.stringify(process.env.VERCEL_ENV !== 'production') },
   plugins: [
     react(),
     VitePWA({

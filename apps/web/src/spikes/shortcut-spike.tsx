@@ -59,6 +59,7 @@ export function ShortcutSpike() {
 
   return (
     <main className={styles.main}>
+      <a className={styles.back} href="/">← 本体へ</a>
       <h1>spike: shortcut</h1>
       <label>
         ショートカット名

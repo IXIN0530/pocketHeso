@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CORE_VERSION } from '@ph/core';
 import { isStandalone, setupServiceWorker } from '../platform/pwa.ts';
+import { SPIKE_NAMES } from '../spikes/spike-names.ts';
 import styles from './app.module.css';
 
 export function App() {
@@ -33,6 +34,15 @@ export function App() {
         <button className={styles.update} onClick={() => void applyUpdate()}>
           更新があります — 再読み込み
         </button>
+      )}
+      {__SHOW_SPIKES__ && (
+        <ul className={styles.spikes}>
+          {SPIKE_NAMES.map((name) => (
+            <li key={name}>
+              <a href={`/?spike=${name}`}>spike: {name}</a>
+            </li>
+          ))}
+        </ul>
       )}
     </main>
   );

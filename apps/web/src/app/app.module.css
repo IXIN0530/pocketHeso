@@ -21,3 +21,13 @@
   color: #121630;
   font-size: 16px;
 }
+
+.spikes {
+  margin-top: 32px;
+  padding-left: 20px;
+  line-height: 2;
+}
+
+.spikes a {
+  color: #e8b840;
+}
