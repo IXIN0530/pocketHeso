@@ -20,6 +20,8 @@ Stack: TypeScript / React 19 / Vite / PixiJS v8 / IndexedDB / Service Worker / V
 - Core の数値計算は `+ - * /`・`Math.sqrt`・`Math.floor`・比較のみ。`Math.sin/cos/pow/exp/log/hypot/cbrt`・`**` は禁止（事前計算表を使う）。
 - 行動データ・位置情報は端末外に送らない（Overpass への問い合わせ座標を除く）。生の座標は保存しない。
 - 作業は `dev` ブランチ。`main` は公開版なので直接コミットしない（D-019）。
+- 実機確認は Vercel のプレビュー URL（`dev` への push ごとに発行）で行う。人間に実機確認を頼む前に必ず `dev` を push する
+  （`dev` への push は許可済み。push しないと実機に届かない）。`main` への push・マージは人間の指示がある時だけ。
 - 1タスク = 1コミット。メッセージは `[P1-T3] 要約`。
 - 仕様から外れる判断は `docs/state/DECISIONS.md` に3行以内で追記。
 - タスク終了時に `docs/state/STATUS.md` を更新（Last done / Next / Blockers / Notes）。
