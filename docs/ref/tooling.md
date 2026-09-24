@@ -35,6 +35,7 @@
 | **Claude Code** | ブラウザ API 統合、PWA/SW、ショートカット、実機スパイク、UI の配線、レビュー | P0, P4, P5, P8 |
 | **OpenCode + Muse Spark 1.3** | 仕様が固い純粋ロジック、テスト大量生成、CLI、演出シーン量産 | P1, P2, P3, P6 |
 | **Antigravity CLI（agy）** | 並行作業・別視点レビュー。担当させるタスクは Owner を `Antigravity` にする | 未割当 |
+- Owner は向き不向きによる**推奨**。人間がトークン残量などで自由に切り替えてよく、`/next` は担当外でも実行する。
 - 3者とも同じ `/next` `/review <TaskID>` `/handoff` を持つ。定義は `.claude/` `.opencode/` `.agents/` にあり、**手順を変える時は3か所とも直す**。
 - 書いた側と別のエージェントで `/review <TaskID>` を回す。
 - 切替時は必ず `/handoff` で STATUS を更新してから終了する。
