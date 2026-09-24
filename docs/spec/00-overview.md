@@ -30,7 +30,7 @@
 
 ## 対象
 - 主対象: iPhone（iOS 26.x Safari、ホーム画面の Web アプリ）。Android / PC ブラウザでも動く（ショートカット以外）。
-- 個人利用＋GitHub 配布（GitHub Pages で URL を開いてホーム画面に追加するだけ）。
+- 個人利用＋GitHub でソース公開。配信は Vercel（URL を開いてホーム画面に追加するだけ）。
 
 ## やらないこと（Non-goals）
 - 有料 Apple Developer Program を要するもの、ネイティブアプリ（D-010）

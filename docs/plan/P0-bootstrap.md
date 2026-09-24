@@ -15,11 +15,11 @@ Accept:
 - [ ] `packages/core` に `Math.random()` を書くと lint が落ちる（確認後に削除）
 - [ ] リポジトリ直下に Swift / Xcode の残骸が無い（`git ls-files | grep -E '\.swift$|project\.yml'` が空）
 
-### P0-T2 PWA と GitHub Pages
+### P0-T2 PWA と Vercel 配信
 Owner: Claude Code | Read: spec/41-pwa-platform（配布・Service Worker 節）
-Do: manifest・アイコン（仮）・vite-plugin-pwa、GitHub Actions で Pages デプロイ、`base` 設定。
+Do: manifest・アイコン（仮）・vite-plugin-pwa。`dev`・タグを push（人間の了承後）→ 人間が Vercel で Import → プレビューを確認 → main へ ff マージで本番。
 Accept:
-- [ ] Pages の URL を iPhone でホーム画面に追加 → standalone で起動、機内モードでも起動する
+- [ ] Vercel の本番 URL を iPhone でホーム画面に追加 → standalone で起動、機内モードでも起動する
 - [ ] 人間が実機確認し STATUS Notes に記録
 
 ### P0-T3 スパイク: ショートカット連携

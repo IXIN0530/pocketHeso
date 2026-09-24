@@ -2,8 +2,10 @@
 制限値の出典と実測は ref/platform-limits.md。
 
 ## 配布
-- GitHub Pages（`https://ixin0530.github.io/pocketHeso/`、Vite の `base` を合わせる）。GitHub Actions で main への push ごとにデプロイ（作業は `dev`, D-019）。
-- `manifest.webmanifest`: `display: standalone`、縦固定、アイコン 180/192/512、`start_url` と `scope` は base 配下。
+- Vercel（Hobby, D-021）。GitHub 連携で `main` への push が本番、`dev` などへの push がプレビュー（URL は push ごとに発行）。
+  ルート `/` で配信するので Vite の `base` は既定のまま。設定はリポジトリ直下の `vercel.json`。
+- プレビューと本番はオリジンが違う → 保存領域（IndexedDB）も別。プレビューで試したデータは本番に混ざらない。
+- `manifest.webmanifest`: `display: standalone`、縦固定、アイコン 180/192/512、`start_url` と `scope` は `/`。
 - iOS はホーム画面に追加して使う（通常の Safari タブでも動くが、保存領域が別になる旨をオンボーディングで説明）。
 
 ## Service Worker（vite-plugin-pwa, injectManifest）

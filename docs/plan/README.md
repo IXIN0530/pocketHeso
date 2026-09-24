@@ -4,7 +4,7 @@
 
 | Phase | ファイル | 主担当 | 目的 | 規模感 |
 |---|---|---|---|---|
-| P0 | P0-bootstrap.md | Claude Code | 旧コード退避・TS 骨組み・Pages 配信・実機スパイク | 小 |
+| P0 | P0-bootstrap.md | Claude Code | 旧コード退避・TS 骨組み・Vercel 配信・実機スパイク | 小 |
 | P1 | P1-core-physics.md | Muse Spark | 乱数・盤面・物理（純 TS） | 中 |
 | P2 | P2-core-game.md | Muse Spark | Atlas・抽選・Engine（パチンコ部）・pachisim | 大 |
 | P3 | P3-core-economy.md | Muse Spark | 放置経済・Engine 統合・経済試算 | 中 |

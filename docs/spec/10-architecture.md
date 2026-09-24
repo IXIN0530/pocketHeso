@@ -2,7 +2,7 @@
 
 ## スタック
 TypeScript（strict）/ React 19 / Vite / PixiJS v8（盤面描画）/ Zustand（UI 状態）/ idb（IndexedDB）/
-vite-plugin-pwa（manifest・Service Worker）/ Vitest / pnpm workspace。配布は GitHub Pages。
+vite-plugin-pwa（manifest・Service Worker）/ Vitest / pnpm workspace。配信は Vercel（D-021）。
 
 ## パッケージ（pnpm workspace。依存は上→下のみ。逆方向・横方向の import 禁止）
 ```

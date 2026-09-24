@@ -3,7 +3,7 @@
 ### P8-T1 README と他者向けセットアップ
 Read: ref/tooling, spec/41-pwa-platform（配布節）
 Accept:
-- [ ] フォークして `PH_BASE` を変えるだけで自分の Pages に出せる手順 / 利用者向け「ホーム画面に追加」手順
+- [ ] フォークして自分の Vercel に Import するだけで出せる手順 / 利用者向け「ホーム画面に追加」手順
 
 ### P8-T2 ショートカットの配布
 Read: spec/31-shortcut-health

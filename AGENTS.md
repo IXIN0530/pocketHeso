@@ -1,7 +1,7 @@
 # PocketHeso — Agent Instructions
 
 良い行動（運動・トレーニング）で「営業時間」を得て、放置で玉が増えるパチンコ放置ゲーム（PWA）。
-対象: iPhone 16e / iOS 26.x Safari（ホーム画面 Web アプリ）＋ iOS ショートカット。個人利用＋GitHub Pages 配布。
+対象: iPhone 16e / iOS 26.x Safari（ホーム画面 Web アプリ）＋ iOS ショートカット。個人利用＋Vercel 配信・GitHub 公開。
 Stack: TypeScript / React 19 / Vite / PixiJS v8 / IndexedDB / Service Worker / Vitest / pnpm workspace。
 （2026-09-24 に iOS ネイティブから転換: D-010。旧資料は docs/archive/、旧コードはタグ `native-v1`）
 

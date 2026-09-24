@@ -3,8 +3,8 @@
 
 ## 前提
 - Node 22 以上（開発機は 25）、pnpm 10（`npm i -g pnpm`。Node 25 は corepack 非同梱）。macOS / Linux / Windows のどこでも開発できる。
-- 実機確認: iPhone の Safari で開発サーバー（同一 LAN）か GitHub Pages のプレビューを開き、ホーム画面に追加する。
-  - 開発サーバーは `pnpm dev --host`。位置情報・クリップボード・SW は HTTPS が必要 → 実機確認は Pages か
+- 実機確認: iPhone の Safari で Vercel のプレビュー URL（`dev` への push ごとに発行）を開き、ホーム画面に追加する。
+  - 開発サーバーは `pnpm dev --host`。位置情報・クリップボード・SW は HTTPS が必要 → 実機確認は Vercel プレビューか
     `pnpm preview` をトンネル（例: `cloudflared tunnel --url`）で HTTPS 化して行う。
   - Mac の Safari「開発」メニュー → 接続した iPhone で Web インスペクタが使える（iPhone 側で Web インスペクタを ON）。
 - Apple Developer Program は不要。
@@ -20,12 +20,14 @@
 | `scripts/agy.sh [agy の引数]` | Antigravity CLI をリポジトリルートをワークスペースにして起動 |
 
 ## デプロイ
-- **ブランチ（D-019）**: 作業は `dev`。`main` は公開版（push で Pages に自動デプロイ）。
+- **ブランチ（D-019）**: 作業は `dev`。`main` は本番（push で Vercel の本番にデプロイ）。
   `dev` で `scripts/build.sh` と `scripts/test.sh all` が通り、実機で動く状態の時だけ `main` へ fast-forward マージする
   （目安: フェーズ末、または人間の指示）。エージェントは `main` に直接コミットしない。
-- GitHub Actions: main への push → `scripts/build.sh` → `apps/web/dist` を GitHub Pages に公開。
-  `dev` への push はビルドとテストだけ行う（デプロイしない）。
-- Vite の `base` は `/pocketHeso/`（リポジトリ名 `IXIN0530/pocketHeso` に合わせる。大文字小文字を区別。フォークした人は環境変数 `PH_BASE` で変更）。
+- Vercel（D-021）: GitHub 連携。`main` → 本番、その他のブランチ → プレビュー URL。設定は `vercel.json`
+  （install `pnpm install`、build = 型検査＋lint＋テスト＋`vite build`、出力 `apps/web/dist`）。テストが落ちたらデプロイされない。
+- プレビュー URL は既定で Vercel ログインが必要（Deployment Protection）。ホーム画面 Web アプリは Safari と Cookie が別なので、
+  実機確認がしにくければ Project Settings → Deployment Protection でプレビューの保護を外す。
+- Vite の `base` は `/`（Vercel はルート配信）。
 
 ## エージェント分担
 | 担当 | 向いている仕事 | フェーズ |
