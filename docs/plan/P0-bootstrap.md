@@ -27,8 +27,8 @@ Owner: Claude Code（実機は人間）| Read: spec/31-shortcut-health, ref/plat
 Do: `resources/shortcut/README.md` に作成手順（spec/31 の中身）を書く。PWA 側に `?spike=shortcut`:
 「ショートカットを開く」ボタン、復帰検知ログ、「貼り付け」ボタンで生テキストを表示。
 Accept:
-- [ ] ホーム画面 PWA → `shortcuts://` 起動 → 戻る → `readText()` でコードを取得、の可否と手順を platform-limits に記入
-- [ ] 歩数合計が「ヘルスケア」アプリの表示と一致するか記録（ワークアウトは取得不可のため対象外: D-022）
+- [x] ホーム画面 PWA → `shortcuts://` 起動 → 戻る → `readText()` でコードを取得、の可否と手順を platform-limits に記入
+- [x] 歩数合計が「ヘルスケア」アプリの表示と一致するか記録（ワークアウトは取得不可のため対象外: D-022）
 - [ ] ロック中のオートメーション実行の成否を記録
 
 ### P0-T4 スパイク: 位置情報と Overpass
