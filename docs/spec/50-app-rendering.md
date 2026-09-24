@@ -1,19 +1,20 @@
-# 50 App Rendering（SpriteKit）
+# 50 App Rendering（PixiJS）
+（旧 native-v1 spec/50 の SpriteKit 方針を PixiJS v8 に移植）
 
-## 画面
-- `BoardView`（メイン）: 盤面 + 液晶エリア + 保留 + 統計。開いている間だけ 60/120fps。
-- `PresentationPlayerView`: 演出再生（通知・AlarmKit から遷移）。
-- `SettingsView`: 閾値、ハンドル位置、KeepAlive、歩数換算、演出（強度・音量・背景音・振動・ライト, spec 43）、リセット。
-- `DebugView`（DEBUG ビルドのみ）: seed、時間倍率 x1/x10/x100、歩数注入、Atlas 照合結果、LA 更新ログ、演出プレビュー。
+## 構成
+- React コンポーネント `<BoardCanvas>` の中で Pixi の `Application` を命令的に保持する（@pixi/react は使わない。
+  毎フレームの React 再レンダーを避けるため）。Projection の変化は ref 経由で Pixi に渡す。
+- レイヤー: 盤面（静的テクスチャ）→ 役物 → 玉 → 液晶エリア → 保留・HUD オーバーレイ → FlashLayer（spec/43）。
 
 ## 描画方針
-- 盤面は起動時に JSON から `SKShapeNode` を焼いて1枚の `SKTexture` にする（釘数百本を毎フレーム描かない）。
-- 玉: 画面を開いている間に `fired` された玉は `trajectory(canonicalParams, every: 4)` を事前計算し、
-  `SKAction.follow` ではなく毎フレーム補間で動かす（時刻同期のため）。
-- 開いた瞬間に「直近5秒間に発射済みで飛行中の玉」も途中から再生する → 常に打ち続けている見た目になる。
-- 液晶エリアは `PachinkoPresentation` の縮小版シーンを埋め込む。
-- 音・フラッシュ・振動は CuePlayer 経由（spec 43）。盤面全体に被せる虹フラッシュは最前面の `FlashRenderer` ノード。
+- 盤面は起動時に JSON から `Graphics` で描き、1枚の `RenderTexture` に焼く（釘数百本を毎フレーム描かない）。
+- **役物**: 盤面 JSON の `yakumono` 座標に置き、spec/23 の `periodS` で実際に回す（位相は Projection の値から計算）。
+  1周ごとに小さな「+玉数」のポップ。未解放の役物は暗く表示。
+- **玉**: 前面で `fired` された玉は `trajectory(canonicalParams, 4)` を事前計算して毎フレーム補間。
+  開いた瞬間に直近5秒以内に発射された飛行中の玉も途中から再生（打ち続けている見た目になる）。
+- 液晶エリア: `packages/fx` の演出シーン（3列図柄＋リーチ演出）。演出は CueSheet で駆動。
+- 背面タブ・非表示時は `ticker.stop()`。
 
 ## 性能目標
-- 同時 20 玉 + 液晶演出 + 全画面虹フラッシュで 16e 上 60fps 維持（Instruments で確認）。
-- 盤面を閉じたら SKView を paused にし、tick は Runtime の 1Hz のみ。
+- iPhone 16e の Safari（ホーム画面アプリ）で、同時 20 玉＋役物8＋液晶演出＋全画面の虹フラッシュが 60fps。
+- 初回ロード（キャッシュなし）: JS 本体 gzip 300KB 以下＋ Atlas 450KB。2回目以降は SW キャッシュで即起動。

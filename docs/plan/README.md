@@ -1,19 +1,20 @@
 # Plan Index
 フェーズは上から順に。各ファイルは単独で読めるように書いてある。**今のフェーズのファイルだけ読むこと。**
+（iOS ネイティブ時代の計画は docs/archive/native-v1/plan。D-010 で破棄）
 
 | Phase | ファイル | 主担当 | 目的 | 規模感 |
 |---|---|---|---|---|
-| P0 | P0-bootstrap.md | Claude Code | 骨組み＋実機スパイク（制約の実測） | 小 |
-| P1 | P1-core-physics.md | Muse Spark | 乱数・盤面・物理（純 Swift） | 中 |
-| P2 | P2-core-game.md | Muse Spark | Atlas・抽選・Engine・pachisim | 大 |
-| P3 | P3-app-rendering.md | Muse Spark | アプリ内 SpriteKit 描画 | 中 |
-| P4 | P4-runtime.md | Claude Code | 歩数・常駐・追いつき・永続化 | 中 |
-| P5 | P5-surfaces.md | Claude Code | Live Activity・ロック画面ウィジェット | 中 |
-| P6 | P6-hot-events.md | 両方 | 演出・通知拡張・AlarmKit | 大 |
-| P7 | P7-soak-tune.md | Claude Code | 24h 実運用・電池・バランス | 小 |
-| P8 | P8-distribution.md | どちらでも | README・配布経路（任意） | 小 |
+| P0 | P0-bootstrap.md | Claude Code | 旧コード退避・TS 骨組み・Pages 配信・実機スパイク | 小 |
+| P1 | P1-core-physics.md | Muse Spark | 乱数・盤面・物理（純 TS） | 中 |
+| P2 | P2-core-game.md | Muse Spark | Atlas・抽選・Engine（パチンコ部）・pachisim | 大 |
+| P3 | P3-core-economy.md | Muse Spark | 放置経済・Engine 統合・経済試算 | 中 |
+| P4 | P4-activity.md | Claude Code | 受け取り台帳・ショートカット・チェックイン | 中 |
+| P5 | P5-app.md | 両方 | React 画面・Pixi 描画・保存・PWA | 大 |
+| P6 | P6-presentation.md | 両方 | 演出・音・光・予告・留守中リプレイ | 中 |
+| P7 | P7-soak-tune.md | Claude Code | 1週間の実運用・バランス調整 | 小 |
+| P8 | P8-distribution.md | どちらでも | README・ショートカット配布・任意の Web Push | 小 |
 
-並行可能: P1〜P2（Muse）と P4-T1/T2（Claude, Core に依存しない部分）。P3 以降は P2 完了が前提。
+並行可能: P1〜P3（Muse）と P4-T1〜T3（Claude。claims は Core の型だけに依存）。P5 は P2-T5 完了が前提。
 
 ## タスク書式
 ```

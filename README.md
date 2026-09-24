@@ -1,13 +1,14 @@
 # PocketHeso
 
-通知欄（ロック画面 / 通知センター）に常駐し、歩数に応じて自動で打ち続けるパチンコシミュレーター。
-iOS 26 / iPhone 16e 向け。App Store 非公開。
+良い行動（歩数・ワークアウト・ジムや公園でのトレーニング）をすると「営業時間」がもらえ、
+その間パチンコホールの役物が回って玉が増えていく放置ゲーム。玉は強化にも、パチンコを打つ（抽選）のにも使える。
+React + TypeScript の PWA。iPhone ではホーム画面に追加し、ヘルスケアの運動記録は iOS ショートカット経由で受け取る
+（Apple Developer Program 不要）。
 
-- エージェント向け入口: `AGENTS.md`（OpenCode）/ `CLAUDE.md`（Claude Code）
-- 進捗: `docs/state/STATUS.md`
-- 計画: `docs/plan/`、仕様: `docs/spec/`、参照: `docs/ref/`
+- エージェント向け入口: `AGENTS.md`（OpenCode / 共通）/ `CLAUDE.md`（Claude Code）/ `GEMINI.md`（agy）
+- 進捗: `docs/state/STATUS.md`、計画: `docs/plan/`、仕様: `docs/spec/`、参照: `docs/ref/`
+- 旧 iOS ネイティブ版の設計: `docs/archive/native-v1/`
 
-## セットアップ（人間向け）
-1. macOS 26 + Xcode 26.3 以降、`brew install xcodegen`
-2. `project.yml` 先頭の `BUNDLE_PREFIX` と `DEVELOPMENT_TEAM` を自分の値に変更
-3. `scripts/gen.sh && open PocketHeso.xcodeproj`
+## セットアップ（人間向け, P0-T1 以降）
+1. Node 22 LTS、`corepack enable`（pnpm）
+2. `pnpm install && scripts/dev.sh`

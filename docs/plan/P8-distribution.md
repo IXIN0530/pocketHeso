@@ -1,14 +1,18 @@
-# P8 Distribution（任意）
+# P8 Distribution & Optional Push（任意）
 
 ### P8-T1 README と他者向けセットアップ
-Read: ref/tooling
+Read: ref/tooling, spec/41-pwa-platform（配布節）
 Accept:
-- [ ] BUNDLE_PREFIX / TEAM / APP_GROUP を project.yml の1箇所変更だけで他人がビルドできる
+- [ ] フォークして `PH_BASE` を変えるだけで自分の Pages に出せる手順 / 利用者向け「ホーム画面に追加」手順
 
-### P8-T2 無料アカウント運用手順
+### P8-T2 ショートカットの配布
+Read: spec/31-shortcut-health
 Accept:
-- [ ] 7日失効と再インストール手順、AltStore / SideStore での自動再署名手順を README に記載
+- [ ] iCloud リンクと、リンクが使えない人向けの手作り手順（スクリーンショット付き）を `resources/shortcut/README.md` に
 
-### P8-T3 調査: 公証・代替マーケットプレイス（日本）
-Read: ref/platform-limits（配布節）
-Do: 調査のみ。公証ガイドラインで問題になりうる点（無音オーディオ常駐、題材）を洗い出し、結論を DECISIONS に。
+### P8-T3 （任意）Web Push
+Owner: Claude Code | Read: spec/41-pwa-platform（Web Push 節）, spec/22-core-engine（lookahead）
+Do: `workers/push`（Cloudflare Workers + Durable Object alarm, VAPID）、背面移行時の予定送信、SW の通知表示とバッジ。
+D-014 の「サーバーなし」を変える判断なので、着手前に DECISIONS に記録。
+Accept:
+- [ ] 実機で、閉じている間に予定時刻の通知が届き、開いた結果と一致する

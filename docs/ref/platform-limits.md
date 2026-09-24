@@ -1,72 +1,53 @@
-# Platform Limits（iOS 26 / iPhone 16e）
+# Platform Limits（Web / PWA on iOS 26 + ショートカット）
 推測でコードを書かないこと。ここに無い制限値に依存する場合は、調べて出典付きで追記する。
-「実測」列は P0 のスパイクで埋める。実測値が公称と違えば **実測を優先** する。
+「実測」列は P0 のスパイクで埋める。実測値が公称と違えば **実測を優先**。
+iOS ネイティブ時代の制限値は docs/archive/native-v1/ref/platform-limits.md（通常は読まない）。
 
 ## 端末
 | 項目 | 値 | 実測 |
 |---|---|---|
-| SoC / RAM | A18 (6C CPU / 4C GPU) / 8GB | |
-| Dynamic Island | **なし（ノッチ）** → DI 用ビューは描画されない。コンパイル要件としてのみ実装 | |
-| 脱獄 / TrollStore | 不可（Dopamine は A18 非対応、TrollStore は iOS 17.0 まで） | |
+| 主対象 | iPhone 16e（A18, RAM 8GB）/ iOS 26.x / Safari・ホーム画面 Web アプリ | |
+| 副対象 | Android Chrome、PC ブラウザ（ショートカット連携なし） | |
 
-## Live Activity（ActivityKit）
+## Apple アカウント
+- 有料 Developer Program は不要。ショートカットは純正アプリなのでヘルスケア読み取りに開発者登録は関係しない。
+- 参考: Personal Team では APNs が使えず、Live Activity も `pushType: .token` では開始できない（ネイティブを捨てた理由の一つ）。
+  出典: https://github.com/LoopKit/Loop/issues/2532 , https://developer.apple.com/forums/thread/718388
+
+## ヘルスケア × ショートカット
 | 項目 | 値 | 実測 |
 |---|---|---|
-| 表示場所（DI 非搭載機） | ロック画面・通知センター。`AlertConfiguration` 付き更新でホーム画面にバナー | |
-| 寿命 | アクティブ最大8時間 + 終了後表示最大4時間 | |
-| 同時起動数 | 1アプリ5件まで | |
-| 描画反映間隔 | iOS 18+ で約15秒にコアレス（コミュニティ実測。速く update しても無視される） | ☐ P0-T3 |
-| アニメーション | 状態遷移時のみ・最大2秒・常時表示ディスプレイでは無効 | |
-| ContentState サイズ | 約4KB 上限 → **1KB 以下を目標** | |
-| 事前スケジュール開始 | iOS 26 でサードパーティに開放 | ☐ 要API確認 |
+| ロック中の読み取り | ロック後10分で暗号化され読めない → 手動実行を主経路に | ☐ P0-T3 |
+| 「ヘルスケアサンプルを検索」 | 種類・期間・並べ替え・グループ化（日）・件数制限が可能 | ☐ P0-T3 |
+| オートメーション（時刻） | 確認なし実行を設定できる。ロック中は上記により失敗し得る | ☐ P0-T3 |
+| PWA から `shortcuts://run-shortcut` | 要実測 | ☐ P0-T3 |
+| ショートカット → PWA への受け渡し | URL を開くと Safari（PWA とは別の保存領域）→ **クリップボード経由** | ☐ P0-T3 |
+- 出典: https://support.apple.com/en-om/guide/security/sec88be9900f/web（Health data protection）/
+  https://blog.maximeheckel.com/posts/build-personal-health-api-shortcuts-serverless/
 
-## WidgetKit
+## PWA（iOS Safari / ホーム画面 Web アプリ）
 | 項目 | 値 | 実測 |
 |---|---|---|
-| 拡張メモリ | 約30MB | |
-| リロード予算 | 約40〜70回/日（アプリ前面化・ユーザー操作は予算外） | |
-| タイムライン | 未来エントリを複数返せる → **60エントリ@1分** で1時間分を1リロードで賄う | ☐ P5-T4 |
+| 保存領域 | ホーム画面アプリと Safari タブは別。`storage.persist()` の結果 | ☐ P0-T5 |
+| 背景実行 | 不可（タイマー・位置・音はすべて止まる前提） | |
+| 位置情報 | 前面の `getCurrentPosition` のみ。許可が毎回聞かれるか | ☐ P0-T4 |
+| 屋内の位置精度 | `coords.accuracy` の実測（ジム・公園） | ☐ P0-T4 |
+| クリップボード読み取り | ユーザー操作内で `readText()`、iOS は「ペースト」確認 UI | ☐ P0-T3 |
+| Web Audio | 最初のタップで resume。消音スイッチ時の挙動 | ☐ P0-T5 |
+| Web Push | iOS 16.4+、ホーム画面 Web アプリのみ。サーバーと VAPID が必要 | （P8） |
+| バッジ | `navigator.setAppBadge`（ホーム画面 Web アプリ、通知許可が必要な場合あり） | ☐ P8 |
+| 振動 | `navigator.vibrate` 非対応 | |
+| 描画性能 | Pixi で 20玉＋フィルタ 60fps | ☐ P0-T5 |
 
-## AlarmKit（iOS 26+）
-- サイレントモード・集中モードを貫通して鳴る。アプリ終了後も発火する。
-- 利用者のアプリ単位オプトイン必須。Info.plist に `NSAlarmKitUsageDescription`。
-- **鳴動中の画面はシステム管理 UI**。自由なカスタム UI は countdown / paused 状態の Live Activity のみ。
-- 追加ボタン（`AlarmButton` + App Intent）でアプリを開く導線を作る。
-- 出典: https://developer.apple.com/videos/play/wwdc2025/230/
+## OpenStreetMap / Overpass API
+| 項目 | 値 |
+|---|---|
+| 公開サーバー | 無料だが高負荷。キャッシュ必須、連打しない（1セッション2回まで, spec/32） |
+| タグ | `leisure=fitness_centre`（ジム）/ `fitness_station`（公園の健康器具, 自治体設置が多い）/ `sports_centre` / `park` / `pitch` / `track` / `swimming_pool` |
+- 出典: https://wiki.openstreetmap.org/wiki/Overpass_API , https://wiki.openstreetmap.org/wiki/Tag:leisure=fitness_station
 
-## Notification Content Extension
-- 通常の `UIViewController`。SpriteKit / 動画 / 操作可能。
-- メモリ上限は厳しい（公称値不明）→ 実測して記録。テクスチャは最小限。 ☐ P0-T5
-
-## 演出（音・光・振動）
-| 項目 | 値 | 実測 |
-|---|---|---|
-| ローカル通知の音 | `UNNotificationSound(named:)`。30秒未満、aiff/wav/caf。メインバンドル or `Library/Sounds` | |
-| LA 更新アラートの音 | `AlertConfiguration.AlertSound.named(_:)`。置き場所は通知と同じ。更新時に鳴らないという報告あり | ☐ P6-T7 |
-| AlarmKit の音 | `AlarmConfiguration(sound: .named(_:))`。iOS 26.0 でカスタム音が鳴らない不具合報告あり → 既定音にフォールバック | ☐ P6-T7 |
-| 拡張から `Library/Sounds` を参照できるか | 「アプリのデータコンテナ」とあり、Widgets 拡張から鳴らす時の参照先が不明 | ☐ P6-T7 |
-| 背景での音再生 | KeepAlive の `.playback` セッション中は可。消音スイッチを無視する。消音スイッチ状態の取得 API はない | ☐ P6-T7 |
-| 通知コンテンツ拡張での音・振動 | AVAudioPlayer / Core Haptics が動くか、消音スイッチの扱い | ☐ P6-T7 |
-| Core Haptics | 前面のみ。背景では再生されない前提で設計 | |
-| 背面ライト（torch） | `AVCaptureDevice.torchMode`。前面のみ。カメラ権限の要否 | ☐ P6-T7 |
-| LA のアニメーション | 遷移時のみ・最大2秒（上の Live Activity 節）。常時点滅は不可 → 静的グラデで表現 | |
-- 出典: https://developer.apple.com/documentation/activitykit/alertconfiguration/alertsound /
-  https://developer.apple.com/forums/thread/802620（AlarmKit カスタム音の不具合報告）
-
-## バックグラウンド
-| 手段 | 用途 | 注意 |
-|---|---|---|
-| 無音オーディオ（`UIBackgroundModes: audio`、`.playback` + `.mixWithOthers`） | プロセス常駐 | 割り込み・経路変更で止まる→再開処理必須。電池消費大 | 
-| `BGAppRefreshTask` | 追いつき計算のフォールバック | 実行タイミングは OS 任せ |
-| `CMPedometer.queryPedometerData(from:to:)` | 過去の歩数取得（最大7日） | **常駐が死んでも歩数は失われない** |
-
-## 取得不可
-- システム全体の CPU 使用率（サンドボックスで他プロセス不可視、`host_get_host_priv_port` 失敗）。
-  代替: `ProcessInfo.thermalState`、バッテリー、歩数、`CMMotionActivityManager`。
-
-## 開発ツール
-- Xcode 26.3+ の MCP（`xcrun mcpbridge`）: 20ツール、定義だけで約5Kトークン。常時有効にしない。
-
-## 配布（日本）
-- 2025/12/18 スマホ新法施行。iOS 26.2+ で代替アプリマーケットプレイス可（AltStore PAL 等）。
-  App Store 外配信は「公証」が必要（App Review より軽い）。Webサイト直配信は現時点で EU 限定の記載あり（要確認）。
+## JS の決定論
+- `+ - * /` と `Math.sqrt` は IEEE 754 で正しく丸められる（どのエンジンでも同じ結果）。
+  `Math.sin/cos/exp/log/pow/hypot` と `**` は実装依存の丸めがあり得る → Core で禁止。
+- `Array.prototype.sort` は ES2019 以降で安定。比較関数は全順序にすること。
+- 整数演算は `Math.imul`、`>>> 0`、`| 0` で 32bit に閉じる。BigInt は使わない（D-016）。
