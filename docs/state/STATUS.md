@@ -7,9 +7,9 @@
 - Owner hint: Claude Code
 
 ## Blockers
-- P0-T3 Accept 3項目が実機待ち: `?spike=shortcut` で往復・readText、歩数一致とワークアウト種類名、ロック中オートメーション。結果を platform-limits の実測列へ。
+- P0-T3 Accept 残り2項目が実機待ち: 歩数一致とワークアウト種類名（README §1）、ロック中オートメーション（§2）。結果を platform-limits の実測列へ。
 
 ## Notes（最新3件まで）
-- P0-T3 実測(途中): standalone から `shortcuts://run-shortcut` 起動可（blur/hidden +0.9s）、復帰で focus・visible 発火。ただし `readText()` は NotAllowedError（原因切り分け中: 診断ボタン追加）。
+- P0-T3 実測: 起動・復帰検知・手動ペーストは OK。他アプリ由来のクリップボードは API 読み取りが不安定（platform-limits に記入）。残り: 本番版ショートカット（歩数一致・種類名）とロック中オートメーション。
 - P0-T3: spike は `apps/web/src/spikes/`（lazy chunk）。ホーム画面アプリは start_url 起動で `?spike=` が落ちるため、本番以外では本体下部に入口リンク（`__SHOW_SPIKES__`）。手順書 `resources/shortcut/README.md`、まず §0 最小版で往復確認。
 - P0-T2: Vercel のプレビュー保護（Vercel Authentication）は無効化済み。有効だと iOS がアイコンを取れず頭文字表示になる。機内モード起動時の「機内モードを解除」は iOS の案内で、起動自体は成功。

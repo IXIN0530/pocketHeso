@@ -20,8 +20,8 @@ iOS ネイティブ時代の制限値は docs/archive/native-v1/ref/platform-lim
 | ロック中の読み取り | ロック後10分で暗号化され読めない → 手動実行を主経路に | ☐ P0-T3 |
 | 「ヘルスケアサンプルを検索」 | 種類・期間・並べ替え・グループ化（日）・件数制限が可能 | ☐ P0-T3 |
 | オートメーション（時刻） | 確認なし実行を設定できる。ロック中は上記により失敗し得る | ☐ P0-T3 |
-| PWA から `shortcuts://run-shortcut` | 要実測 | ☐ P0-T3 |
-| ショートカット → PWA への受け渡し | URL を開くと Safari（PWA とは別の保存領域）→ **クリップボード経由** | ☐ P0-T3 |
+| PWA から `shortcuts://run-shortcut` | `location.href` で起動可 | ✅ standalone で起動（blur/hidden +1s）。戻ると focus・`visibilitychange→visible` が来る |
+| ショートカット → PWA への受け渡し | URL を開くと Safari（PWA とは別の保存領域）→ **クリップボード経由** | ✅ 手動ペースト（欄を長押し→ペースト）は確実。API 読み取りは下記の通り不安定 |
 - 出典: https://support.apple.com/en-om/guide/security/sec88be9900f/web（Health data protection）/
   https://blog.maximeheckel.com/posts/build-personal-health-api-shortcuts-serverless/
 
@@ -32,7 +32,7 @@ iOS ネイティブ時代の制限値は docs/archive/native-v1/ref/platform-lim
 | 背景実行 | 不可（タイマー・位置・音はすべて止まる前提） | |
 | 位置情報 | 前面の `getCurrentPosition` のみ。許可が毎回聞かれるか | ☐ P0-T4 |
 | 屋内の位置精度 | `coords.accuracy` の実測（ジム・公園） | ☐ P0-T4 |
-| クリップボード読み取り | ユーザー操作内で `readText()`、iOS は「ペースト」確認 UI | ☐ P0-T3 |
+| クリップボード読み取り | ユーザー操作内で `readText()`、iOS は「ペースト」確認 UI | ⚠ 自アプリが書いた内容は `readText()` 可。他アプリ（ショートカット）由来は `NotAllowedError` が即時に返ることが多い（`readText` 4/4 失敗、`read()` 1回目失敗・2回目成功）。確認 UI は未観測 → API を試し、失敗時は手動ペーストへ誘導する |
 | Web Audio | 最初のタップで resume。消音スイッチ時の挙動 | ☐ P0-T5 |
 | Web Push | iOS 16.4+、ホーム画面 Web アプリのみ。サーバーと VAPID が必要 | （P8） |
 | バッジ | `navigator.setAppBadge`（ホーム画面 Web アプリ、通知許可が必要な場合あり） | ☐ P8 |
