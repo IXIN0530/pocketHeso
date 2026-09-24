@@ -8,7 +8,7 @@
 | 手段 | 可否 | 備考 |
 |---|---|---|
 | 音 | ◎ Web Audio（BGM/SE/ボイスのバス） | 最初のユーザー操作で解錠。消音スイッチ中は iOS が鳴らさないことがある（実測, P0-T5） |
-| 光 | ◎ Pixi のフィルタ（色相回転の虹、フラッシュ）、パーティクル | 画面内のみ。背面ライト・画面輝度は不可 |
+| 光 | ◎ Three.js の加算シェーダ（虹、フラッシュ）、emissive のランプ、短時間のブルーム、パーティクル | 画面内のみ。背面ライト・画面輝度は不可 |
 | 振動 | △ Android の `navigator.vibrate` のみ | iOS は no-op |
 | 背面・通知 | × | 演出は前面のみ。留守中の当たりは復帰時にリプレイ（spec/22 AwaySummary） |
 
@@ -20,7 +20,8 @@
   {"at": 41200, "kind": "sound",  "bus": "se",  "asset": "kyuin"},
   {"at": 41200, "kind": "haptic", "pattern": [80, 40, 120]}]}
 ```
-- `kind`: `sound` / `flash` / `particle` / `haptic` / `shake`。未知の kind は無視（前方互換）。
+- `kind`: `sound` / `flash` / `particle` / `haptic` / `shake` / `bloom` / `camera`。未知の kind は無視（前方互換）。
+  `bloom` は `{ms, strength}` で数秒だけブルームを ON（常時は重い, spec/50）。`camera` は `{shot, ms}` で寄り・引き、終了後は定位置へ戻す。
 - `min_intensity`: 設定の強度（1〜3）未満ならスキップ。
 - 分岐（群予告の有無など）は `RNGStream(seed, 'presentation', serial)` で決める → 同じ seed で同じキュー列。
   **Core の抽選結果には触れない**。
@@ -32,7 +33,7 @@
 |---|---|
 | `CuePlayer` | CueSheet を SimTime 同期で実行。途中から再生できる |
 | `SoundBus` | Web Audio。バス `bgm` `se` `voice`、バス別音量。デコード済みバッファをキャッシュ |
-| `FlashLayer` | Pixi の最前面コンテナ。虹は色相回転フィルタ |
+| `FlashLayer` | Three の最前面の全画面クアッド（加算シェーダ）。虹・白フラッシュ。ブルームの ON/OFF もここで仲介 |
 | `Haptics` | `navigator.vibrate` があれば実行、なければ no-op |
 
 ## 設定

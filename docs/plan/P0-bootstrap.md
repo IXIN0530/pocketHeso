@@ -50,5 +50,5 @@ Owner: Claude Code（実機は人間） | Read: spec/50-app-rendering
 Do: `?spike=three`: Three.js で台を立体に描く（金属の玉20・真鍮の釘・ガラス・役物8・液晶（CanvasTexture）・枠ランプ・ブルーム・全画面の虹・リーチ風のカメラ寄り）。
 FPS・draw call・1分ごとの fps をログ。ビルドの gzip サイズを Pixi と比べる。
 Accept:
-- [ ] 16e で見た目・fps・10分連続の発熱（1分ごとの fps の推移）を platform-limits に記入
-- [ ] Three.js 全面移行 / Pixi 併用 / Pixi のまま を DECISIONS に記録（移行なら spec/50 を書き直し、P5 以降の Pixi 前提を洗い出す）
+- [x] 16e で見た目・fps を platform-limits に記入（10分連続の発熱は未計測 → P5-T4 の Accept に移す）
+- [x] Three.js 全面移行 / Pixi 併用 / Pixi のまま を DECISIONS に記録（移行なら spec/50 を書き直し、P5 以降の Pixi 前提を洗い出す）

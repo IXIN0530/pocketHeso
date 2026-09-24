@@ -1,23 +1,23 @@
 # 10 Architecture
 
 ## スタック
-TypeScript（strict）/ React 19 / Vite / PixiJS v8（盤面描画）/ Zustand（UI 状態）/ idb（IndexedDB）/
+TypeScript（strict）/ React 19 / Vite / Three.js（盤面描画, D-026）/ Zustand（UI 状態）/ idb（IndexedDB）/
 vite-plugin-pwa（manifest・Service Worker）/ Vitest / pnpm workspace。配信は Vercel（D-021）。
 
 ## パッケージ（pnpm workspace。依存は上→下のみ。逆方向・横方向の import 禁止）
 ```
-apps/web  (React UI, PixiJS 描画, Service Worker, 永続化, 位置情報, クリップボード)
+apps/web  (React UI, Three.js 描画, Service Worker, 永続化, 位置情報, クリップボード)
   │
   ├──────────────┬──────────────────┐
   ▼              ▼                  ▼
 packages/fx    packages/claims    packages/shared
  (CueSheet 再生, (受け取りコード解析, (保存スキーマ型, 設定型,
   Web Audio,     チェックイン判定,    CueSheet の純データ型)
-  Pixi フラッシュ) 台帳ルール)          ▲
+  Three フラッシュ) 台帳ルール)         ▲
   │              │                  │
   ▼              ▼                  │
 packages/core ◄──────────────────────┘
- (純 TS。乱数・物理・Atlas・抽選・経済・Engine・Projection。DOM/React/Pixi を import しない)
+ (純 TS。乱数・物理・Atlas・抽選・経済・Engine・Projection。DOM/React/Three を import しない)
 tools/pachisim (Node CLI。Atlas 生成・統計・経済バランス試算。core のみに依存)
 ```
 - `core` と `claims` は DOM 非依存（Node で単体テストできる）。ESLint で import 境界と禁止 API を機械的に検査（ref/conventions）。
@@ -33,7 +33,7 @@ tools/pachisim (Node CLI。Atlas 生成・統計・経済バランス試算。co
                                                      ▼
                               Engine.advance(to: now)  ──▶ [SimEvent]
                                                      ▼
-                              project(state, now) ──▶ React / Pixi 描画
+                              project(state, now) ──▶ React / Three 描画
 ```
 - **Engine の真実 = seed + 機種/盤面/Atlas + ClaimLedger の grants + ActionLog**。状態スナップショットはキャッシュ。
 - 開いた時に `advance(to: now)` で放置中の分を一括計算（追いつき）。前面中は requestAnimationFrame とは独立に 1Hz で前進。

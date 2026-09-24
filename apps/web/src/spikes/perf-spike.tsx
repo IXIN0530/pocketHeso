@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { isStandalone } from '../platform/pwa.ts';
-import { PerfBoard, type FrameStats, type PerfOptions } from './perf-board.ts';
 import styles from './spike.module.css';
 
 const stamp = () => new Date().toISOString().slice(11, 23);
@@ -16,9 +15,7 @@ interface AudioSessionLike {
 const audioSession = (): AudioSessionLike | undefined =>
   (navigator as Navigator & { audioSession?: AudioSessionLike }).audioSession;
 
-const DPR = Math.min(3, Math.max(1, Math.round(window.devicePixelRatio || 1)));
-
-/** P0-T5: Pixi の描画性能・`storage.persist()`・Web Audio と消音モードの実測画面。 */
+/** P0-T5: `storage.persist()`・Web Audio と消音モードの実測画面（Pixi の描画計測は D-026 で削除）。 */
 export function PerfSpike() {
   const [log, setLog] = useState<string[]>([]);
   const add = (line: string) => setLog((l) => [`${stamp()} ${line}`, ...l].slice(0, 60));
@@ -34,8 +31,7 @@ export function PerfSpike() {
           ← 戻る
         </a>
       </p>
-      <h1>P0-T5 描画・保存・音</h1>
-      <RenderSection add={add} />
+      <h1>P0-T5 保存・音</h1>
       <StorageSection add={add} />
       <AudioSection add={add} />
       <h2>ログ（新しい順）</h2>
@@ -45,97 +41,6 @@ export function PerfSpike() {
 }
 
 type Add = (line: string) => void;
-
-function RenderSection({ add }: { add: Add }) {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const boardRef = useRef<PerfBoard | null>(null);
-  const [opts, setOpts] = useState<PerfOptions>({ balls: 20, yakumono: 8, rainbow: true, hueFilter: true });
-  const [resolution, setResolution] = useState(DPR);
-  const [stats, setStats] = useState<FrameStats | null>(null);
-  const [worst, setWorst] = useState<number | null>(null);
-  const [renderer, setRenderer] = useState('-');
-  const optsRef = useRef(opts);
-  optsRef.current = opts;
-
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    const board = new PerfBoard(optsRef.current);
-    boardRef.current = board;
-    setWorst(null);
-    let windows = 0;
-    board
-      .init(host, resolution)
-      .then(() => {
-        setRenderer(board.rendererName);
-        add(`Pixi 初期化 renderer=${board.rendererName} resolution=${resolution}`);
-      })
-      .catch((e: unknown) => add(`Pixi 初期化失敗: ${errText(e)}`));
-    const timer = window.setInterval(() => {
-      const s = board.takeStats();
-      if (s.frames === 0) return;
-      setStats(s);
-      // 起動直後（Pixi 初期化・テクスチャ生成）の2窓は最低値に含めない。
-      if (++windows <= 2) return;
-      setWorst((w) => (w === null ? s.fps : Math.min(w, s.fps)));
-    }, 1000);
-    const onVis = () => board.setRunning(document.visibilityState === 'visible');
-    document.addEventListener('visibilitychange', onVis);
-    return () => {
-      window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', onVis);
-      board.destroy();
-      boardRef.current = null;
-    };
-  }, [resolution]);
-
-  useEffect(() => boardRef.current?.apply(opts), [opts]);
-
-  const toggle = (key: 'rainbow' | 'hueFilter') => setOpts((o) => ({ ...o, [key]: !o[key] }));
-  const report = () =>
-    add(
-      `計測 fps=${stats?.fps.toFixed(1) ?? '-'} p95=${stats?.p95Ms.toFixed(1) ?? '-'}ms max=${stats?.maxMs.toFixed(1) ?? '-'}ms ` +
-        `最低fps=${worst?.toFixed(1) ?? '-'} 玉${opts.balls} 役物${opts.yakumono} 虹=${opts.rainbow} 色相フィルタ=${opts.hueFilter} ` +
-        `res=${resolution} renderer=${renderer}`,
-    );
-
-  return (
-    <section>
-      <h2>描画（spec/50 の性能目標）</h2>
-      <div ref={hostRef} style={{ width: '100%', height: '55dvh', borderRadius: 12, overflow: 'hidden' }} />
-      <p style={{ fontVariantNumeric: 'tabular-nums', fontSize: 18 }}>
-        {stats ? `${stats.fps.toFixed(1)} fps / p95 ${stats.p95Ms.toFixed(1)}ms / max ${stats.maxMs.toFixed(1)}ms` : '計測中…'}
-        <br />
-        最低 {worst?.toFixed(1) ?? '-'} fps（1秒窓）/ renderer {renderer} / dpr {window.devicePixelRatio}
-      </p>
-      <div className={styles.row}>
-        <button className={styles.button} onClick={() => toggle('rainbow')}>
-          虹 {opts.rainbow ? 'ON' : 'OFF'}
-        </button>
-        <button className={styles.button} onClick={() => toggle('hueFilter')}>
-          色相フィルタ {opts.hueFilter ? 'ON' : 'OFF'}
-        </button>
-        <button className={styles.button} onClick={() => setOpts((o) => ({ ...o, balls: o.balls === 20 ? 100 : 20 }))}>
-          玉 {opts.balls}
-        </button>
-        {[1, 2, 3].map((r) => (
-          <button key={r} className={styles.button} disabled={r === resolution} onClick={() => setResolution(r)}>
-            res {r}
-          </button>
-        ))}
-        <button className={styles.button} onClick={() => setWorst(null)}>
-          最低値リセット
-        </button>
-        <button className={styles.button} onClick={report}>
-          ログに記録
-        </button>
-      </div>
-      <p>
-        既定 = 玉20・役物8・液晶の図柄スクロール・全画面の虹（加算合成）・画面全体の色相フィルタ。30秒ほど置いてから「ログに記録」。
-      </p>
-    </section>
-  );
-}
 
 function StorageSection({ add }: { add: Add }) {
   const [text, setText] = useState('-');

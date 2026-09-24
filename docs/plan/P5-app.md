@@ -11,7 +11,8 @@ Accept:
 
 ### P5-T2 盤面描画
 Owner: Muse Spark | Read: spec/50-app-rendering, spec/20-core-physics（盤面 JSON 節）
-Do: `<BoardCanvas>`、盤面の RenderTexture 焼き込み、役物の回転表示、玉の軌跡再生（途中から再生を含む）。
+Do: `<BoardCanvas>`（Three.js, spec/50）、盤面板のテクスチャ焼き込みと釘の InstancedMesh、役物の回転表示、玉の軌跡再生（途中から再生を含む）。
+P0-T6 の `spikes/three-board.ts` の質感設定を流用してよい。
 Accept:
 - [ ] ヘソに入った玉の描画終点がヘソセンサー内（軌跡末尾の自動テスト）/ Debug の x60 で破綻しない
 
@@ -26,4 +27,4 @@ Owner: Claude Code | Read: spec/40-app-ui, spec/23-core-economy（役物・強�
 Do: 強化画面（まとめ買い・覚醒・閉店）、記録画面、設定画面、留守中サマリーモーダル、数値の日本語表記、Debug 画面。
 Accept:
 - [ ] Debug の x3600 で「燃料付与→放置→復帰サマリー→購入」が一通り動く
-- [ ] 実機 16e で 60fps（Safari Web インスペクタのタイムラインを `logs/` に）
+- [ ] 実機 16e でブルーム OFF 時 60fps、10分連続で fps が落ちない（Safari Web インスペクタのタイムラインを `logs/` に）

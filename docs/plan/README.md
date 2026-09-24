@@ -9,7 +9,7 @@
 | P2 | P2-core-game.md | Muse Spark | Atlas・抽選・Engine（パチンコ部）・pachisim | 大 |
 | P3 | P3-core-economy.md | Muse Spark | 放置経済・Engine 統合・経済試算 | 中 |
 | P4 | P4-activity.md | Claude Code | 受け取り台帳・ショートカット・チェックイン | 中 |
-| P5 | P5-app.md | 両方 | React 画面・Pixi 描画・保存・PWA | 大 |
+| P5 | P5-app.md | 両方 | React 画面・Three.js 描画・保存・PWA | 大 |
 | P6 | P6-presentation.md | 両方 | 演出・音・光・予告・留守中リプレイ | 中 |
 | P7 | P7-soak-tune.md | Claude Code | 1週間の実運用・バランス調整 | 小 |
 | P8 | P8-distribution.md | どちらでも | README・ショートカット配布・任意の Web Push | 小 |

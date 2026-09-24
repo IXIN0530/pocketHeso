@@ -1,5 +1,5 @@
 # P1 Core: RNG / Board / Physics
-すべて `packages/core`。DOM・React・Pixi の import 禁止。各タスクでテストを先に書く。
+すべて `packages/core`。DOM・React・Three の import 禁止。各タスクでテストを先に書く。
 
 ### P1-T1 数学・乱数
 Owner: Muse Spark | Read: ref/conventions, spec/21-core-lottery（乱数節のみ）

@@ -38,7 +38,8 @@ iOS ネイティブ時代の制限値は docs/archive/native-v1/ref/platform-lim
 | Web Push | iOS 16.4+、ホーム画面 Web アプリのみ。サーバーと VAPID が必要 | （P8） |
 | バッジ | `navigator.setAppBadge`（ホーム画面 Web アプリ、通知許可が必要な場合あり） | ☐ P8 |
 | 振動 | `navigator.vibrate` 非対応 | |
-| 描画性能 | Pixi で 20玉＋フィルタ 60fps | ✅ 16e（iOS 26.6.1）で玉20・役物8・液晶・全画面の虹・画面全体の色相フィルタ、resolution 3 / WebGL で 59.9fps（1秒ごとの最低値 59.8、p95 17.0ms） |
+| 描画性能（Three.js, D-026） | 20玉＋役物8＋液晶＋ガラス＋ランプ | ✅ 16e でブルーム OFF なら pixelRatio 1〜3 のどれでも 60fps。**ブルーム ON で約 40fps**（→ 演出時の数秒だけに限定）。10分連続の発熱は未計測（P5-T4） |
+| 描画性能（Pixi, 参考） | Pixi で 20玉＋フィルタ 60fps | ✅ 16e（iOS 26.6.1）で玉20・役物8・液晶・全画面の虹・画面全体の色相フィルタ、resolution 3 / WebGL で 59.9fps（1秒ごとの最低値 59.8、p95 17.0ms） |
 
 ## 施設検索（YOLP / OpenStreetMap）
 | 項目 | 値 |

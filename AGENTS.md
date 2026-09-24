@@ -2,7 +2,7 @@
 
 良い行動（運動・トレーニング）で「営業時間」を得て、放置で玉が増えるパチンコ放置ゲーム（PWA）。
 対象: iPhone 16e / iOS 26.x Safari（ホーム画面 Web アプリ）＋ iOS ショートカット。個人利用＋Vercel 配信・GitHub 公開。
-Stack: TypeScript / React 19 / Vite / PixiJS v8 / IndexedDB / Service Worker / Vitest / pnpm workspace。
+Stack: TypeScript / React 19 / Vite / Three.js / IndexedDB / Service Worker / Vitest / pnpm workspace。
 （2026-09-24 に iOS ネイティブから転換: D-010。旧資料は docs/archive/、旧コードはタグ `native-v1`）
 
 ## 読み込みルール（トークン節約・厳守）
@@ -14,7 +14,7 @@ Stack: TypeScript / React 19 / Vite / PixiJS v8 / IndexedDB / Service Worker / V
 6. ソースは作業対象パッケージのみ。他パッケージは公開 API（`index.ts` の export）だけ確認する。
 
 ## 絶対ルール
-- `packages/core` は DOM・React・Pixi・ブラウザ API を import / 参照しない。他パッケージも import しない。
+- `packages/core` は DOM・React・Three・ブラウザ API を import / 参照しない。他パッケージも import しない。
 - 決定論を壊さない: Core 内で `Date.now()`・`Math.random`・非同期・`Map`/`Set`/オブジェクトの反復順依存を使わない。
   時刻と乱数は必ず引数で受け取る（乱数は `RNGStream`）。
 - Core の数値計算は `+ - * /`・`Math.sqrt`・`Math.floor`・比較のみ。`Math.sin/cos/pow/exp/log/hypot/cbrt`・`**` は禁止（事前計算表を使う）。
@@ -53,4 +53,4 @@ Stack: TypeScript / React 19 / Vite / PixiJS v8 / IndexedDB / Service Worker / V
 | docs/spec/40-app-ui.md | React 画面・状態管理・前面/背面 |
 | docs/spec/41-pwa-platform.md | 配布・Service Worker・保存・OS 連携・（任意）Web Push |
 | docs/spec/43-presentation-effects.md | 音・光・振動、CueSheet、演出パック |
-| docs/spec/50-app-rendering.md | PixiJS 描画 |
+| docs/spec/50-app-rendering.md | Three.js 描画 |

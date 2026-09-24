@@ -1,6 +1,6 @@
 import { lazy } from 'react';
 
-// スパイクごとに別チャンクにする（Pixi と Three のバンドルサイズを比べるため）。
+// スパイクごとに別チャンクにする（本体や他のスパイクのサイズに混ざらないように）。
 const ShortcutSpike = lazy(() => import('./shortcut-spike.tsx').then((m) => ({ default: m.ShortcutSpike })));
 const GeoSpike = lazy(() => import('./geo-spike.tsx').then((m) => ({ default: m.GeoSpike })));
 const PerfSpike = lazy(() => import('./perf-spike.tsx').then((m) => ({ default: m.PerfSpike })));
