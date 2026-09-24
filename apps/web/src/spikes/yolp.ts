@@ -1,5 +1,5 @@
 /** スパイク用: Yahoo!ローカルサーチ API（YOLP）で近くのジム・公園を探す。CORS 非対応のため JSONP で呼ぶ。 */
-import type { Facility } from './geo-overpass.ts';
+import type { Facility } from './geo-range.ts';
 
 export const YOLP_ENDPOINT = 'https://map.yahooapis.jp/search/local/V1/localSearch';
 
@@ -48,12 +48,11 @@ export function parseYolp(json: unknown): Facility[] {
     const genre = YOLP_GENRES.find((g) => codes.includes(g.code));
     out.push({
       id: `yolp/${String(f.Gid)}`,
-      leisure: genre?.label ?? `?${codes.join('|')}`,
+      kind: genre?.label ?? `?${codes.join('|')}`,
       name: typeof f.Name === 'string' ? f.Name : '',
       lat,
       lon,
-      bounds: null,
-      ...(genre ? { radiusM: genre.radiusM } : {}),
+      radiusM: genre?.radiusM ?? null,
     });
   }
   return out;
