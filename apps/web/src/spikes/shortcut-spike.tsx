@@ -45,13 +45,51 @@ export function ShortcutSpike() {
     window.location.href = url;
   };
 
+  const errText = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message}` : String(e));
+
+  const context = () => {
+    const ua = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation;
+    return `hasFocus=${document.hasFocus()} userActivation=${ua ? ua.isActive : 'n/a'}`;
+  };
+
   const paste = async () => {
+    add(`readText 開始 ${context()}`);
     try {
       const text = await navigator.clipboard.readText();
       add(`readText OK (${text.length} 文字)`);
       setRaw(text);
     } catch (e) {
-      add(`readText 失敗: ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
+      add(`readText 失敗: ${errText(e)}`);
+    }
+  };
+
+  // clipboard.read()（ClipboardItem）経由。readText と挙動が違うかを見る。
+  const pasteItems = async () => {
+    add(`read 開始 ${context()}`);
+    try {
+      const items = await navigator.clipboard.read();
+      const item = items.find((i) => i.types.includes('text/plain'));
+      add(`read OK types=${items.map((i) => i.types.join('|')).join(',')}`);
+      if (item) setRaw(await (await item.getType('text/plain')).text());
+    } catch (e) {
+      add(`read 失敗: ${errText(e)}`);
+    }
+  };
+
+  // PWA 自身が書いた内容を読めるか（他アプリ由来だけ拒否されるのかの切り分け）。
+  const selfTest = async () => {
+    try {
+      await navigator.clipboard.writeText(`PH1.eyJ2IjoxfQ.selftest${Date.now()}`);
+      add('writeText OK');
+    } catch (e) {
+      add(`writeText 失敗: ${errText(e)}`);
+      return;
+    }
+    try {
+      const text = await navigator.clipboard.readText();
+      add(`自己テスト readText OK: ${text}`);
+    } catch (e) {
+      add(`自己テスト readText 失敗: ${errText(e)}`);
     }
   };
 
@@ -68,6 +106,8 @@ export function ShortcutSpike() {
       <div className={styles.row}>
         <button className={styles.button} onClick={open}>ショートカットを開く</button>
         <button className={styles.button} onClick={() => void paste()}>貼り付け</button>
+        <button className={styles.button} onClick={() => void pasteItems()}>貼り付け(read)</button>
+        <button className={styles.button} onClick={() => void selfTest()}>自己テスト</button>
         <button className={styles.button} onClick={() => setLog([])}>ログ消去</button>
       </div>
       <label>
