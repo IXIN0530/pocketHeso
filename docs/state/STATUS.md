@@ -3,11 +3,11 @@
 
 - Current phase: P0 → `docs/plan/P0-bootstrap.md`
 - Last done: P0-T3（ショートカット連携スパイク。Accept 全項目完了）
-- Next: P0-T4（位置情報と Overpass のスパイク）
+- Next: P0-T4（位置情報と Overpass のスパイク）— `?spike=geo` 実装済み、実機計測待ち
 - Owner hint: Claude Code
 
 ## Blockers
-- なし
+- P0-T4 Accept は実機計測待ち（許可の再要求・屋内ジム/公園の accuracy・近所の施設件数）
 
 ## Notes（最新3件まで）
 - P0-T3 実測: 時刻オートメーションは「実行中」通知のみで成否不明、かつ鮮度±30分で後から貼れない → 廃止（D-023）。
