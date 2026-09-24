@@ -1,6 +1,7 @@
 /** スパイク用: spec/32 の Overpass クエリ組み立て・応答の解釈・範囲判定（純関数）。本実装では packages/claims/checkin へ移す。 */
 
-export const DEFAULT_ENDPOINT = 'https://overpass-api.de/api/interpreter';
+/** overpass-api.de は 2026-09 の実機で全リクエストが 406（CORS 無し）で使えなかったため、スパイクでは mail.ru のミラーを既定にする。 */
+export const DEFAULT_ENDPOINT = 'https://maps.mail.ru/osm/tools/overpass/api/interpreter';
 
 /** spec/32 の最大件数。Overpass の `out N` は近い順ではなく ID 順で切るので、到達したら取りこぼしがあり得る。 */
 export const QUERY_LIMIT = 50;
