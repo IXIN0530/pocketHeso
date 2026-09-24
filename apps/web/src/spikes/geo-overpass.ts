@@ -7,6 +7,8 @@ export const DEFAULT_ENDPOINT = 'https://maps.mail.ru/osm/tools/overpass/api/int
 export const QUERY_LIMIT = 50;
 
 const LEISURE = 'fitness_centre|fitness_station|sports_centre|park|pitch|track|swimming_pool';
+/** 日本の小さな公園（児童公園・街区公園）は playground で載っていることが多い（P0-T4 の比較用、spec/32 には無い）。 */
+const PLAYGROUND = '|playground';
 
 /** 種類別の既定半径（m）。載っていない種類は bbox が必須。 */
 export const TYPE_RADIUS_M: Readonly<Record<string, number>> = {
@@ -18,8 +20,8 @@ export const TYPE_RADIUS_M: Readonly<Record<string, number>> = {
 const EARTH_R = 6371008.8;
 const DEG = Math.PI / 180;
 
-export function buildQuery(lat: number, lon: number, radiusM = 300, limit = QUERY_LIMIT): string {
-  return `[out:json][timeout:10];nwr["leisure"~"^(${LEISURE})$"](around:${radiusM},${lat},${lon});out tags center bb ${limit};`;
+export function buildQuery(lat: number, lon: number, radiusM = 300, limit = QUERY_LIMIT, playground = false): string {
+  return `[out:json][timeout:10];nwr["leisure"~"^(${LEISURE}${playground ? PLAYGROUND : ''})$"](around:${radiusM},${lat},${lon});out tags center bb ${limit};`;
 }
 
 export interface Bounds {
@@ -36,6 +38,8 @@ export interface Facility {
   lat: number;
   lon: number;
   bounds: Bounds | null;
+  /** 提供元が決めた範囲判定の半径（m）。無ければ TYPE_RADIUS_M を使う */
+  radiusM?: number;
 }
 
 interface RawElement {
@@ -115,7 +119,7 @@ export function evaluate(lat: number, lon: number, accuracyM: number, list: read
         const bboxDiagM = distanceM(b.minlat, b.minlon, cosLat, b.maxlat, b.maxlon);
         return { ...f, centerM, bboxDiagM, rule: 'bbox', inRange, inRangePlusAcc: inRange };
       }
-      const r = TYPE_RADIUS_M[f.leisure];
+      const r = f.radiusM ?? TYPE_RADIUS_M[f.leisure];
       if (r === undefined) return { ...f, centerM, bboxDiagM: null, rule: 'none', inRange: false, inRangePlusAcc: false };
       return { ...f, centerM, bboxDiagM: null, rule: 'radius', inRange: centerM <= r, inRangePlusAcc: centerM <= r + accuracyM };
     })
