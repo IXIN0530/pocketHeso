@@ -91,6 +91,22 @@ export type { AcquireResult } from './hold-queue.ts';
 export { HoldQueue, acquireHold } from './hold-queue.ts';
 export type { ActiveJackpot, ActiveSpin, SimTime, SpinEvent, SpinSnapshot } from './spin.ts';
 export { SpinMachine, jackpotDurationMs, spinDurationMs } from './spin.ts';
+export type { EconomyPort } from './economy.ts';
+export { StubEconomy } from './economy.ts';
+export type {
+  Action,
+  EngineConfig,
+  EngineSnapshot,
+  Grant,
+  HallProjection,
+  JackpotView,
+  PendingSensor,
+  SimEvent as EngineSimEvent,
+  SpinView,
+  Totals,
+  YakumonoView,
+} from './engine.ts';
+export { Engine, FIRE_INTERVAL_MS, projectSnapshot } from './engine.ts';
 export {
   HOLD_COLORS,
   JACKPOT_KINDS,

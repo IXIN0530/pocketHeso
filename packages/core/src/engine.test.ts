@@ -1,0 +1,287 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { performance } from 'node:perf_hooks';
+import { expect, test } from 'vitest';
+import type { MachineSpec, PatternTable } from './machine.ts';
+import { parseMachineText, parsePatternsText } from './machine.ts';
+import { atlasKeyForBall, decodeAtlasEntry } from './atlas.ts';
+import type { Action, Grant, SimEvent } from './engine.ts';
+import { Engine } from './engine.ts';
+
+function loadMachine(): { spec: MachineSpec; patterns: PatternTable } {
+  const spec = parseMachineText(readFileSync('../../resources/machines/light-middle-01.json', 'utf8'));
+  const patterns = parsePatternsText(readFileSync('../../resources/machines/patterns.json', 'utf8'));
+  return { spec, patterns };
+}
+
+function loadAtlas(): ArrayBuffer {
+  const dir = '../../resources/atlas';
+  const names = readdirSync(dir);
+  let found = '';
+  for (let i = 0; i < names.length; i = i + 1) {
+    const n = names[i] as string;
+    if (n.length > 4 && n.slice(n.length - 4) === '.bin') {
+      found = n;
+      break;
+    }
+  }
+  if (found === '') {
+    throw new Error('atlas .bin not found');
+  }
+  const buf = readFileSync(dir + '/' + found);
+  const u8 = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  const ab = new ArrayBuffer(u8.length);
+  new Uint8Array(ab).set(u8);
+  return ab;
+}
+
+function makeEngine(
+  seed: number,
+  atlas: ArrayBuffer,
+  spec: MachineSpec,
+  patterns: PatternTable,
+  actions: readonly Action[],
+  grants: readonly Grant[],
+  initialBalls: number,
+): Engine {
+  return new Engine({ seed, spec, patterns, atlas, initialBalls }, grants, actions);
+}
+
+function orderIndex(e: SimEvent): number {
+  if (e.k === 'granted' || e.k === 'rejected') {
+    return 0;
+  }
+  if (e.k === 'fired') {
+    return 1;
+  }
+  if (e.k === 'sensor') {
+    return 2;
+  }
+  if (e.k === 'holdAdded' || e.k === 'holdOverflow') {
+    return 3;
+  }
+  if (e.k === 'spinResolved') {
+    return 4;
+  }
+  if (e.k === 'jackpotStarted' || e.k === 'jackpotEnded') {
+    return 5;
+  }
+  if (e.k === 'spinStarted') {
+    return 6;
+  }
+  return 7;
+}
+
+function expectTimeOrdered(events: readonly SimEvent[]): void {
+  for (let i = 1; i < events.length; i = i + 1) {
+    const prev = events[i - 1] as SimEvent;
+    const cur = events[i] as SimEvent;
+    expect(cur.at).toBeGreaterThanOrEqual(prev.at);
+    if (cur.at === prev.at) {
+      expect(orderIndex(cur)).toBeGreaterThanOrEqual(orderIndex(prev));
+    }
+  }
+}
+
+function sensorKindOf(atlasKind: string): 'start1' | 'out' | 'lost' {
+  if (atlasKind === 'start1') {
+    return 'start1';
+  }
+  if (atlasKind === 'lost') {
+    return 'lost';
+  }
+  return 'out';
+}
+
+test('発射は600ms絶対倍数・Atlas参照でセンサー時刻が決まる', () => {
+  const { spec, patterns } = loadMachine();
+  const atlas = loadAtlas();
+  const seed = 42;
+  const eng = makeEngine(seed, atlas, spec, patterns, [{ t: 0, k: 'shoot', on: true, rate: 1 }], [], 100000);
+  const evs = eng.advance(1800);
+  const fired = evs.filter((e) => e.k === 'fired');
+  expect(fired).toEqual([
+    { k: 'fired', ball: 0, at: 600, rate: 1 },
+    { k: 'fired', ball: 1, at: 1200, rate: 1 },
+    { k: 'fired', ball: 2, at: 1800, rate: 1 },
+  ]);
+  const later = eng.advance(90000);
+  const all = [...evs, ...later];
+  expectTimeOrdered(all);
+  for (let b = 0; b < 3; b = b + 1) {
+    const fireAt = 600 * (b + 1);
+    const key = atlasKeyForBall(seed, b);
+    const entry = decodeAtlasEntry(atlas, key);
+    const wantKind = sensorKindOf(entry.kind);
+    const wantAt = fireAt + entry.flightMs;
+    let foundFire = false;
+    let foundSensor = false;
+    for (let i = 0; i < all.length; i = i + 1) {
+      const e = all[i] as SimEvent;
+      if (e.k === 'fired' && e.ball === b) {
+        expect(e.at).toBe(fireAt);
+        foundFire = true;
+      }
+      if (e.k === 'sensor' && e.ball === b) {
+        expect(e.at).toBe(wantAt);
+        expect(e.kind).toBe(wantKind);
+        foundSensor = true;
+      }
+    }
+    expect(foundFire).toBe(true);
+    expect(foundSensor).toBe(true);
+  }
+});
+
+test('背面では手動がoff扱い・autoは毎グリッド・前面はshoot優先・share間引き', () => {
+  const { spec, patterns } = loadMachine();
+  const atlas = loadAtlas();
+  const back = makeEngine(
+    1,
+    atlas,
+    spec,
+    patterns,
+    [
+      { t: 0, k: 'shoot', on: true, rate: 1 },
+      { t: 0, k: 'presence', fg: false },
+    ],
+    [],
+    100000,
+  );
+  expect(back.advance(1800).filter((e) => e.k === 'fired').length).toBe(0);
+  const autoBack = makeEngine(1, atlas, spec, patterns, [{ t: 0, k: 'auto', share: 1, rate: 2 }], [], 100000);
+  const autoFired = autoBack.advance(1800).filter((e) => e.k === 'fired');
+  expect(autoFired.length).toBe(3);
+  expect(autoFired[0]).toEqual({ k: 'fired', ball: 0, at: 600, rate: 2 });
+  const front = makeEngine(
+    1,
+    atlas,
+    spec,
+    patterns,
+    [
+      { t: 0, k: 'shoot', on: true, rate: 5 },
+      { t: 0, k: 'auto', share: 1, rate: 2 },
+    ],
+    [],
+    100000,
+  );
+  const frontFired = front.advance(1200).filter((e) => e.k === 'fired');
+  expect(frontFired).toEqual([
+    { k: 'fired', ball: 0, at: 600, rate: 5 },
+    { k: 'fired', ball: 1, at: 1200, rate: 5 },
+  ]);
+  const half = makeEngine(1, atlas, spec, patterns, [{ t: 0, k: 'auto', share: 0.5, rate: 1 }], [], 100000);
+  expect(half.advance(2400).filter((e) => e.k === 'fired').length).toBe(2);
+});
+
+test('grantは加算・未実装Actionはrejected・過去/逆順の追加は拒否', () => {
+  const { spec, patterns } = loadMachine();
+  const atlas = loadAtlas();
+  const eng = makeEngine(
+    9,
+    atlas,
+    spec,
+    patterns,
+    [
+      { t: 1000, k: 'buy', target: 'x', count: 1 },
+      { t: 1000, k: 'shoot', on: true, rate: 1 },
+    ],
+    [{ claimId: 'c1', at: 1000, fuelMs: 60000, medals: 3 }],
+    0,
+  );
+  const evs = eng.advance(2000);
+  const granted = evs.filter((e) => e.k === 'granted');
+  expect(granted).toEqual([{ k: 'granted', claimId: 'c1', at: 1000, fuelMs: 60000, medals: 3 }]);
+  const rejected = evs.filter((e) => e.k === 'rejected');
+  expect(rejected).toEqual([{ k: 'rejected', at: 1000, action: 'buy', reason: 'not-implemented' }]);
+  expect(eng.project().fuelMs).toBe(60000);
+  expect(eng.project().medals).toBe(3);
+  expect(() => eng.appendAction({ t: 500, k: 'shoot', on: true, rate: 1 })).toThrow();
+  expect(() => eng.appendGrant({ claimId: 'c2', at: 500, fuelMs: 0, medals: 0 })).toThrow();
+  expect(() => eng.advance(1000)).toThrow();
+  const eng2 = makeEngine(9, atlas, spec, patterns, [{ t: 2000, k: 'shoot', on: true, rate: 1 }], [], 0);
+  expect(() => eng2.appendAction({ t: 1000, k: 'shoot', on: true, rate: 1 })).toThrow();
+});
+
+test('決定論契約1: 1回vs1秒刻みN回でイベント列と最終状態が一致', () => {
+  const { spec, patterns } = loadMachine();
+  const atlas = loadAtlas();
+  const seed = 123;
+  const actions: Action[] = [
+    { t: 0, k: 'auto', share: 1, rate: 1 },
+    { t: 120000, k: 'presence', fg: false },
+  ];
+  const grants: Grant[] = [{ claimId: 'g1', at: 5000, fuelMs: 1000, medals: 1 }];
+  const until = 600000;
+  const a = makeEngine(seed, atlas, spec, patterns, actions, grants, 50000);
+  const once = a.advance(until);
+  const snapOnce = a.snapshot();
+  const b = makeEngine(seed, atlas, spec, patterns, actions, grants, 50000);
+  const parts: SimEvent[] = [];
+  for (let t = 1000; t <= until; t = t + 1000) {
+    const step = b.advance(t);
+    for (let i = 0; i < step.length; i = i + 1) {
+      parts.push(step[i] as SimEvent);
+    }
+  }
+  expect(parts).toEqual(once);
+  expect(b.snapshot()).toEqual(snapOnce);
+  expectTimeOrdered(once);
+});
+
+test('決定論契約2: snapshot→restore→続行が通しと一致', () => {
+  const { spec, patterns } = loadMachine();
+  const atlas = loadAtlas();
+  const seed = 777;
+  const actions: Action[] = [{ t: 0, k: 'auto', share: 1, rate: 1 }];
+  const mid = 300000;
+  const until = 600000;
+  const through = makeEngine(seed, atlas, spec, patterns, actions, [], 50000);
+  through.advance(mid);
+  const snap = through.snapshot();
+  const tailThrough = through.advance(until);
+  const snapThrough = through.snapshot();
+  const resumed = Engine.restore(snap, { seed, spec, patterns, atlas });
+  const tailResumed = resumed.advance(until);
+  expect(tailResumed).toEqual(tailThrough);
+  expect(resumed.snapshot()).toEqual(snapThrough);
+});
+
+test('lookaheadは状態を変えず背面仮定・projectはパチンコ部を返す', () => {
+  const { spec, patterns } = loadMachine();
+  const atlas = loadAtlas();
+  const eng = makeEngine(55, atlas, spec, patterns, [{ t: 0, k: 'shoot', on: true, rate: 1 }], [], 100000);
+  eng.advance(60000);
+  const before = eng.snapshot();
+  const seen = eng.lookahead(66000);
+  expect(eng.snapshot()).toEqual(before);
+  expect(seen.filter((e) => e.k === 'fired').length).toBe(0);
+  const proj = eng.project();
+  expect(proj.at).toBe(eng.nowMs);
+  expect(proj.balls).toBe(before.balls);
+  expect(proj.totals).toEqual(before.totals);
+  expect(proj.boostMs).toBe(0);
+  expect(proj.perSec).toBe(0);
+  expect(proj.yakumono).toEqual([]);
+  const auto = makeEngine(55, atlas, spec, patterns, [{ t: 0, k: 'auto', share: 1, rate: 1 }], [], 100000);
+  auto.advance(60000);
+  const ahead = auto.lookahead(120000);
+  expectTimeOrdered(ahead);
+  expect(ahead.length).toBeGreaterThan(0);
+});
+
+test(
+  '放置8時間のオート打ちadvanceがNodeで100ms以内',
+  { timeout: 30000 },
+  () => {
+    const { spec, patterns } = loadMachine();
+    const atlas = loadAtlas();
+    const eng = makeEngine(20260925, atlas, spec, patterns, [{ t: 0, k: 'auto', share: 1, rate: 1 }], [], 0);
+    const until = 8 * 60 * 60 * 1000;
+    const t0 = performance.now();
+    const evs = eng.advance(until);
+    const ms = performance.now() - t0;
+    expect(evs.length).toBeGreaterThan(40000);
+    expect(ms).toBeLessThan(100);
+    expectTimeOrdered(evs.slice(0, 2000));
+  },
+);
