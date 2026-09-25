@@ -86,6 +86,7 @@ export {
   jackpotMedals,
   jackpotPayoutBalls,
   modeOf,
+  splitWeights,
 } from './lottery.ts';
 export type { AcquireResult } from './hold-queue.ts';
 export { HoldQueue, acquireHold } from './hold-queue.ts';

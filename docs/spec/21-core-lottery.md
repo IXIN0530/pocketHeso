@@ -24,6 +24,8 @@
 ```
 - 確率はロード時に `uint32` 閾値へ変換（`threshold = floor(2^32 / jackpot_1_in)`、`>>> 0` で扱う）。
 - `hold_colors` の `white` は重み残余として暗黙に存在。
+- 振分けの各枝は `weight`（通常時）と任意の `weight_st`（ST 中。省略時は `weight`）を持つ。0 可・各モードの合計は正。
+  同じ `kind` でも `rounds` が違えば並べてよい（例: 初当たり 3R 確変 / RUSH 中 10R 確変, D-036）。
 - `tier`（甘デジ `sweet` / `middle` / `max`）は新台入替（spec/23, 後期）で選ぶ。
 
 ## 打つ（ShootOrder）

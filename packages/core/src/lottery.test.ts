@@ -11,6 +11,7 @@ import {
   jackpotMedals,
   jackpotPayoutBalls,
   modeOf,
+  splitWeights,
 } from './lottery.ts';
 import { RNGStream } from './rng.ts';
 
@@ -215,4 +216,33 @@ test('レート倍率とメダル・不正入力', () => {
   expect(() => drawHold(spec, patterns, 1, 'normal', 0, 0)).toThrow();
   expect(() => modeOf(spec, 'turbo' as LotteryMode)).toThrow();
   expect(() => drawHold(spec, [], 1, 'normal', 0, 1)).toThrow();
+});
+
+test('振分けは取得時モードの重みを使う（rush-middle-01: 通常は3R確変35/通常65・STは10R確変のみ）', () => {
+  const spec = parseMachineText(readFileSync('../../resources/machines/rush-middle-01.json', 'utf8'));
+  const { patterns } = loadMachine();
+  expect(splitWeights(spec, 'normal')).toEqual([0, 35, 65]);
+  expect(splitWeights(spec, 'st')).toEqual([100, 0, 0]);
+  const seed = 2026;
+  const normalCounts = [0, 0, 0];
+  for (let serial = 0; serial < 200000; serial = serial + 1) {
+    const e = drawHold(spec, patterns, seed, 'normal', serial, 1);
+    if (e.branchIndex !== null) {
+      normalCounts[e.branchIndex] = (normalCounts[e.branchIndex] as number) + 1;
+    }
+  }
+  const hits = (normalCounts[1] as number) + (normalCounts[2] as number);
+  expect(normalCounts[0]).toBe(0);
+  expect(hits).toBeGreaterThan(400);
+  const sd = Math.sqrt(hits * 0.35 * 0.65);
+  expect(Math.abs((normalCounts[1] as number) - hits * 0.35)).toBeLessThanOrEqual(3 * sd);
+  let stHits = 0;
+  for (let serial = 0; serial < 20000; serial = serial + 1) {
+    const e = drawHold(spec, patterns, seed, 'st', serial, 1);
+    if (e.branchIndex !== null) {
+      expect(e.branchIndex).toBe(0);
+      stHits = stHits + 1;
+    }
+  }
+  expect(stHits).toBeGreaterThan(300);
 });

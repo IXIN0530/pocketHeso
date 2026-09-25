@@ -36,3 +36,4 @@
 - D-033 | 2026-09-25 | 変動短縮の保留数は開始前の待ち数・大当たり時間=rounds×msPerRound・STは消化毎-1で確変終了時に100復帰/通常終了時にnormalへmodeChanged（通常中確変以外はmodeChangedなし） | spec/21の保留数時点・消化時間・ST消費/復帰条件の曖昧点をEngine再利用できる最小形で確定
 - D-034 | 2026-09-25 | P2-T5 Engine暫定: 発射600ms絶対倍数・前面shoot優先/背面autoのみ・shareはtick絶対番で間引き・コスト1玉固定(マイナス可)/大当たりrate1・Atlasはstart1/lost以外→out・同刻は発射→sensor→hold→resolve→jackpot→spinStarted→mode・snapshotは入力列ごと・lookaheadは未来入力無視+背面・projectはパチンコ部のみ・経済はStub空 | P3差し込みまでの最小決定論形。8h/48k発で100ms以内
 - D-035 | 2026-09-25 | advanceは半開区間[now, to)を処理（to時刻の事象は次のadvance）・t=0も発射グリッド・restore/lookaheadはcfg.economyを使いEconomyPort.fork()で本体と分離 | P2-T5レビュー中: 同刻append(t===now)が通しと食い違うのを spec/22 の「t ≥ now」のまま解消。P3経済がrestoreで消えるのを防ぐ
+- D-036 | 2026-09-25 | 振分けに枝ごとの `weight_st`（ST中の重み。省略時はweight・0可）を追加し、同kindでもrounds違いは並列可。一撃型の `rush-middle-01`（1/349.9・突入35%・ST 1/39.9×75で継続約85%・RUSH中10R確変のみ）を追加 | 共通振分けでは突入率と継続率を別々に決められず一撃性が出ないため。通常1回転あたり期待出玉は light と同等（9.85 vs 9.74玉）に揃え、経済バランスへの影響はP2-T6で実測

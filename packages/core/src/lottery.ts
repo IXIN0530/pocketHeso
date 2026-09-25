@@ -92,12 +92,12 @@ export function holdColorWeights(spec: MachineSpec, isHit: boolean): readonly nu
   return w;
 }
 
-/** 振分けの重み列（`jackpotSplit` と同順）。 */
-function splitWeights(spec: MachineSpec): number[] {
+/** 振分けの重み列（`jackpotSplit` と同順。取得時のモードで通常/ST の重みを選ぶ）。 */
+export function splitWeights(spec: MachineSpec, mode: LotteryMode): number[] {
   const w: number[] = [];
   for (let i = 0; i < spec.jackpotSplit.length; i = i + 1) {
     const b = spec.jackpotSplit[i] as JackpotBranch;
-    w.push(b.weight);
+    w.push(mode === 'st' ? b.weightSt : b.weight);
   }
   return w;
 }
@@ -131,7 +131,7 @@ export function drawHold(
   const isHit = jackpot.nextU32() < modeObj.thresholdU32;
   let branchIndex: number | null = null;
   if (isHit) {
-    branchIndex = new RNGStream(seed, 'split', serial).pick(splitWeights(spec));
+    branchIndex = new RNGStream(seed, 'split', serial).pick(splitWeights(spec, mode));
   }
   const patternIndex = new RNGStream(seed, 'pattern', serial).pick(patternWeights(patterns, isHit));
   const patternRow = patterns[patternIndex];

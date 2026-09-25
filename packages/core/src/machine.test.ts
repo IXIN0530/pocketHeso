@@ -112,7 +112,24 @@ test('不正な機種・パターンを拒否する', () => {
 
   const zeroWeight = clone(machineFixture());
   ((zeroWeight['jackpot_split'] as Array<Record<string, unknown>>)[0] as Record<string, unknown>)['weight'] = 0;
-  expect(() => parseMachine(zeroWeight)).toThrow();
+  expect(() => parseMachine(zeroWeight)).not.toThrow();
+
+  const zeroNormal = clone(machineFixture());
+  for (const b of zeroNormal['jackpot_split'] as Array<Record<string, unknown>>) {
+    b['weight'] = 0;
+    b['weight_st'] = 10;
+  }
+  expect(() => parseMachine(zeroNormal)).toThrow();
+
+  const zeroSt = clone(machineFixture());
+  for (const b of zeroSt['jackpot_split'] as Array<Record<string, unknown>>) {
+    b['weight_st'] = 0;
+  }
+  expect(() => parseMachine(zeroSt)).toThrow();
+
+  const negSt = clone(machineFixture());
+  ((negSt['jackpot_split'] as Array<Record<string, unknown>>)[0] as Record<string, unknown>)['weight_st'] = -1;
+  expect(() => parseMachine(negSt)).toThrow();
 
   const dupColor = clone(machineFixture());
   const colors = dupColor['hold_colors'] as unknown[];
@@ -140,4 +157,17 @@ test('不正な機種・パターンを拒否する', () => {
 
   expect(() => parsePatterns([])).toThrow();
   expect(() => parsePatternsText('not json')).toThrow();
+});
+
+test('weight_st はST中の振分け重み（省略時はweight）・同種別でもラウンド違いは並べられる', () => {
+  const light = parseMachine(machineFixture());
+  expect(light.jackpotSplit.map((b) => b.weightSt)).toEqual([50, 50]);
+  const rush = parseMachineText(readFileSync('../../resources/machines/rush-middle-01.json', 'utf8'));
+  expect(rush.jackpotSplit).toEqual([
+    { kind: 'kakuhen', weight: 0, weightSt: 100, rounds: 10 },
+    { kind: 'kakuhen', weight: 35, weightSt: 0, rounds: 3 },
+    { kind: 'tsujo', weight: 65, weightSt: 0, rounds: 3 },
+  ]);
+  expect(rush.normal.jackpot1In).toBe(349.9);
+  expect(rush.st.stSpins).toBe(75);
 });

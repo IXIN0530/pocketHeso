@@ -28,10 +28,11 @@ export interface MachineMode {
   readonly stSpins: number;
 }
 
-/** 大当たり振分けの1枝。 */
+/** 大当たり振分けの1枝（weightは通常時・weightStはST中の重み。0なら当該モードで出ない）。 */
 export interface JackpotBranch {
   readonly kind: JackpotKind;
   readonly weight: number;
+  readonly weightSt: number;
   readonly rounds: number;
 }
 
@@ -208,20 +209,32 @@ export function parseMachine(json: unknown): MachineSpec {
     if (!isJackpotKind(kindRaw)) {
       fail(what + '.kind unknown');
     }
-    const weight = asInt(bo['weight'], what + '.weight');
-    if (weight < 1) {
-      fail(what + '.weight must be a positive int');
+    const weight = asNonNegativeInt(bo['weight'], what + '.weight');
+    const weightSt = bo['weight_st'] === undefined ? weight : asNonNegativeInt(bo['weight_st'], what + '.weight_st');
+    if (weight > 1000000 || weightSt > 1000000) {
+      fail(what + '.weight out of range');
     }
     const rounds = asInt(bo['rounds'], what + '.rounds');
     if (rounds < 1 || rounds > 16) {
       fail(what + '.rounds out of range');
     }
     for (let j = 0; j < jackpotSplit.length; j = j + 1) {
-      if ((jackpotSplit[j] as JackpotBranch).kind === kindRaw) {
-        fail(what + '.kind duplicates jackpot_split[' + j + ']');
+      const prev = jackpotSplit[j] as JackpotBranch;
+      if (prev.kind === kindRaw && prev.rounds === rounds) {
+        fail(what + ' duplicates jackpot_split[' + j + '] (same kind and rounds)');
       }
     }
-    jackpotSplit.push({ kind: kindRaw, weight, rounds });
+    jackpotSplit.push({ kind: kindRaw, weight, weightSt, rounds });
+  }
+  let sumNormal = 0;
+  let sumSt = 0;
+  for (let i = 0; i < jackpotSplit.length; i = i + 1) {
+    const b = jackpotSplit[i] as JackpotBranch;
+    sumNormal = sumNormal + b.weight;
+    sumSt = sumSt + b.weightSt;
+  }
+  if (sumNormal <= 0 || sumSt <= 0) {
+    fail('jackpot_split needs a positive total weight in each mode');
   }
 
   const round = asRecord(o['round'], 'round');
