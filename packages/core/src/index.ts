@@ -76,6 +76,19 @@ export type {
   PatternTable,
   SpinPattern,
 } from './machine.ts';
+export type { HoldEntry, LotteryHoldColor, LotteryMode } from './lottery.ts';
+export {
+  LOTTERY_HOLD_COLORS,
+  LOTTERY_MODES,
+  drawHold,
+  hesoPayoutBalls,
+  holdColorWeights,
+  jackpotMedals,
+  jackpotPayoutBalls,
+  modeOf,
+} from './lottery.ts';
+export type { AcquireResult } from './hold-queue.ts';
+export { HoldQueue, acquireHold } from './hold-queue.ts';
 export {
   HOLD_COLORS,
   JACKPOT_KINDS,
