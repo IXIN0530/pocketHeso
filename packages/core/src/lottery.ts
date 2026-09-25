@@ -195,11 +195,25 @@ function branchAt(spec: MachineSpec, branchIndex: number): JackpotBranch {
   return b;
 }
 
-/** 大当たり出玉（`rounds × count × payout_per_ball × rate`）。 */
+/** 上乗せラウンド数（`bonus_rounds` 省略時は 0）。 */
+export function jackpotBonusRounds(spec: MachineSpec, branchIndex: number): number {
+  const b = branchAt(spec, branchIndex);
+  return b.bonusRounds === undefined ? 0 : b.bonusRounds;
+}
+
+/** 合計ラウンド数（`rounds + bonus_rounds`）。 */
+export function jackpotTotalRounds(spec: MachineSpec, branchIndex: number): number {
+  const b = branchAt(spec, branchIndex);
+  const bonus = b.bonusRounds === undefined ? 0 : b.bonusRounds;
+  return b.rounds + bonus;
+}
+
+/** 大当たり出玉（`(rounds + bonus_rounds) × count × payout_per_ball × rate`）。 */
 export function jackpotPayoutBalls(spec: MachineSpec, branchIndex: number, rate: number): number {
   assertRate(rate);
   const b = branchAt(spec, branchIndex);
-  return b.rounds * spec.roundCount * spec.payoutPerBall * rate;
+  const bonus = b.bonusRounds === undefined ? 0 : b.bonusRounds;
+  return (b.rounds + bonus) * spec.roundCount * spec.payoutPerBall * rate;
 }
 
 /** 大当たりメダル（確変なら `per_kakuhen`、通常なら `per_jackpot`）。 */

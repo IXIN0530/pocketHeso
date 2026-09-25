@@ -27,14 +27,20 @@ function spinsForMode(spec: MachineSpec, mode: LotteryMode): number {
   throw new Error('invalid spin: mode must be normal, jitan, st or lt');
 }
 
+/** RUSH中か（st/lt。jitanは含まない。chainの起算・継続の判定用）。 */
+function isRushMode(mode: LotteryMode): boolean {
+  return mode === 'st' || mode === 'lt';
+}
+
 /** 時刻（UNIX ms 整数。2^53 未満）。 */
 export type SimTime = number;
 
-/** 変動・大当たり・モードのイベント（spec/22 の部分集合。時刻順）。 */
+/** 変動・大当たり・モードのイベント（spec/22 の部分集合＋spec/21 上乗せ。時刻順）。 */
 export type SpinEvent =
   | { k: 'spinStarted'; entry: number; at: SimTime; pattern: string; endsAt: SimTime }
   | { k: 'spinResolved'; entry: number; at: SimTime; hit: boolean }
-  | { k: 'jackpotStarted'; entry: number; at: SimTime; kind: JackpotKind; rounds: number }
+  | { k: 'jackpotStarted'; entry: number; at: SimTime; kind: JackpotKind; rounds: number; bonusRounds?: number | undefined }
+  | { k: 'uwanose'; entry: number; at: SimTime; addRounds: number; totalRounds: number }
   | { k: 'jackpotEnded'; entry: number; at: SimTime; payout: number; medals: number }
   | { k: 'modeChanged'; to: LotteryMode; at: SimTime; stRemaining: number };
 
@@ -48,12 +54,14 @@ export interface ActiveSpin {
   readonly endsAt: SimTime;
 }
 
-/** 大当たり中の内容（スナップショット用）。 */
+/** 大当たり中の内容（スナップショット用。uwanoseAtは未放出の上乗せ通知時刻。なし・放出済みはnull）。 */
 export interface ActiveJackpot {
   readonly serial: number;
   readonly branchIndex: number;
   readonly startedAt: SimTime;
   readonly endsAt: SimTime;
+  readonly bonusRounds: number;
+  readonly uwanoseAt: SimTime | null;
 }
 
 /** 状態の複写（`restore` で復元）。 */
@@ -63,6 +71,8 @@ export interface SpinSnapshot {
   readonly nowMs: SimTime;
   readonly active: ActiveSpin | null;
   readonly jackpot: ActiveJackpot | null;
+  readonly chain: number;
+  readonly chainBalls: number;
 }
 
 /** `normal_short` の保留3〜4時の短縮変動時間。 */
@@ -114,8 +124,21 @@ export function spinDurationMs(patterns: PatternTable, patternIndex: number, hol
   return row.ms;
 }
 
-/** 大当たり時間を求める（`rounds × ms_per_round`）。 */
+/** 大当たり時間を求める（`(rounds + bonus_rounds) × ms_per_round`。合計ラウンド分）。 */
 export function jackpotDurationMs(spec: MachineSpec, branchIndex: number): number {
+  if (typeof branchIndex !== 'number' || !Number.isFinite(branchIndex) || Math.floor(branchIndex) !== branchIndex) {
+    throw new Error('invalid spin: branchIndex must be an int');
+  }
+  const b = spec.jackpotSplit[branchIndex] as JackpotBranch | undefined;
+  if (b === undefined) {
+    throw new Error('invalid spin: branchIndex out of range');
+  }
+  const bonus = b.bonusRounds === undefined ? 0 : b.bonusRounds;
+  return (b.rounds + bonus) * spec.msPerRound;
+}
+
+/** 基本ラウンドの消化時間（`rounds × ms_per_round`。`uwanose` の通知時刻用）。 */
+export function jackpotBaseDurationMs(spec: MachineSpec, branchIndex: number): number {
   if (typeof branchIndex !== 'number' || !Number.isFinite(branchIndex) || Math.floor(branchIndex) !== branchIndex) {
     throw new Error('invalid spin: branchIndex must be an int');
   }
@@ -135,6 +158,8 @@ export class SpinMachine {
   private nowMsState: SimTime;
   private activeState: ActiveSpin | null = null;
   private jackpotState: ActiveJackpot | null = null;
+  private chainState = 0;
+  private chainBallsState = 0;
 
   constructor(spec: MachineSpec, patterns: PatternTable, initial?: { mode?: LotteryMode; stRemaining?: number; nowMs?: SimTime }) {
     if (patterns.length === 0) {
@@ -175,6 +200,16 @@ export class SpinMachine {
     return this.stLeft;
   }
 
+  /** RUSH入りからの連チャン数（st/ltに入ると0から数え、normalに戻るとリセット）。 */
+  get chain(): number {
+    return this.chainState;
+  }
+
+  /** RUSH入りからの累計出玉（chainと同じ区切り）。 */
+  get chainBalls(): number {
+    return this.chainBallsState;
+  }
+
   /** 現在時刻（最後に処理したイベント時刻）。 */
   get nowMs(): SimTime {
     return this.nowMsState;
@@ -198,6 +233,14 @@ export class SpinMachine {
   /** 大当たり終了予定時刻（大当たり中でなければ `null`）。 */
   get jackpotEndsAt(): SimTime | null {
     return this.jackpotState === null ? null : this.jackpotState.endsAt;
+  }
+
+  /** 上乗せ通知予定時刻（未放出の `uwanose` があればその時刻。なければ `null`）。 */
+  get uwanoseAt(): SimTime | null {
+    if (this.jackpotState === null) {
+      return null;
+    }
+    return this.jackpotState.uwanoseAt;
   }
 
   /** 変動を開始する（待機中でなければ投げる）。 */
@@ -268,22 +311,68 @@ export class SpinMachine {
       if (b === undefined) {
         throw new Error('invalid spin: branchIndex out of range');
       }
-      const jackpotEndsAt = at + b.rounds * this.spec.msPerRound;
+      const bonus = b.bonusRounds === undefined ? 0 : b.bonusRounds;
+      const baseMs = b.rounds * this.spec.msPerRound;
+      const totalMs = (b.rounds + bonus) * this.spec.msPerRound;
+      const jackpotEndsAt = at + totalMs;
       if (jackpotEndsAt >= MAX_SAFE_MS) {
         throw new Error('invalid spin: jackpot endsAt out of range');
       }
-      this.jackpotState = { serial: active.serial, branchIndex: active.branchIndex, startedAt: at, endsAt: jackpotEndsAt };
+      let pendingUwanose: SimTime | null = null;
+      if (bonus > 0) {
+        pendingUwanose = at + baseMs;
+        if (pendingUwanose >= MAX_SAFE_MS) {
+          throw new Error('invalid spin: uwanose at out of range');
+        }
+      }
+      this.jackpotState = {
+        serial: active.serial,
+        branchIndex: active.branchIndex,
+        startedAt: at,
+        endsAt: jackpotEndsAt,
+        bonusRounds: bonus,
+        uwanoseAt: pendingUwanose,
+      };
       this.activeState = null;
       this.nowMsState = at;
+      if (bonus > 0) {
+        return [resolved, { k: 'jackpotStarted', entry: active.serial, at, kind: b.kind, rounds: b.rounds, bonusRounds: bonus }];
+      }
       return [resolved, { k: 'jackpotStarted', entry: active.serial, at, kind: b.kind, rounds: b.rounds }];
     }
     this.activeState = null;
     this.nowMsState = at;
     if (this.currentMode !== 'normal' && this.stLeft === 0) {
       this.currentMode = 'normal';
+      this.chainState = 0;
+      this.chainBallsState = 0;
       return [resolved, { k: 'modeChanged', to: 'normal', at, stRemaining: 0 }];
     }
     return [resolved];
+  }
+
+  /** 上乗せを通知する（`at` は基本ラウンド消化時刻と一致させる。bonus>0の時のみ）。 */
+  emitUwanose(at: SimTime): SpinEvent[] {
+    assertTime(at, 'at');
+    const jackpot = this.jackpotState;
+    if (jackpot === null) {
+      throw new Error('invalid spin: not in jackpot');
+    }
+    if (jackpot.uwanoseAt === null) {
+      throw new Error('invalid spin: no pending uwanose');
+    }
+    if (at !== jackpot.uwanoseAt) {
+      throw new Error('invalid spin: at must equal uwanose at');
+    }
+    const b = this.spec.jackpotSplit[jackpot.branchIndex] as JackpotBranch | undefined;
+    if (b === undefined) {
+      throw new Error('invalid spin: branchIndex out of range');
+    }
+    const bonus = jackpot.bonusRounds;
+    const totalRounds = b.rounds + bonus;
+    this.jackpotState = { ...jackpot, uwanoseAt: null };
+    this.nowMsState = at;
+    return [{ k: 'uwanose', entry: jackpot.serial, at, addRounds: bonus, totalRounds }];
   }
 
   /** 大当たりを消化する（`at` は終了予定時刻と一致させる）。 */
@@ -297,6 +386,9 @@ export class SpinMachine {
     if (this.activeState !== null) {
       throw new Error('invalid spin: cannot finish jackpot while spinning');
     }
+    if (jackpot.uwanoseAt !== null) {
+      throw new Error('invalid spin: uwanose is pending');
+    }
     if (at !== jackpot.endsAt) {
       throw new Error('invalid spin: at must equal jackpot endsAt');
     }
@@ -309,8 +401,20 @@ export class SpinMachine {
     const ended: SpinEvent = { k: 'jackpotEnded', entry: jackpot.serial, at, payout, medals };
     const nextMode: LotteryMode = b.next === undefined ? defaultNextForKind(b.kind) : b.next;
     const nextSt = spinsForMode(this.spec, nextMode);
+    const wasRush = isRushMode(this.currentMode);
+    const willRush = isRushMode(nextMode);
     this.jackpotState = null;
     this.nowMsState = at;
+    if (willRush && wasRush) {
+      this.chainState = this.chainState + 1;
+      this.chainBallsState = this.chainBallsState + payout;
+    } else if (willRush && !wasRush) {
+      this.chainState = 0;
+      this.chainBallsState = 0;
+    } else {
+      this.chainState = 0;
+      this.chainBallsState = 0;
+    }
     if (nextMode !== this.currentMode || nextSt !== this.stLeft) {
       this.currentMode = nextMode;
       this.stLeft = nextSt;
@@ -327,6 +431,8 @@ export class SpinMachine {
       nowMs: this.nowMsState,
       active: this.activeState === null ? null : { ...this.activeState },
       jackpot: this.jackpotState === null ? null : { ...this.jackpotState },
+      chain: this.chainState,
+      chainBalls: this.chainBallsState,
     };
   }
 
@@ -334,7 +440,24 @@ export class SpinMachine {
   static restore(spec: MachineSpec, patterns: PatternTable, snap: SpinSnapshot): SpinMachine {
     const m = new SpinMachine(spec, patterns, { mode: snap.mode, stRemaining: snap.stRemaining, nowMs: snap.nowMs });
     m.activeState = snap.active === null ? null : { ...snap.active };
-    m.jackpotState = snap.jackpot === null ? null : { ...snap.jackpot };
+    if (snap.jackpot === null) {
+      m.jackpotState = null;
+    } else {
+      const j = snap.jackpot as ActiveJackpot & { bonusRounds?: number; uwanoseAt?: SimTime | null };
+      const bonus = j.bonusRounds === undefined ? 0 : j.bonusRounds;
+      const pending = j.uwanoseAt === undefined ? null : j.uwanoseAt;
+      m.jackpotState = {
+        serial: j.serial,
+        branchIndex: j.branchIndex,
+        startedAt: j.startedAt,
+        endsAt: j.endsAt,
+        bonusRounds: bonus,
+        uwanoseAt: pending,
+      };
+    }
+    const s = snap as SpinSnapshot & { chain?: number; chainBalls?: number };
+    m.chainState = s.chain === undefined ? 0 : s.chain;
+    m.chainBallsState = s.chainBalls === undefined ? 0 : s.chainBalls;
     return m;
   }
 }

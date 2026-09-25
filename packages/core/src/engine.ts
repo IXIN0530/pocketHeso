@@ -29,7 +29,7 @@ export type Action =
   | { readonly t: SimTime; readonly k: 'boost'; readonly on: boolean }
   | { readonly t: SimTime; readonly k: 'close' };
 
-/** Engineが出すイベント（P2-T5の部分集合＋granted/rejected）。 */
+/** Engineが出すイベント（P2-T5の部分集合＋granted/rejected＋P2-T8上乗せ）。 */
 export type SimEvent =
   | { readonly k: 'fired'; readonly ball: number; readonly at: SimTime; readonly rate: number }
   | { readonly k: 'sensor'; readonly ball: number; readonly at: SimTime; readonly kind: 'start1' | 'out' | 'lost' }
@@ -37,7 +37,8 @@ export type SimEvent =
   | { readonly k: 'holdOverflow'; readonly ball: number; readonly at: SimTime }
   | { readonly k: 'spinStarted'; readonly entry: number; readonly at: SimTime; readonly pattern: string; readonly endsAt: SimTime }
   | { readonly k: 'spinResolved'; readonly entry: number; readonly at: SimTime; readonly hit: boolean }
-  | { readonly k: 'jackpotStarted'; readonly entry: number; readonly at: SimTime; readonly kind: JackpotKind; readonly rounds: number }
+  | { readonly k: 'jackpotStarted'; readonly entry: number; readonly at: SimTime; readonly kind: JackpotKind; readonly rounds: number; readonly bonusRounds?: number | undefined }
+  | { readonly k: 'uwanose'; readonly entry: number; readonly at: SimTime; readonly addRounds: number; readonly totalRounds: number }
   | { readonly k: 'jackpotEnded'; readonly entry: number; readonly at: SimTime; readonly payout: number; readonly medals: number }
   | { readonly k: 'modeChanged'; readonly to: LotteryMode; readonly at: SimTime; readonly stRemaining: number }
   | { readonly k: 'granted'; readonly claimId: string; readonly at: SimTime; readonly fuelMs: number; readonly medals: number }
@@ -116,7 +117,7 @@ export interface YakumonoView {
   readonly lv: number;
 }
 
-/** Hall投影（UIはこれだけ見る。P2-T5はパチンコ部の項目のみ実値）。 */
+/** Hall投影（UIはこれだけ見る。P2-T5はパチンコ部の項目のみ実値＋P2-T8 chain/chainBalls）。 */
 export interface HallProjection {
   readonly at: SimTime;
   readonly mode: LotteryMode;
@@ -131,6 +132,8 @@ export interface HallProjection {
   readonly perSec: number;
   readonly yakumono: readonly YakumonoView[];
   readonly totals: Totals;
+  readonly chain: number;
+  readonly chainBalls: number;
 }
 
 /** 発射グリッドms（絶対時刻の倍数に揃える）。 */
@@ -214,6 +217,7 @@ export function projectSnapshot(
     }
     jackpot = { entry: j.serial, kind: b.kind, rounds: b.rounds, endsAt: j.endsAt };
   }
+  const spinSnap = snap.spin as { chain?: number; chainBalls?: number };
   return {
     at: snap.nowMs,
     mode: snap.spin.mode,
@@ -228,6 +232,8 @@ export function projectSnapshot(
     perSec: 0,
     yakumono: [],
     totals: { ...snap.totals },
+    chain: spinSnap.chain === undefined ? 0 : spinSnap.chain,
+    chainBalls: spinSnap.chainBalls === undefined ? 0 : spinSnap.chainBalls,
   };
 }
 
@@ -391,7 +397,7 @@ export class Engine {
     this.actionsState.push({ t: a.t, k: 'close' });
   }
 
-  /** 次に処理する時刻（curより大きい入力・発射・センサー・変動終了・大当たり終了の最小値。なければto）。 */
+  /** 次に処理する時刻（curより大きい入力・発射・センサー・変動終了・上乗せ・大当たり終了の最小値。なければto）。 */
   private nextEventTime(cur: SimTime, to: SimTime): SimTime {
     let nxt = to;
     const g = this.grantsState[this.grantIdxState] as Grant | undefined;
@@ -419,6 +425,10 @@ export class Engine {
       }
     }
     if (this.spins.isInJackpot) {
+      const uwAt = this.spins.uwanoseAt;
+      if (uwAt !== null && uwAt > cur && uwAt < nxt) {
+        nxt = uwAt;
+      }
       const endsAt = this.spins.jackpotEndsAt as SimTime | null;
       if (endsAt !== null && endsAt > cur && endsAt < nxt) {
         nxt = endsAt;
@@ -549,7 +559,7 @@ export class Engine {
     }
   }
 
-  /** 同時刻の変動・大当たり・開始（resolve→jackpot→spinStarted→modeの順）。 */
+  /** 同時刻の変動・大当たり・開始（resolve→jackpot*（uwanose含む）→spinStarted→modeの順）。 */
   private applySpinAt(at: SimTime, out: SimEvent[]): void {
     let deferredMode: SimEvent | null = null;
     if (this.spins.isSpinning) {
@@ -578,6 +588,16 @@ export class Engine {
       }
     }
     if (this.spins.isInJackpot) {
+      const uwAt = this.spins.uwanoseAt;
+      if (uwAt !== null && uwAt === at) {
+        const uw = this.spins.emitUwanose(at);
+        for (let i = 0; i < uw.length; i = i + 1) {
+          const e = uw[i] as (typeof uw)[number] | undefined;
+          if (e !== undefined) {
+            out.push(e);
+          }
+        }
+      }
       const endsAt = this.spins.jackpotEndsAt as SimTime | null;
       if (endsAt !== null && endsAt === at) {
         const evs = this.spins.finishJackpot(at, 1);

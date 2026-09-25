@@ -40,7 +40,7 @@ export interface MachineMode {
   readonly stSpins: number;
 }
 
-/** 大当たり振分けの1枝（weightは通常時・各モード重み。省略時は既定値。0なら当該モードで出ない。next省略時はkakuhen→st・tsujo→normal）。 */
+/** 大当たり振分けの1枝（weightは通常時・各モード重み。省略時は既定値。0なら当該モードで出ない。next省略時はkakuhen→st・tsujo→normal。bonusRounds省略時は0）。 */
 export interface JackpotBranch {
   readonly kind: JackpotKind;
   readonly weight: number;
@@ -48,6 +48,7 @@ export interface JackpotBranch {
   readonly weightJitan?: number | undefined;
   readonly weightLt?: number | undefined;
   readonly rounds: number;
+  readonly bonusRounds?: number | undefined;
   readonly next?: JackpotNext | undefined;
 }
 
@@ -284,6 +285,18 @@ export function parseMachine(json: unknown): MachineSpec {
     if (rounds < 1 || rounds > 16) {
       fail(what + '.rounds out of range');
     }
+    let bonusRounds = 0;
+    const bonusRaw: unknown = bo['bonus_rounds'];
+    if (bonusRaw !== undefined) {
+      bonusRounds = asNonNegativeInt(bonusRaw, what + '.bonus_rounds');
+      if (bonusRounds > 60) {
+        fail(what + '.bonus_rounds out of range');
+      }
+    }
+    const totalRounds = rounds + bonusRounds;
+    if (totalRounds < 1 || totalRounds > 60) {
+      fail(what + '.rounds + bonus_rounds out of range (must be 1..60)');
+    }
     let next: JackpotNext | undefined;
     if (bo['next'] !== undefined) {
       const nextRaw = asString(bo['next'], what + '.next');
@@ -296,8 +309,9 @@ export function parseMachine(json: unknown): MachineSpec {
     for (let j = 0; j < jackpotSplit.length; j = j + 1) {
       const prev = jackpotSplit[j] as JackpotBranch;
       const prevNext: JackpotNext = prev.next === undefined ? defaultNextForKind(prev.kind) : prev.next;
-      if (prev.kind === kindRaw && prev.rounds === rounds && prevNext === normNext) {
-        fail(what + ' duplicates jackpot_split[' + j + '] (same kind, rounds and next)');
+      const prevBonus = prev.bonusRounds === undefined ? 0 : prev.bonusRounds;
+      if (prev.kind === kindRaw && prev.rounds === rounds && prevBonus === bonusRounds && prevNext === normNext) {
+        fail(what + ' duplicates jackpot_split[' + j + '] (same kind, rounds, bonus_rounds and next)');
       }
     }
     if (weightStRaw === undefined && weightJitan === undefined && weightLt === undefined && next === undefined) {
@@ -339,6 +353,10 @@ export function parseMachine(json: unknown): MachineSpec {
       } else {
         jackpotSplit.push({ ...base, next: next as JackpotNext });
       }
+    }
+    if (bonusRounds > 0) {
+      const last = jackpotSplit[jackpotSplit.length - 1] as JackpotBranch;
+      jackpotSplit[jackpotSplit.length - 1] = { ...last, bonusRounds };
     }
   }
   let sumNormal = 0;

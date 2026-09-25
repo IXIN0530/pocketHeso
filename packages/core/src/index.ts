@@ -85,15 +85,17 @@ export {
   drawHold,
   hesoPayoutBalls,
   holdColorWeights,
+  jackpotBonusRounds,
   jackpotMedals,
   jackpotPayoutBalls,
+  jackpotTotalRounds,
   modeOf,
   splitWeights,
 } from './lottery.ts';
 export type { AcquireResult } from './hold-queue.ts';
 export { HoldQueue, acquireHold } from './hold-queue.ts';
 export type { ActiveJackpot, ActiveSpin, SimTime, SpinEvent, SpinSnapshot } from './spin.ts';
-export { SpinMachine, jackpotDurationMs, spinDurationMs } from './spin.ts';
+export { SpinMachine, jackpotBaseDurationMs, jackpotDurationMs, spinDurationMs } from './spin.ts';
 export type { EconomyPort } from './economy.ts';
 export { StubEconomy } from './economy.ts';
 export type {
