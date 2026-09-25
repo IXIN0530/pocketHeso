@@ -84,7 +84,7 @@ test('ゴールデン: script01のイベント列＋最終経済状態が固定'
   const { events, fullHash } = runScript();
   expect(events.length).toBeGreaterThan(60000);
   expect(events.filter((e) => e.k === 'noticeSpawned').length).toBeGreaterThan(0);
-  expect(fullHash.slice(0, 16)).toBe('e59bd2b4c5c87dd2');
+  expect(fullHash.slice(0, 16)).toBe('09b9d3e3850ee32d');
 });
 
 function t3Engine(seed: number): Engine {
@@ -120,6 +120,41 @@ test('決定論契約1: 経済込み1回vs1秒刻みで一致（予告・強化�
   }
   expect(parts).toEqual(once);
   expect(b.snapshot()).toEqual(snapOnce);
+});
+
+test('決定論契約1: 1000msに揃わない刻みでも1回と一致（経済tick・予告出現時刻）', () => {
+  const until = 1800000;
+  const a = t3Engine(99);
+  const once = a.advance(until);
+  const snapOnce = a.snapshot();
+  const steps = [1, 337, 499, 600, 999, 1234, 1500, 7777];
+  const b = t3Engine(99);
+  const parts: SimEvent[] = [];
+  let t = 0;
+  let i = 0;
+  while (t < until) {
+    const next = t + (steps[i % steps.length] as number);
+    t = next > until ? until : next;
+    i = i + 1;
+    const step = b.advance(t);
+    for (let j = 0; j < step.length; j = j + 1) {
+      parts.push(step[j] as SimEvent);
+    }
+  }
+  expect(parts.filter((e) => e.k === 'noticeSpawned').length).toBeGreaterThan(0);
+  expect(parts).toEqual(once);
+  expect(b.snapshot()).toEqual(snapOnce);
+});
+
+test('経済tick: 1000ms未満のadvanceを重ねても生産が消えない', () => {
+  const a = t3Engine(5);
+  a.advance(10000);
+  const b = t3Engine(5);
+  for (let t = 500; t <= 10000; t = t + 500) {
+    b.advance(t);
+  }
+  expect(b.snapshot().balls).toBe(a.snapshot().balls);
+  expect(b.snapshot().fuelMs).toBe(a.snapshot().fuelMs);
 });
 
 test('決定論契約2: 経済込みsnapshot/restoreで一致（予告・留守込み）', () => {

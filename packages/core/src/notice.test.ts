@@ -303,17 +303,19 @@ test('AwaySummaryは獲得玉・当たり・連チャン・燃料切れ・最熱
       { t: 3600000, k: 'presence', fg: true },
     ],
   );
-  eng.advance(1001);
+  // 留守区間は[1000, 3600000)。境界時刻の事象は次のadvanceで処理されるので、その手前で観測する
+  eng.advance(1000);
   const ballsAtAway = eng.snapshot().balls;
   const firedAtAway = eng.snapshot().totals.fired;
   const jackAtAway = eng.snapshot().totals.jackpots;
+  eng.advance(3600000);
+  const now = eng.snapshot();
   eng.advance(3600001);
   const s = eng.awaySummary();
   expect(s).not.toBeNull();
   if (s !== null) {
     expect(s.from).toBe(1000);
     expect(s.to).toBe(3600000);
-    const now = eng.snapshot();
     expect(s.gainedBalls).toBe(now.balls - ballsAtAway + (now.totals.fired - firedAtAway));
     expect(s.jackpots).toBe(now.totals.jackpots - jackAtAway);
     expect(s.maxHot).toBeGreaterThanOrEqual(0);

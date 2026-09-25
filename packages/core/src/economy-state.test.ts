@@ -115,19 +115,20 @@ test('Grantはタンク上限・溢れ→ブースト・fuelRefilled、前面で
   const eng = new Engine(
     { seed: 7, spec, patterns, atlas, initialBalls: 10000, initialMedals: 0, economy: econ },
     [
-      { claimId: 'a', at: 0, fuelMs: H12, medals: 0 },
-      { claimId: 'b', at: 0, fuelMs: H12, medals: 0 },
+      { claimId: 'a', at: 1, fuelMs: H12, medals: 0 },
+      { claimId: 'b', at: 1, fuelMs: H12, medals: 0 },
     ],
-    [{ t: 0, k: 'buy', target: 'windmill', count: 10 }],
+    [{ t: 1, k: 'buy', target: 'windmill', count: 10 }],
   );
-  const evs = eng.advance(1);
+  // t=0の経済tickは役物なしで0。入力はt=1に置き、次のtick（1000）前の状態を見る
+  const evs = eng.advance(2);
   expect(eng.project().fuelMs).toBe(H12);
   expect(econ.getBoostMs()).toBe(H12);
   expect(evs.filter((e) => e.k === 'fuelRefilled').length).toBe(1);
   const perBoost = eng.project().perSec;
   expect(relErr(perBoost, 10)).toBeLessThan(1e-12);
   const ballsBefore = eng.project().balls;
-  eng.appendAction({ t: 1, k: 'boost', on: false });
+  eng.appendAction({ t: 2, k: 'boost', on: false });
   eng.advance(2000);
   expect(relErr(eng.project().perSec, 5)).toBeLessThan(1e-12);
   expect(eng.project().balls > ballsBefore).toBe(true);
@@ -141,14 +142,14 @@ test('buy・awakenの検証と適用', () => {
     { seed: 11, spec, patterns, atlas, initialBalls: 500, initialMedals: 0, economy: econ },
     [],
     [
-      { t: 0, k: 'buy', target: 'kaitentai', count: 1 },
-      { t: 0, k: 'buy', target: 'windmill', count: 10 },
-      { t: 0, k: 'buy', target: 'nope', count: 1 },
-      { t: 0, k: 'buy', target: 'windmill', count: 7 },
-      { t: 0, k: 'awaken', yakumono: 'windmill' },
+      { t: 1, k: 'buy', target: 'kaitentai', count: 1 },
+      { t: 1, k: 'buy', target: 'windmill', count: 10 },
+      { t: 1, k: 'buy', target: 'nope', count: 1 },
+      { t: 1, k: 'buy', target: 'windmill', count: 7 },
+      { t: 1, k: 'awaken', yakumono: 'windmill' },
     ],
   );
-  const evs = eng.advance(1);
+  const evs = eng.advance(2);
   const rej = evs.filter((e) => e.k === 'rejected');
   expect(rej.map((e) => (e as { reason: string }).reason)).toEqual([
     'locked',

@@ -698,7 +698,7 @@ export class Engine {
     return cur + 1000 - rem;
   }
 
-  /** 次に処理する時刻（入力・発射・センサー・変動・上乗せ・大当たり・予告期限・経済1000msの最小値。なければto）。 */
+  /** 次に処理する時刻（入力・発射・センサー・変動・上乗せ・大当たり・予告出現/期限・経済1000msの最小値。なければto）。 */
   private nextEventTime(cur: SimTime, to: SimTime): SimTime {
     let nxt = to;
     const g = this.grantsState[this.grantIdxState] as Grant | undefined;
@@ -719,6 +719,12 @@ export class Engine {
     }
     if (this.activeNoticeState !== null && this.activeNoticeState.expiresAt > cur && this.activeNoticeState.expiresAt < nxt) {
       nxt = this.activeNoticeState.expiresAt;
+    }
+    if (this.activeNoticeState === null && this.fgState && this.noticeInFgMsState < MAX_SAFE_MS) {
+      const spawnAt = cur + this.noticeInFgMsState;
+      if (spawnAt > cur && spawnAt < nxt) {
+        nxt = spawnAt;
+      }
     }
     for (let i = 0; i < this.pendingState.length; i = i + 1) {
       const p = this.pendingState[i] as PendingSensor;
@@ -762,7 +768,7 @@ export class Engine {
       this.applySensorsAt(cur, out);
       this.applySpinAt(cur, out);
       this.applyNoticeAt(cur, out);
-      this.applyEconomyTickAt(cur, to, out);
+      this.applyEconomyTickAt(cur, out);
       prev = cur;
       prevFg = this.fgState;
       cur = this.nextEventTime(cur, to);
@@ -1109,13 +1115,10 @@ export class Engine {
     out.push({ k: 'noticeSpawned', id, at, effect });
   }
 
-  /** 1000msグリッドの経済生産（開始時状態で1秒分。cur+1000<=toの完成秒のみ）。 */
-  private applyEconomyTickAt(cur: SimTime, to: SimTime, out: SimEvent[]): void {
+  /** 1000msグリッドの経済生産（グリッド時刻の状態で続く1秒分を先払い。advanceの区切りに依らない）。 */
+  private applyEconomyTickAt(cur: SimTime, out: SimEvent[]): void {
     const rem = cur - Math.floor(cur / 1000) * 1000;
     if (rem !== 0) {
-      return;
-    }
-    if (cur + 1000 > to) {
       return;
     }
     const hook = this.econHook('onTick') as
