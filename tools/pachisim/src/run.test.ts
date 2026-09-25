@@ -4,6 +4,7 @@ import {
   formatReports,
   loadRunAtlas,
   loadRunMachine,
+  observedStdErrors,
   parseRunArgs,
   runMachines,
   simulateBalls,
@@ -89,15 +90,16 @@ test(
         const seSt = Math.sqrt((t.stContinuation * (1 - t.stContinuation)) / o.stEntries);
         expect(Math.abs(o.stContinuation - t.stContinuation)).toBeLessThanOrEqual(3 * seSt + 1e-12);
       }
-      // 平均出玉（単発）: ±10%
-      expect(Math.abs(o.avgJackpot - t.avgJackpot) / t.avgJackpot).toBeLessThan(0.1);
-      // 通常1回転あたり: ±20%（連チャンの分散が大きいため緩め）
-      expect(Math.abs(o.perNormalSpin - t.perNormalSpin) / t.perNormalSpin).toBeLessThan(0.2);
-      // 1玉あたり払い戻し: ±20%
-      expect(Math.abs(o.payoutPerBall - t.payoutPerBall) / t.payoutPerBall).toBeLessThan(0.2);
+      // 出玉系: 標本分散からの標準誤差で 3σ（D-039）
+      const se = observedStdErrors(o, loadRunMachine(r.machine).spec.hesoPayout);
+      expect(Math.abs(o.avgJackpot - t.avgJackpot)).toBeLessThanOrEqual(3 * se.avgJackpot + 1e-9);
+      expect(Math.abs(o.avgPerHatsuari - t.avgPerHatsuari)).toBeLessThanOrEqual(3 * se.avgPerHatsuari + 1e-9);
+      expect(Math.abs(o.perNormalSpin - t.perNormalSpin)).toBeLessThanOrEqual(3 * se.perNormalSpin + 1e-9);
+      expect(Math.abs(o.payoutPerBall - t.payoutPerBall)).toBeLessThanOrEqual(3 * se.payoutPerBall + 1e-9);
     }
     const text = formatReports(reports);
     expect(text).toContain('light-middle-01');
     expect(text).toContain('rush-middle-01');
+    expect(text).toContain('payout/ball target(spec/21)');
   },
 );

@@ -1,18 +1,31 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import {
+  ATLAS_ENTRY_BYTES,
+  ATLAS_ENTRY_COUNT,
+  ATLAS_HEADER_BYTES,
+  ATLAS_KIND_START1,
   atlasKeyForBall,
-  decodeAtlasEntry,
+  bytesToHex,
+  decodeAtlasHeader,
   drawHold,
   jackpotPayoutBalls,
+  parseBoardText,
   parseMachineText,
   parsePatternsText,
   type LotteryMode,
   type MachineSpec,
   type PatternTable,
 } from '@ph/core';
+import { boardHashHex } from './atlas.ts';
 
 const MACHINES_DIR = new URL('../../../resources/machines/', import.meta.url);
 const ATLAS_DIR = new URL('../../../resources/atlas/', import.meta.url);
+const BOARDS_DIR = new URL('../../../resources/boards/', import.meta.url);
+const RUN_BOARD_ID = 'default';
+const RUN_USAGE = 'usage: pachisim run --balls <n> --seed <s> [--machine <id>]... [--json]';
+
+/** 1玉あたり払い戻しの目安（spec/21「出玉」: 初期・レート1で ≈0.85）。 */
+export const PAYOUT_PER_BALL_TARGET = 0.85;
 
 function readText(url: URL): string {
   return readFileSync(url, 'utf8');
@@ -31,17 +44,17 @@ export const DEFAULT_RUN_MACHINES: readonly string[] = ['light-middle-01', 'rush
 
 function asIntOption(value: string | undefined, what: string): number {
   if (value === undefined) {
-    throw new Error('usage: pachisim run --balls <n> --seed <s> [--machine <id>]... [--json]');
+    throw new Error(RUN_USAGE);
   }
   const n = Math.floor(Number(value));
   if (!Number.isFinite(n)) {
-    throw new Error('usage: pachisim run --balls <n> --seed <s> [--machine <id>]... [--json]');
+    throw new Error(RUN_USAGE);
   }
   if (what === 'balls' && n < 1) {
-    throw new Error('usage: pachisim run --balls <n> --seed <s> [--machine <id>]... [--json]');
+    throw new Error(RUN_USAGE);
   }
   if (what === 'seed' && n < 0) {
-    throw new Error('usage: pachisim run --balls <n> --seed <s> [--machine <id>]... [--json]');
+    throw new Error(RUN_USAGE);
   }
   return n;
 }
@@ -63,14 +76,14 @@ export function parseRunArgs(argv: string[]): RunArgs {
     } else if (a === '--machine') {
       const v = argv[i + 1] as string | undefined;
       if (v === undefined || v.length === 0) {
-        throw new Error('usage: pachisim run --balls <n> --seed <s> [--machine <id>]... [--json]');
+        throw new Error(RUN_USAGE);
       }
       machines.push(v);
       i = i + 1;
     } else if (a === '--json') {
       json = true;
     } else {
-      throw new Error('usage: pachisim run --balls <n> --seed <s> [--machine <id>]... [--json]');
+      throw new Error(RUN_USAGE);
     }
   }
   const balls = asIntOption(ballsRaw, 'balls');
@@ -92,24 +105,37 @@ export function loadRunMachine(id: string): { spec: MachineSpec; patterns: Patte
   return { spec, patterns };
 }
 
-/** Atlas バイナリを探して読み込む（default.*.bin の先頭1件）。 */
+/** Atlas の key に対応する結果コードの位置（core の Atlas 形式に従う）。 */
+function atlasKindOffset(key: number): number {
+  return ATLAS_HEADER_BYTES + key * ATLAS_ENTRY_BYTES;
+}
+
+/**
+ * 現行の既定盤面に対応する Atlas（`default.<hash16>.bin`）を読み込む。
+ * ヘッダ（マジック・版数・件数）と盤面ハッシュ全体を検証し、古い盤面の .bin では計測しない。
+ */
 export function loadRunAtlas(): { buffer: ArrayBuffer; hesoRate: number } {
-  const names = readdirSync(ATLAS_DIR).filter((n) => n.endsWith('.bin')).sort();
-  if (names.length === 0) {
-    throw new Error('invalid run: atlas .bin not found (run `pnpm sim atlas` first)');
+  const board = parseBoardText(readText(new URL(RUN_BOARD_ID + '.json', BOARDS_DIR)));
+  const hashHex = boardHashHex(board);
+  const url = new URL(RUN_BOARD_ID + '.' + hashHex.slice(0, 16) + '.bin', ATLAS_DIR);
+  if (!existsSync(url)) {
+    throw new Error('invalid run: atlas for current board not found (run `pnpm sim atlas --board default` first)');
   }
-  const first = names[0] as string;
-  const buf = readFileSync(new URL(first, ATLAS_DIR));
-  const u8 = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
-  const ab = new ArrayBuffer(u8.length);
-  new Uint8Array(ab).set(u8);
+  const buf = readFileSync(url);
+  const ab = new ArrayBuffer(buf.byteLength);
+  new Uint8Array(ab).set(new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength));
+  const header = decodeAtlasHeader(ab);
+  if (bytesToHex(header.boardHash) !== hashHex) {
+    throw new Error('invalid run: atlas board hash mismatch (regenerate with `pnpm sim atlas --board default`)');
+  }
+  const view = new DataView(ab);
   let heso = 0;
-  for (let key = 0; key < 65536; key = key + 1) {
-    if (decodeAtlasEntry(ab, key).kind === 'start1') {
+  for (let key = 0; key < ATLAS_ENTRY_COUNT; key = key + 1) {
+    if (view.getUint8(atlasKindOffset(key)) === ATLAS_KIND_START1) {
       heso = heso + 1;
     }
   }
-  return { buffer: ab, hesoRate: heso / 65536 };
+  return { buffer: ab, hesoRate: heso / ATLAS_ENTRY_COUNT };
 }
 
 /** 理論値（マルコフ連鎖の closed-form。kakuhen→st・tsujo→normal を仮定。P2-T6 は normal/st のみ）。 */
@@ -212,6 +238,10 @@ export interface RunObserved {
   readonly perNormalSpin: number;
   readonly payoutPerBall: number;
   readonly maxHama: number;
+  /** 大当たり1回ごとの出玉の二乗和（標準誤差用）。 */
+  readonly jackpotPaySumSq: number;
+  /** 初当たり1回（とそれに続く ST 連チャン）ごとの出玉の二乗和（標準誤差用）。 */
+  readonly chainPaySumSq: number;
 }
 
 export function simulateBalls(
@@ -227,6 +257,7 @@ export function simulateBalls(
   if (Math.floor(balls) !== balls || balls < 1) {
     throw new Error('invalid run: balls must be a positive int');
   }
+  decodeAtlasHeader(atlas);
   const view = new DataView(atlas);
   let mode: LotteryMode = 'normal';
   let stLeft = 0;
@@ -241,11 +272,12 @@ export function simulateBalls(
   let jackpotPayout = 0;
   let curHama = 0;
   let maxHama = 0;
+  let jackpotPaySumSq = 0;
+  let chainPay = 0;
+  let chainPaySumSq = 0;
   for (let ball = 0; ball < balls; ball = ball + 1) {
     const key = atlasKeyForBall(seed >>> 0, ball);
-    const at = 44 + key * 7;
-    const code = view.getUint8(at);
-    if (code !== 0) {
+    if (view.getUint8(atlasKindOffset(key)) !== ATLAS_KIND_START1) {
       continue;
     }
     const entry = drawHold(spec, patterns, seed >>> 0, mode, ball, 1);
@@ -264,6 +296,12 @@ export function simulateBalls(
       const pay = jackpotPayoutBalls(spec, entry.branchIndex, 1);
       jackpots = jackpots + 1;
       jackpotPayout = jackpotPayout + pay;
+      jackpotPaySumSq = jackpotPaySumSq + pay * pay;
+      if (!isStSpin) {
+        chainPaySumSq = chainPaySumSq + chainPay * chainPay;
+        chainPay = 0;
+      }
+      chainPay = chainPay + pay;
       const branch = spec.jackpotSplit[entry.branchIndex];
       if (branch === undefined) {
         throw new Error('invalid run: branch out of range');
@@ -308,6 +346,7 @@ export function simulateBalls(
       stEntries = 0;
     }
   }
+  chainPaySumSq = chainPaySumSq + chainPay * chainPay;
   const hesoPayout = spins * spec.hesoPayout;
   return {
     balls,
@@ -330,6 +369,47 @@ export function simulateBalls(
     perNormalSpin: normalSpins > 0 ? jackpotPayout / normalSpins : 0,
     payoutPerBall: balls > 0 ? (jackpotPayout + hesoPayout) / balls : 0,
     maxHama,
+    jackpotPaySumSq,
+    chainPaySumSq,
+  };
+}
+
+/** 観測値の標準誤差（標本分散と二項分布から。デルタ法で比の誤差を合成する）。 */
+export interface RunStdErrors {
+  readonly avgJackpot: number;
+  readonly avgPerHatsuari: number;
+  readonly perNormalSpin: number;
+  readonly payoutPerBall: number;
+}
+
+function sampleVariance(sum: number, sumSq: number, n: number): number {
+  if (n < 2) {
+    return 0;
+  }
+  const mean = sum / n;
+  const v = (sumSq - n * mean * mean) / (n - 1);
+  return v > 0 ? v : 0;
+}
+
+export function observedStdErrors(o: RunObserved, hesoPayoutPerSpin: number): RunStdErrors {
+  const nJ = o.jackpots;
+  const nH = o.normalHits;
+  const varJ = sampleVariance(o.jackpotPayout, o.jackpotPaySumSq, nJ);
+  const varC = sampleVariance(o.jackpotPayout, o.chainPaySumSq, nH);
+  const meanC = nH > 0 ? o.jackpotPayout / nH : 0;
+  // 初当たり1回あたり出玉の相対分散（/nH 済み）
+  const relVarC = nH > 0 && meanC > 0 ? varC / (meanC * meanC * nH) : 0;
+  const p = o.hatsuariProb;
+  const relVarP = o.normalSpins > 0 && p > 0 ? (1 - p) / (p * o.normalSpins) : 0;
+  const q = o.balls > 0 ? o.spins / o.balls : 0;
+  const hitPart = o.balls > 0 ? o.jackpotPayout / o.balls : 0;
+  const seHitPart = nH > 0 ? hitPart * Math.sqrt(1 / nH + relVarC) : 0;
+  const seHesoPart = o.balls > 0 ? hesoPayoutPerSpin * Math.sqrt((q * (1 - q)) / o.balls) : 0;
+  return {
+    avgJackpot: nJ > 0 ? Math.sqrt(varJ / nJ) : 0,
+    avgPerHatsuari: nH > 0 ? Math.sqrt(varC / nH) : 0,
+    perNormalSpin: o.perNormalSpin * Math.sqrt(relVarP + relVarC),
+    payoutPerBall: Math.sqrt(seHitPart * seHitPart + seHesoPart * seHesoPart),
   };
 }
 
@@ -394,6 +474,9 @@ export function formatReports(reports: readonly MachineReport[]): string {
     );
     lines.push(
       `payout/ball | ${fmt(t.payoutPerBall, 4)} | ${fmt(o.payoutPerBall, 4)} | ${t.payoutPerBall > 0 ? fmt((o.payoutPerBall - t.payoutPerBall) / t.payoutPerBall * 100, 2) + '%' : '-'}`,
+    );
+    lines.push(
+      `payout/ball target(spec/21) | ${fmt(PAYOUT_PER_BALL_TARGET, 4)} | - | theory ${fmt((t.payoutPerBall - PAYOUT_PER_BALL_TARGET) / PAYOUT_PER_BALL_TARGET * 100, 2)}%`,
     );
     lines.push(`max hama | - | ${o.maxHama} | -`);
   }
