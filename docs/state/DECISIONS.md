@@ -30,3 +30,5 @@
 - D-027 | 2026-09-25 | launch_dirs は真上中心±0.1rad の1024表（生成は pachisim、Core は読むだけ）。正規化は全数 toFixed(6)・キー固定順。SHA-256 実装は正規化文字列を受ける関数として注入（ブラウザは subtle で直接ハッシュ） | spec/20 の表参照・キーソート・Node/ブラウザ両対応を満たす最小形
 - D-028 | 2026-09-25 | BallSimulator は (board, dirs) で方向表を注入・速度は speedMin..Max を speedQ で線形・kind に 'lost' 追加・センサーは盤面順/境界含む・flightMs=steps*1000/960 | spec/20 の constructor(board) だけでは表を引けず決定的に実行できないため最小拡張
 - D-029 | 2026-09-25 | trajectory は Trajectory {samples, outcome} を返す（spec/20 の TrajectorySample[] から拡張）。samples は step0＋every毎＋最終点を必ず含む | kind・steps の一致を呼出側で再計算なしに保証し描画の最終位置ずれを防ぐため
+- D-030 | 2026-09-25 | Atlas バイナリは44Bヘッダ（magic'ATLS'・version u32・boardHash 32B・count u32）＋7B×65536（kind u8・flightMs u16四捨五入・dir u16・speedQ u16）。正準speedQはバケット中央（bucket*1024+512） | spec/20 の版数・盤面ハッシュ・件数と約450KBを満たす最小形。キー順固定＋範囲分割のみで並列度依存を断つ
+- D-031 | 2026-09-25 | default盤面の発射レーン内壁をy30→y120に短縮し振分けスロープ[418,70]-[350,20]を追加。ヘソ率0.00%→5.80% | レーン内で往復するだけで盤面に入らずAccept 5〜8%に届かなかった。平均滞空1.19sは目標3〜5sに未達でP3以降に再調整
