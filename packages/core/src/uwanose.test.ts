@@ -281,14 +281,31 @@ test('決定論契約1・2が上乗せを含む区間（大当たり中・LT中�
   }
   // 契約1: LT中の区切り（modeChanged to lt の直後）でも一致
   const ltMode = once.find((e) => e.k === 'modeChanged' && (e as { to: string }).to === 'lt');
-  if (ltMode !== undefined) {
-    const cut = (ltMode as unknown as { at: number }).at + 1;
-    if (cut < until) {
-      const a = mk(actions);
-      const head = a.advance(cut);
-      const tail = a.advance(until);
-      expect([...head, ...tail]).toEqual(once);
+  expect(ltMode).toBeDefined();
+  const ltAt = (ltMode as unknown as { at: number }).at;
+  expect(ltAt + 1).toBeLessThan(until);
+  {
+    const a = mk(actions);
+    const head = a.advance(ltAt + 1);
+    const tail = a.advance(until);
+    expect([...head, ...tail]).toEqual(once);
+  }
+  // 契約1: 1秒刻みN回（uwanose・LT突入を含む区間）の連結が一括と一致し、最終スナップショットも一致
+  {
+    const whole = mk(actions);
+    whole.advance(until);
+    const stepped = mk(actions);
+    const joined: SimEvent[] = [];
+    for (let t = 1000; t <= until; t = t + 1000) {
+      const evs = stepped.advance(t);
+      for (let i = 0; i < evs.length; i = i + 1) {
+        joined.push(evs[i] as SimEvent);
+      }
     }
+    expect(until % 1000).toBe(0);
+    expect(uwAt).toBeLessThan(until);
+    expect(joined).toEqual(once);
+    expect(stepped.snapshot()).toEqual(whole.snapshot());
   }
   // 契約2: uwanose前のスナップショットから復元して続行が一致
   const before = mk(actions);
@@ -378,9 +395,48 @@ test('Engineのuwanose順序と投影chain（bonus機種でprojectにchainが載
   }
   expect(uwIdx).toBeGreaterThanOrEqual(0);
   expect(jsIdx).toBeGreaterThanOrEqual(0);
-  const proj = eng.project();
-  expect(typeof proj.chain).toBe('number');
-  expect(typeof proj.chainBalls).toBe('number');
-  expect(proj.chain).toBeGreaterThanOrEqual(0);
-  expect(proj.chainBalls).toBeGreaterThanOrEqual(0);
+  // 投影chain/chainBalls: イベント列から集計した値（RUSH中→RUSH継続の jackpotEnded 回数と payout 合計）と一致
+  const isRush = (m: string): boolean => m === 'st' || m === 'lt';
+  let mode = 'normal';
+  let chain = 0;
+  let chainBalls = 0;
+  let cutAt = -1;
+  for (let i = 0; i < evs.length; i = i + 1) {
+    const e = evs[i] as SimEvent;
+    if (e.k === 'jackpotEnded') {
+      // 同時刻の modeChanged は spinStarted 等の後ろに回るので、同時刻内を先読みして次モードを決める
+      let next = mode;
+      for (let j = i + 1; j < evs.length && (evs[j] as SimEvent).at === e.at; j = j + 1) {
+        const f = evs[j] as SimEvent;
+        if (f.k === 'modeChanged') {
+          next = f.to;
+          break;
+        }
+      }
+      if (isRush(mode) && isRush(next)) {
+        chain = chain + 1;
+        chainBalls = chainBalls + e.payout;
+      } else {
+        chain = 0;
+        chainBalls = 0;
+      }
+      if (chain >= 2 && cutAt < 0) {
+        cutAt = e.at;
+        break;
+      }
+    } else if (e.k === 'modeChanged') {
+      mode = e.to;
+      if (!isRush(mode)) {
+        chain = 0;
+        chainBalls = 0;
+      }
+    }
+  }
+  expect(cutAt).toBeGreaterThanOrEqual(0);
+  expect(chainBalls).toBeGreaterThan(0);
+  const atCut = new Engine({ seed: 7, spec, patterns, atlas, initialBalls: 100000 }, [], [{ t: 0, k: 'auto', share: 1, rate: 1 }]);
+  atCut.advance(cutAt + 1);
+  const proj = atCut.project();
+  expect(proj.chain).toBe(chain);
+  expect(proj.chainBalls).toBe(chainBalls);
 });

@@ -161,7 +161,7 @@ export function computeTheory(spec: MachineSpec, hesoRate: number): RunTheory {
     if (b === undefined) {
       continue;
     }
-    const pay = b.rounds * spec.roundCount * spec.payoutPerBall;
+    const pay = jackpotPayoutBalls(spec, i, 1);
     sumWN = sumWN + b.weight;
     sumPayN = sumPayN + b.weight * pay;
     if (b.kind === 'kakuhen') {
@@ -176,7 +176,7 @@ export function computeTheory(spec: MachineSpec, hesoRate: number): RunTheory {
     if (b === undefined) {
       continue;
     }
-    const pay = b.rounds * spec.roundCount * spec.payoutPerBall;
+    const pay = jackpotPayoutBalls(spec, i, 1);
     sumWS = sumWS + b.weightSt;
     sumPayS = sumPayS + b.weightSt * pay;
     if (b.kind === 'kakuhen') {
