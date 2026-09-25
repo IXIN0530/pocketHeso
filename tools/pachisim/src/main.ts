@@ -8,6 +8,7 @@ import {
   parseAtlasArgs,
   writeAtlasFile,
 } from './atlas.ts';
+import { formatReports, parseRunArgs, runMachines } from './run.ts';
 
 /** 性能しきい値（発/秒・単スレッド）。未達は終了コード 1（Blockers に計測値を記録する）。 */
 const BENCH_THRESHOLD_PER_SEC = 2000;
@@ -68,6 +69,17 @@ async function atlas(argv: string[]): Promise<void> {
   console.log(`atlas: wrote ${out}`);
 }
 
+/** 抽選レポート（`pnpm sim run --balls <n> --seed <s> [--machine <id>]... [--json]`）。 */
+function run(argv: string[]): void {
+  const args = parseRunArgs(argv);
+  const reports = runMachines(args.seed, args.balls, args.machines);
+  if (args.json) {
+    console.log(JSON.stringify(reports, null, 2));
+    return;
+  }
+  console.log(formatReports(reports));
+}
+
 const [command = 'help', ...rest] = process.argv.slice(2);
 switch (command) {
   case 'version':
@@ -79,6 +91,11 @@ switch (command) {
   case 'atlas':
     await atlas(rest);
     break;
+  case 'run':
+    run(rest);
+    break;
   default:
-    console.log('usage: pachisim <version|bench [count]|atlas --board <id> [--jobs <n>]>');
+    console.log(
+      'usage: pachisim <version|bench [count]|atlas --board <id> [--jobs <n>]|run --balls <n> --seed <s> [--machine <id>]... [--json]>',
+    );
 }
