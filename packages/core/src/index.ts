@@ -89,6 +89,8 @@ export {
 } from './lottery.ts';
 export type { AcquireResult } from './hold-queue.ts';
 export { HoldQueue, acquireHold } from './hold-queue.ts';
+export type { ActiveJackpot, ActiveSpin, SimTime, SpinEvent, SpinSnapshot } from './spin.ts';
+export { SpinMachine, jackpotDurationMs, spinDurationMs } from './spin.ts';
 export {
   HOLD_COLORS,
   JACKPOT_KINDS,

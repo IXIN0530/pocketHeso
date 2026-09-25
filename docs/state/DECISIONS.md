@@ -33,3 +33,4 @@
 - D-030 | 2026-09-25 | Atlas バイナリは44Bヘッダ（magic'ATLS'・version u32・boardHash 32B・count u32）＋7B×65536（kind u8・flightMs u16四捨五入・dir u16・speedQ u16）。正準speedQはバケット中央（bucket*1024+512） | spec/20 の版数・盤面ハッシュ・件数と約450KBを満たす最小形。キー順固定＋範囲分割のみで並列度依存を断つ
 - D-031 | 2026-09-25 | default盤面の発射レーン内壁をy30→y120に短縮し振分けスロープ[418,70]-[350,20]を追加。ヘソ率0.00%→5.80% | レーン内で往復するだけで盤面に入らずAccept 5〜8%に届かなかった。平均滞空1.19sは目標3〜5sに未達でP3以降に再調整
 - D-032 | 2026-09-25 | 抽選細目: white残余=合計を覆う最小の10べき−合計（hit側0/miss側5）・hotはred+1上限5/gold→5・メダルは確変per_kakuhen/通常per_jackpot・出玉=rounds×count×15×rate | spec/21の曖昧点を熱さ順（white<blue<green<red<gold）が正しくなるよう確定
+- D-033 | 2026-09-25 | 変動短縮の保留数は開始前の待ち数・大当たり時間=rounds×msPerRound・STは消化毎-1で確変終了時に100復帰/通常終了時にnormalへmodeChanged（通常中確変以外はmodeChangedなし） | spec/21の保留数時点・消化時間・ST消費/復帰条件の曖昧点をEngine再利用できる最小形で確定
