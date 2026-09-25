@@ -15,6 +15,16 @@ export {
   PHYS_MAX_SPEED_MM_S,
   PHYS_MAX_STEPS,
 } from './physics.ts';
+/** 決定論ゴールデン（P1-T5: 固定 1,000 LaunchParams のハッシュと符号化）。 */
+export {
+  GOLDEN_LAUNCH_COUNT,
+  GOLDEN_OUTCOMES_HASH,
+  encodeOutcomes,
+  goldenBoard,
+  goldenDirs,
+  goldenLaunchParams,
+  hashOutcomes,
+} from './determinism.ts';
 export type {
   Board,
   BoardLaunch,
