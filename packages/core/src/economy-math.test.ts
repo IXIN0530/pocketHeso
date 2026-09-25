@@ -144,6 +144,16 @@ test('覚醒・閉店・連日の純粋計算', () => {
   expect(streakMult(30, 0.05, 20)).toBe(2);
 });
 
+test('閉店の常連Pは立方数の境界で floor がずれない', () => {
+  for (let n = 1; n <= 200000; n = n + 1) {
+    const c = n * n * n;
+    expect(closeGain(c, 1, 0)).toBe(n);
+    expect(closeGain(c - 1, 1, 0)).toBe(n - 1);
+  }
+  // 実際の divisor(1e9) での境界（n=106 は旧実装で 105 になっていた）
+  expect(closeGain(106 * 106 * 106 * 1000000000, 1000000000, 0)).toBe(106);
+});
+
 test('ECONOMY リソースの既定値で価格が再現できる', () => {
   const text = readFileSync('../../resources/economy/default.json', 'utf8');
   const json = JSON.parse(text) as { yakumono: Array<{ base_price: number }> };

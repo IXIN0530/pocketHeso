@@ -199,7 +199,15 @@ export function closeGain(total: Amount, divisor: number, owned: number): number
   asNonNegativeFinite(total, 'total');
   asPositiveFinite(divisor, 'divisor');
   asNonNegativeInt(owned, 'owned');
-  const gain = Math.floor(cbrt40(total / divisor)) - owned;
+  const x = total / divisor;
+  // cbrt40 は立方数で 1ulp 小さく返ることがあるため、整数の3乗で floor を補正する
+  let f = Math.floor(cbrt40(x));
+  if ((f + 1) * (f + 1) * (f + 1) <= x) {
+    f = f + 1;
+  } else if (f * f * f > x) {
+    f = f - 1;
+  }
+  const gain = f - owned;
   return gain < 0 ? 0 : gain;
 }
 

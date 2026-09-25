@@ -178,6 +178,21 @@ function asIntRange(value: unknown, what: string, lo: number, hi: number): numbe
   return n;
 }
 
+/** 全要素が [lo, hi] に入り、狭義単調増加であることを検証する。 */
+function checkAscending(values: readonly number[], what: string, lo: number, hi: number): void {
+  let prev = 0;
+  for (let i = 0; i < values.length; i = i + 1) {
+    const v = values[i] ?? Number.NaN;
+    if (!(v >= lo && v <= hi)) {
+      fail(what + '[' + i + '] out of range');
+    }
+    if (i > 0 && v <= prev) {
+      fail(what + ' must be strictly ascending');
+    }
+    prev = v;
+  }
+}
+
 function isYakumonoId(value: string): value is EconomyYakumonoId {
   for (let i = 0; i < ECONOMY_YAKUMONO_IDS.length; i = i + 1) {
     if (ECONOMY_YAKUMONO_IDS[i] === value) {
@@ -239,6 +254,11 @@ export function parseEconomy(json: unknown): EconomySpec {
   }
   const step = asIntRange(ms['step'], 'milestones.step', 1, 1000);
   const stepFrom = asIntRange(ms['step_from'], 'milestones.step_from', 1, 10000);
+  checkAscending(thresholds, 'milestones.thresholds', 1, 10000);
+  const lastThreshold = thresholds[thresholds.length - 1];
+  if (lastThreshold !== undefined && stepFrom <= lastThreshold) {
+    fail('milestones.step_from must be > last threshold');
+  }
   const aw = asRecord(o['awaken'], 'awaken');
   const minLv = asIntRange(aw['min_lv'], 'awaken.min_lv', 1, 1000);
   const mult = asIntRange(aw['mult'], 'awaken.mult', 2, 1000);
@@ -271,12 +291,19 @@ export function parseEconomy(json: unknown): EconomySpec {
   if (idleValues.length !== idleCosts.length + 1) {
     fail('upgrades.idle_efficiency values/costs mismatch');
   }
+  checkAscending(idleValues, 'upgrades.idle_efficiency.values', 0, 1);
+  checkAscending(idleCosts, 'upgrades.idle_efficiency.costs', 1, Number.MAX_VALUE);
+  if (idleValues[0] !== idleBase) {
+    fail('upgrades.idle_efficiency.values[0] must equal factors.idle_base');
+  }
   const tank = asRecord(up['tank_hours'], 'upgrades.tank_hours');
   const tankHours = asNumberArray(tank['values'], 'upgrades.tank_hours.values');
   const tankCosts = asNumberArray(tank['costs'], 'upgrades.tank_hours.costs');
   if (tankHours.length !== tankCosts.length + 1) {
     fail('upgrades.tank_hours values/costs mismatch');
   }
+  checkAscending(tankHours, 'upgrades.tank_hours.values', 1, 1000);
+  checkAscending(tankCosts, 'upgrades.tank_hours.costs', 1, Number.MAX_VALUE);
   const boostCapHours = asPositive(tank['boost_cap_hours'], 'upgrades.tank_hours.boost_cap_hours');
   const nail = asRecord(up['nail_q'], 'upgrades.nail_q');
   const nailValues = asNumberArray(nail['values'], 'upgrades.nail_q.values');
@@ -284,6 +311,8 @@ export function parseEconomy(json: unknown): EconomySpec {
   if (nailValues.length !== nailCosts.length + 1) {
     fail('upgrades.nail_q values/costs mismatch');
   }
+  checkAscending(nailValues, 'upgrades.nail_q.values', 0, 1);
+  checkAscending(nailCosts, 'upgrades.nail_q.costs', 1, Number.MAX_VALUE);
   const shorten = asRecord(up['shorten'], 'upgrades.shorten');
   const shortenFactor = asNumber(shorten['factor'], 'upgrades.shorten.factor');
   if (shortenFactor <= 0 || shortenFactor >= 1) {
@@ -294,12 +323,14 @@ export function parseEconomy(json: unknown): EconomySpec {
   if (shortenCosts.length !== shortenStages) {
     fail('upgrades.shorten costs mismatch');
   }
+  checkAscending(shortenCosts, 'upgrades.shorten.costs', 1, Number.MAX_VALUE);
   const holdPlus = asRecord(up['hold_plus'], 'upgrades.hold_plus');
   const holdPlusStages = asIntRange(holdPlus['stages'], 'upgrades.hold_plus.stages', 1, 4);
   const holdPlusCosts = asNumberArray(holdPlus['costs'], 'upgrades.hold_plus.costs');
   if (holdPlusCosts.length !== holdPlusStages) {
     fail('upgrades.hold_plus costs mismatch');
   }
+  checkAscending(holdPlusCosts, 'upgrades.hold_plus.costs', 1, Number.MAX_VALUE);
   const autoCost = asPositive(asRecord(up['auto'], 'upgrades.auto')['cost'], 'upgrades.auto.cost');
   const tomeuchiCost = asPositive(asRecord(up['tomeuchi'], 'upgrades.tomeuchi')['cost'], 'upgrades.tomeuchi.cost');
   const rate = asRecord(up['rate_unlock'], 'upgrades.rate_unlock');
@@ -308,6 +339,8 @@ export function parseEconomy(json: unknown): EconomySpec {
   if (rates.length < 2 || rateMedalCosts.length !== rates.length - 1) {
     fail('upgrades.rate_unlock rates/costs mismatch');
   }
+  checkAscending(rates, 'upgrades.rate_unlock.rates', 1, 1000000);
+  checkAscending(rateMedalCosts, 'upgrades.rate_unlock.medal_costs', 1, Number.MAX_VALUE);
   const no = asRecord(o['notice'], 'notice');
   const minFgMs = asIntRange(no['min_fg_ms'], 'notice.min_fg_ms', 60000, 3600000);
   const maxFgMs = asIntRange(no['max_fg_ms'], 'notice.max_fg_ms', 60000, 3600000);

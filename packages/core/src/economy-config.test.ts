@@ -73,3 +73,32 @@ test('不正な経済定義を拒否する', () => {
   ((badClaims['claims'] as Record<string, unknown>)['streak_per_day'] as number) = 2;
   expect(() => parseEconomy(badClaims)).toThrow();
 });
+
+test('強化配列・マイルストーン・idle_base の整合を検証する', () => {
+  function up(j: Record<string, unknown>, key: string): Record<string, unknown> {
+    return (j['upgrades'] as Record<string, unknown>)[key] as Record<string, unknown>;
+  }
+  function ms(j: Record<string, unknown>): Record<string, unknown> {
+    return j['milestones'] as Record<string, unknown>;
+  }
+  const cases: Array<(j: Record<string, unknown>) => void> = [
+    (j) => { (j['factors'] as Record<string, unknown>)['idle_base'] = 0.4; },
+    (j) => { up(j, 'idle_efficiency')['values'] = [0.5, 0.6, 0.7, 0.8, 0.9, 1.1]; },
+    (j) => { up(j, 'idle_efficiency')['values'] = [0.5, 0.7, 0.6, 0.8, 0.9, 1.0]; },
+    (j) => { up(j, 'idle_efficiency')['costs'] = [1000, 10000, 0, 1000000, 10000000]; },
+    (j) => { up(j, 'tank_hours')['costs'] = [5000, -1, 500000, 5000000]; },
+    (j) => { up(j, 'tank_hours')['values'] = [12, 12, 24, 36, 48]; },
+    (j) => { up(j, 'nail_q')['values'] = [0, 0.01, 0.02, 0.03, 0.04, 2]; },
+    (j) => { up(j, 'shorten')['costs'] = [50000, 5000, 5000000]; },
+    (j) => { up(j, 'hold_plus')['costs'] = [0, 1000000]; },
+    (j) => { up(j, 'rate_unlock')['rates'] = [1, 4, 0, 40, 100, 400, 1000]; },
+    (j) => { up(j, 'rate_unlock')['medal_costs'] = [2, 5, 20, 50, 200, -500]; },
+    (j) => { ms(j)['thresholds'] = [25, 100, 50]; },
+    (j) => { ms(j)['step_from'] = 100; },
+  ];
+  cases.forEach((mutate, i) => {
+    const j = clone(defaultJson());
+    mutate(j);
+    expect(() => parseEconomy(j), 'case ' + i).toThrow();
+  });
+});
