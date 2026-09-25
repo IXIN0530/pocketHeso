@@ -1,0 +1,75 @@
+import { readFileSync } from 'node:fs';
+import { expect, test } from 'vitest';
+import { ECONOMY_YAKUMONO_IDS, parseEconomy, parseEconomyText } from './economy-config.ts';
+
+function defaultJson(): unknown {
+  const text = readFileSync('../../resources/economy/default.json', 'utf8');
+  return JSON.parse(text) as unknown;
+}
+
+function clone(v: unknown): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(v)) as Record<string, unknown>;
+}
+
+test('既定の経済定義が spec/23 の数値と一致する', () => {
+  const spec = parseEconomy(defaultJson());
+  expect(spec.version).toBe(1);
+  expect(spec.priceGrowth).toBe(1.15);
+  expect(spec.bulkSizes).toEqual([10, 100]);
+  expect(spec.yakumono.map((y) => y.id)).toEqual([...ECONOMY_YAKUMONO_IDS]);
+  expect(spec.yakumono[0]).toMatchObject({ id: 'windmill', periodS: 2, yield: 1, basePrice: 15 });
+  expect(spec.yakumono[2]).toMatchObject({ id: 'croon', periodS: 6, yield: 60, basePrice: 1100 });
+  expect(spec.yakumono[7]).toMatchObject({ id: 'shima', periodS: 16, yield: 650000, basePrice: 330000000 });
+  expect(spec.milestones).toEqual({ thresholds: [25, 50, 100], step: 50, stepFrom: 150 });
+  expect(spec.awaken).toEqual({ minLv: 100, mult: 10, medalBase: 5, medalGrowth: 2 });
+  expect(spec.factors).toEqual({ fg: 1.0, idleBase: 0.5, closed: 0.1, boostMult: 2.0 });
+  expect(spec.notice.feverMult).toBe(7);
+  expect(spec.notice.feverMs).toBe(77000);
+  expect(spec.notice.rushRate).toBe(0.15);
+  expect(spec.notice.rushCapS).toBe(900);
+  expect(spec.notice.bonus1In).toBe(10);
+  expect(spec.close.requiredRunTotal).toBe(1000000000);
+  expect(spec.close.divisor).toBe(1000000000);
+  expect(spec.claims).toEqual({ streakPerDay: 0.05, streakMaxDays: 20 });
+});
+
+test('不正な経済定義を拒否する', () => {
+  expect(() => parseEconomy({})).toThrow();
+  expect(() => parseEconomyText('not json')).toThrow();
+
+  const badGrowth = clone(defaultJson());
+  (badGrowth['price_growth'] as number) = 2.5;
+  expect(() => parseEconomy(badGrowth)).toThrow();
+
+  const badBulk = clone(defaultJson());
+  badBulk['bulk_sizes'] = [10];
+  expect(() => parseEconomy(badBulk)).toThrow();
+
+  const badOrder = clone(defaultJson());
+  const yak = badOrder['yakumono'] as unknown[];
+  const first = yak[0];
+  yak[0] = yak[1] as unknown;
+  yak[1] = first as unknown;
+  expect(() => parseEconomy(badOrder)).toThrow();
+
+  const shortYak = clone(defaultJson());
+  (shortYak['yakumono'] as unknown[]).pop();
+  expect(() => parseEconomy(shortYak)).toThrow();
+
+  const badPrice = clone(defaultJson());
+  ((badPrice['yakumono'] as Array<Record<string, unknown>>)[0] as Record<string, unknown>)['base_price'] = -1;
+  expect(() => parseEconomy(badPrice)).toThrow();
+
+  const badNotice = clone(defaultJson());
+  ((badNotice['notice'] as Record<string, unknown>)['min_fg_ms'] as number) = 900000;
+  ((badNotice['notice'] as Record<string, unknown>)['max_fg_ms'] as number) = 300000;
+  expect(() => parseEconomy(badNotice)).toThrow();
+
+  const badClose = clone(defaultJson());
+  ((badClose['close'] as Record<string, unknown>)['divisor'] as number) = 0;
+  expect(() => parseEconomy(badClose)).toThrow();
+
+  const badClaims = clone(defaultJson());
+  ((badClaims['claims'] as Record<string, unknown>)['streak_per_day'] as number) = 2;
+  expect(() => parseEconomy(badClaims)).toThrow();
+});

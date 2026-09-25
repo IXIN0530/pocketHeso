@@ -98,6 +98,39 @@ export type { ActiveJackpot, ActiveSpin, SimTime, SpinEvent, SpinSnapshot } from
 export { SpinMachine, jackpotBaseDurationMs, jackpotDurationMs, spinDurationMs } from './spin.ts';
 export type { EconomyPort } from './economy.ts';
 export { StubEconomy } from './economy.ts';
+export type { Amount } from './economy-math.ts';
+export {
+  CBRT_ITERATIONS,
+  awakenMedalCost,
+  buildGrowthTable,
+  buildPow115Table,
+  cbrt40,
+  closeGain,
+  effectivePeriodS,
+  growthPow,
+  milestoneCount,
+  pow115,
+  streakMult,
+  yakumonoBulkPrice,
+  yakumonoPrice,
+} from './economy-math.ts';
+export type {
+  EconomyAwaken,
+  EconomyClaims,
+  EconomyClose,
+  EconomyFactors,
+  EconomyMilestones,
+  EconomyNotice,
+  EconomySpec,
+  EconomyUpgrades,
+  EconomyYakumono,
+  EconomyYakumonoId,
+} from './economy-config.ts';
+export {
+  ECONOMY_YAKUMONO_IDS,
+  parseEconomy,
+  parseEconomyText,
+} from './economy-config.ts';
 export type {
   Action,
   EngineConfig,
