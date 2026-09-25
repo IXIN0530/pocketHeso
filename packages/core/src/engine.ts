@@ -321,7 +321,7 @@ export class Engine {
     return this.nowMsState;
   }
 
-  /** 付与を追加する（未来時刻・時刻昇順のみ）。 */
+  /** 付与を追加する（t ≥ now・時刻昇順のみ。now時刻はまだ未処理なので同刻追加も通しと一致する）。 */
   appendGrant(g: Grant): void {
     assertTime(g.at, 'grant.at');
     if (typeof g.claimId !== 'string' || g.claimId.length === 0) {
@@ -341,7 +341,7 @@ export class Engine {
     this.grantsState.push({ claimId: g.claimId, at: g.at, fuelMs: g.fuelMs, medals: g.medals });
   }
 
-  /** 入力を追加する（未来時刻・時刻昇順のみ）。 */
+  /** 入力を追加する（t ≥ now・時刻昇順のみ。now時刻はまだ未処理なので同刻追加も通しと一致する）。 */
   appendAction(a: Action): void {
     assertTime(a.t, 'action.t');
     if (a.t < this.nowMsState) {
@@ -391,83 +391,59 @@ export class Engine {
     this.actionsState.push({ t: a.t, k: 'close' });
   }
 
-  /** 次の入力時刻（to以下で未処理があれば最小値、なければ-1）。 */
-  private nextInputTime(to: SimTime): number {
-    let nxt = -1;
+  /** 次に処理する時刻（curより大きい入力・発射・センサー・変動終了・大当たり終了の最小値。なければto）。 */
+  private nextEventTime(cur: SimTime, to: SimTime): SimTime {
+    let nxt = to;
     const g = this.grantsState[this.grantIdxState] as Grant | undefined;
-    if (g !== undefined && g.at <= to) {
+    if (g !== undefined && g.at > cur && g.at < nxt) {
       nxt = g.at;
     }
     const a = this.actionsState[this.actionIdxState] as Action | undefined;
-    if (a !== undefined && a.t <= to && (nxt === -1 || a.t < nxt)) {
+    if (a !== undefined && a.t > cur && a.t < nxt) {
       nxt = a.t;
     }
-    return nxt;
-  }
-
-  /** pending中の最小sensorAt（curより大きくto以下。なければ-1）。 */
-  private nextSensorTime(cur: SimTime, to: SimTime): number {
-    let nxt = -1;
+    const nf = nextFireTick(cur);
+    if (nf < nxt) {
+      nxt = nf;
+    }
     for (let i = 0; i < this.pendingState.length; i = i + 1) {
       const p = this.pendingState[i] as PendingSensor;
-      if (p.sensorAt > cur && p.sensorAt <= to && (nxt === -1 || p.sensorAt < nxt)) {
+      if (p.sensorAt > cur && p.sensorAt < nxt) {
         nxt = p.sensorAt;
+      }
+    }
+    if (this.spins.isSpinning) {
+      const endsAt = this.spins.activeEndsAt as SimTime | null;
+      if (endsAt !== null && endsAt > cur && endsAt < nxt) {
+        nxt = endsAt;
+      }
+    }
+    if (this.spins.isInJackpot) {
+      const endsAt = this.spins.jackpotEndsAt as SimTime | null;
+      if (endsAt !== null && endsAt > cur && endsAt < nxt) {
+        nxt = endsAt;
       }
     }
     return nxt;
   }
 
-  /** 指定時刻まで進める（新規イベントのみ返す）。 */
+  /** 指定時刻まで進める（半開区間[now, to)を処理。to時刻の事象は次のadvanceで処理。新規イベントのみ返す）。 */
   advance(to: SimTime): SimEvent[] {
     assertTime(to, 'to');
     if (to < this.nowMsState) {
       throw new Error('invalid engine: to must be >= now');
     }
     const out: SimEvent[] = [];
-    this.drainInputsAt(this.nowMsState, out);
     let cur = this.nowMsState;
-    while (true) {
-      let nxt = -1;
-      const ni = this.nextInputTime(to);
-      if (ni !== -1 && ni > cur && (nxt === -1 || ni < nxt)) {
-        nxt = ni;
-      }
-      const nf = nextFireTick(cur);
-      if (nf <= to && (nxt === -1 || nf < nxt)) {
-        nxt = nf;
-      }
-      const ns = this.nextSensorTime(cur, to);
-      if (ns !== -1 && (nxt === -1 || ns < nxt)) {
-        nxt = ns;
-      }
-      if (this.spins.isSpinning) {
-        const endsAt = this.spins.activeEndsAt as SimTime | null;
-        if (endsAt !== null && endsAt > cur && endsAt <= to && (nxt === -1 || endsAt < nxt)) {
-          nxt = endsAt;
-        }
-      }
-      if (this.spins.isInJackpot) {
-        const endsAt = this.spins.jackpotEndsAt as SimTime | null;
-        if (endsAt !== null && endsAt > cur && endsAt <= to && (nxt === -1 || endsAt < nxt)) {
-          nxt = endsAt;
-        }
-      }
-      if (nxt === -1) {
-        break;
-      }
-      cur = nxt;
+    while (cur < to) {
       this.applyInputsAt(cur, out);
       this.applyFiringAt(cur, out);
       this.applySensorsAt(cur, out);
       this.applySpinAt(cur, out);
+      cur = this.nextEventTime(cur, to);
     }
     this.nowMsState = to;
     return out;
-  }
-
-  /** 同時刻のgrant/actionを適用する（grant→actionの順）。 */
-  private drainInputsAt(at: SimTime, out: SimEvent[]): void {
-    this.applyInputsAt(at, out);
   }
 
   /** 同時刻のgrant/actionを適用する。 */
@@ -701,7 +677,7 @@ export class Engine {
     };
   }
 
-  /** 複写から復元する。 */
+  /** 複写から復元する（経済はcfg.economy、未指定ならStub。状態はsnap.economyから入れる）。 */
   static restore(snap: EngineSnapshot, cfg: EngineConfig): Engine {
     const eng = new Engine(
       {
@@ -710,6 +686,7 @@ export class Engine {
         patterns: cfg.patterns,
         atlas: cfg.atlas,
         initialBalls: 0,
+        economy: cfg.economy,
       },
       [],
       [],
@@ -773,7 +750,6 @@ export class Engine {
       eng.actionsState.push({ ...a });
     }
     eng.actionIdxState = snap.actionIdx;
-    eng.economy = new StubEconomy();
     eng.economy.restore(snap.economy);
     return eng;
   }
@@ -789,6 +765,7 @@ export class Engine {
       spec: this.spec,
       patterns: this.patterns,
       atlas: this.atlasBuffer,
+      economy: this.economy.fork(),
     });
     clone.fgState = false;
     clone.grantIdxState = clone.grantsState.length;

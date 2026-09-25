@@ -6,6 +6,7 @@ import { parseMachineText, parsePatternsText } from './machine.ts';
 import { atlasKeyForBall, decodeAtlasEntry } from './atlas.ts';
 import type { Action, Grant, SimEvent } from './engine.ts';
 import { Engine } from './engine.ts';
+import type { EconomyPort } from './economy.ts';
 
 function loadMachine(): { spec: MachineSpec; patterns: PatternTable } {
   const spec = parseMachineText(readFileSync('../../resources/machines/light-middle-01.json', 'utf8'));
@@ -92,7 +93,7 @@ function sensorKindOf(atlasKind: string): 'start1' | 'out' | 'lost' {
   return 'out';
 }
 
-test('発射は600ms絶対倍数・Atlas参照でセンサー時刻が決まる', () => {
+test('発射は600ms絶対倍数・Atlas参照でセンサー時刻が決まる（advanceは半開区間）', () => {
   const { spec, patterns } = loadMachine();
   const atlas = loadAtlas();
   const seed = 42;
@@ -100,15 +101,15 @@ test('発射は600ms絶対倍数・Atlas参照でセンサー時刻が決まる'
   const evs = eng.advance(1800);
   const fired = evs.filter((e) => e.k === 'fired');
   expect(fired).toEqual([
-    { k: 'fired', ball: 0, at: 600, rate: 1 },
-    { k: 'fired', ball: 1, at: 1200, rate: 1 },
-    { k: 'fired', ball: 2, at: 1800, rate: 1 },
+    { k: 'fired', ball: 0, at: 0, rate: 1 },
+    { k: 'fired', ball: 1, at: 600, rate: 1 },
+    { k: 'fired', ball: 2, at: 1200, rate: 1 },
   ]);
   const later = eng.advance(90000);
   const all = [...evs, ...later];
   expectTimeOrdered(all);
   for (let b = 0; b < 3; b = b + 1) {
-    const fireAt = 600 * (b + 1);
+    const fireAt = 600 * b;
     const key = atlasKeyForBall(seed, b);
     const entry = decodeAtlasEntry(atlas, key);
     const wantKind = sensorKindOf(entry.kind);
@@ -151,7 +152,7 @@ test('背面では手動がoff扱い・autoは毎グリッド・前面はshoot�
   const autoBack = makeEngine(1, atlas, spec, patterns, [{ t: 0, k: 'auto', share: 1, rate: 2 }], [], 100000);
   const autoFired = autoBack.advance(1800).filter((e) => e.k === 'fired');
   expect(autoFired.length).toBe(3);
-  expect(autoFired[0]).toEqual({ k: 'fired', ball: 0, at: 600, rate: 2 });
+  expect(autoFired[0]).toEqual({ k: 'fired', ball: 0, at: 0, rate: 2 });
   const front = makeEngine(
     1,
     atlas,
@@ -166,8 +167,8 @@ test('背面では手動がoff扱い・autoは毎グリッド・前面はshoot�
   );
   const frontFired = front.advance(1200).filter((e) => e.k === 'fired');
   expect(frontFired).toEqual([
-    { k: 'fired', ball: 0, at: 600, rate: 5 },
-    { k: 'fired', ball: 1, at: 1200, rate: 5 },
+    { k: 'fired', ball: 0, at: 0, rate: 5 },
+    { k: 'fired', ball: 1, at: 600, rate: 5 },
   ]);
   const half = makeEngine(1, atlas, spec, patterns, [{ t: 0, k: 'auto', share: 0.5, rate: 1 }], [], 100000);
   expect(half.advance(2400).filter((e) => e.k === 'fired').length).toBe(2);
@@ -244,6 +245,66 @@ test('決定論契約2: snapshot→restore→続行が通しと一致', () => {
   const tailResumed = resumed.advance(until);
   expect(tailResumed).toEqual(tailThrough);
   expect(resumed.snapshot()).toEqual(snapThrough);
+});
+
+test('advance(T)後にt===Tで追加した入力・付与は最初から渡した通しと一致', () => {
+  const { spec, patterns } = loadMachine();
+  const atlas = loadAtlas();
+  const seed = 31;
+  const start: Action[] = [{ t: 0, k: 'shoot', on: true, rate: 1 }];
+  const late: Action = { t: 1200, k: 'shoot', on: false, rate: 1 };
+  const lateGrant: Grant = { claimId: 'g1', at: 1200, fuelMs: 1000, medals: 1 };
+  const through = makeEngine(seed, atlas, spec, patterns, [...start, late], [lateGrant], 1000);
+  const once = through.advance(90000);
+  const split = makeEngine(seed, atlas, spec, patterns, start, [], 1000);
+  const head = split.advance(1200);
+  split.appendAction(late);
+  split.appendGrant(lateGrant);
+  const tail = split.advance(90000);
+  expect([...head, ...tail]).toEqual(once);
+  expect(split.snapshot()).toEqual(through.snapshot());
+  expect(once.filter((e) => e.k === 'fired').map((e) => e.at)).toEqual([0, 600]);
+});
+
+/** 状態（呼び出し回数）を持つテスト用経済。 */
+class CountingEconomy implements EconomyPort {
+  count = 0;
+  snapshot(): unknown {
+    return { count: this.count };
+  }
+  restore(s: unknown): void {
+    this.count = (s as { count: number }).count;
+  }
+  fork(): EconomyPort {
+    const e = new CountingEconomy();
+    e.count = this.count;
+    return e;
+  }
+}
+
+test('restoreはcfg.economyを使いsnap.economyを入れる・lookaheadは本体の経済を共有しない', () => {
+  const { spec, patterns } = loadMachine();
+  const atlas = loadAtlas();
+  const economy = new CountingEconomy();
+  economy.count = 7;
+  const eng = new Engine({ seed: 3, spec, patterns, atlas, economy }, [], [{ t: 0, k: 'auto', share: 1, rate: 1 }]);
+  eng.advance(6000);
+  const snap = eng.snapshot();
+  expect(snap.economy).toEqual({ count: 7 });
+  const fresh = new CountingEconomy();
+  const back = Engine.restore(snap, { seed: 3, spec, patterns, atlas, economy: fresh });
+  expect(fresh.count).toBe(7);
+  expect(back.snapshot()).toEqual(snap);
+  let forked: EconomyPort | null = null;
+  const origFork = economy.fork.bind(economy);
+  economy.fork = (): EconomyPort => {
+    forked = origFork();
+    return forked;
+  };
+  eng.lookahead(12000);
+  expect(forked).not.toBeNull();
+  expect(forked).not.toBe(economy);
+  expect(eng.snapshot()).toEqual(snap);
 });
 
 test('lookaheadは状態を変えず背面仮定・projectはパチンコ部を返す', () => {
