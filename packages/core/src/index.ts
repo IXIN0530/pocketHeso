@@ -82,6 +82,7 @@ export type { HoldEntry, LotteryHoldColor, LotteryMode } from './lottery.ts';
 export {
   LOTTERY_HOLD_COLORS,
   LOTTERY_MODES,
+  drawBonusHold,
   drawHold,
   hesoPayoutBalls,
   holdColorWeights,
@@ -135,18 +136,24 @@ export {
 } from './economy-config.ts';
 export type {
   Action,
+  ActiveNotice,
+  AwaySummary,
+  AwayTrackerSnapshot,
   EngineConfig,
   EngineSnapshot,
   Grant,
   HallProjection,
+  HotHint,
   JackpotView,
+  NoticeEffect,
+  NoticeView,
   PendingSensor,
   SimEvent as EngineSimEvent,
   SpinView,
   Totals,
   YakumonoView,
 } from './engine.ts';
-export { Engine, FIRE_INTERVAL_MS, projectSnapshot } from './engine.ts';
+export { BONUS_SERIAL_BASE, Engine, FIRE_INTERVAL_MS, projectSnapshot } from './engine.ts';
 export {
   HOLD_COLORS,
   JACKPOT_KINDS,

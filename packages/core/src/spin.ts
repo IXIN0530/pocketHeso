@@ -243,10 +243,13 @@ export class SpinMachine {
     return this.jackpotState.uwanoseAt;
   }
 
-  /** 変動を開始する（待機中でなければ投げる）。 */
-  startSpin(entry: HoldEntry, at: SimTime, holdCount: number): SpinEvent[] {
+  /** 変動を開始する（待機中でなければ投げる。durationScale は変動短縮の倍率で1が等倍）。 */
+  startSpin(entry: HoldEntry, at: SimTime, holdCount: number, durationScale = 1): SpinEvent[] {
     assertTime(at, 'at');
     assertHoldCount(holdCount);
+    if (!(durationScale > 0) || durationScale > 1) {
+      throw new Error('invalid spin: durationScale must be in (0, 1]');
+    }
     if (at < this.nowMsState) {
       throw new Error('invalid spin: at must be >= nowMs');
     }
@@ -269,7 +272,11 @@ export class SpinMachine {
     if (!entry.isHit && entry.branchIndex !== null) {
       throw new Error('invalid spin: miss entry must have null branchIndex');
     }
-    const durationMs = spinDurationMs(this.patterns, entry.patternIndex, holdCount);
+    const baseMs = spinDurationMs(this.patterns, entry.patternIndex, holdCount);
+    const durationMs = durationScale === 1 ? baseMs : Math.floor(baseMs * durationScale);
+    if (durationMs < 1) {
+      throw new Error('invalid spin: durationMs out of range');
+    }
     const endsAt = at + durationMs;
     if (endsAt >= MAX_SAFE_MS) {
       throw new Error('invalid spin: endsAt out of range');

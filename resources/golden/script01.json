@@ -1,0 +1,26 @@
+{
+  "seed": 42,
+  "machine": "light-middle-01",
+  "patterns": "patterns.json",
+  "atlas": "default",
+  "economy": "default.json",
+  "initialBalls": 100000,
+  "initialMedals": 10,
+  "initialFuelMs": 43200000,
+  "until": 21600000,
+  "grants": [
+    { "claimId": "fuel12h", "at": 0, "fuelMs": 43200000, "medals": 0 },
+    { "claimId": "medal10", "at": 0, "fuelMs": 0, "medals": 10 }
+  ],
+  "actions": [
+    { "t": 0, "k": "buy", "target": "windmill", "count": 10 },
+    { "t": 0, "k": "buy", "target": "kaitentai", "count": 1 },
+    { "t": 0, "k": "buy", "target": "idle", "count": 1 },
+    { "t": 0, "k": "shoot", "on": true, "rate": 1 },
+    { "t": 0, "k": "auto", "share": 0.5, "rate": 1 },
+    { "t": 3600000, "k": "presence", "fg": false },
+    { "t": 7200000, "k": "presence", "fg": true },
+    { "t": 10800000, "k": "boost", "on": false },
+    { "t": 14400000, "k": "close" }
+  ]
+}

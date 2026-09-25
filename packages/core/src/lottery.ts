@@ -137,6 +137,65 @@ function patternWeights(patterns: PatternTable, isHit: boolean): number[] {
   return w;
 }
 
+/** 予告ボーナス抽選の当否しきい値（`floor(2^32 / bonus1In)`）。 */
+function bonusThresholdU32(bonus1In: number): number {
+  if (typeof bonus1In !== 'number' || !Number.isFinite(bonus1In) || Math.floor(bonus1In) !== bonus1In) {
+    throw new Error('invalid lottery: bonus1In must be an int');
+  }
+  if (bonus1In < 2 || bonus1In > 100) {
+    throw new Error('invalid lottery: bonus1In out of range');
+  }
+  return Math.floor(4294967296 / bonus1In);
+}
+
+/** 予告の特別変動1回（当否1/10は `notice` ストリームの3手目、枝・パターン・色は bonusSerial の各ストリーム）。 */
+export function drawBonusHold(
+  spec: MachineSpec,
+  patterns: PatternTable,
+  seed: number,
+  mode: LotteryMode,
+  noticeId: number,
+  bonusSerial: number,
+  bonus1In: number,
+  effectWeights: readonly number[],
+): HoldEntry {
+  modeOf(spec, mode);
+  assertSerial(noticeId);
+  assertSerial(bonusSerial);
+  if (patterns.length === 0) {
+    throw new Error('invalid lottery: patterns must not be empty');
+  }
+  if (effectWeights.length === 0) {
+    throw new Error('invalid lottery: effectWeights must not be empty');
+  }
+  const notice = new RNGStream(seed, 'notice', noticeId);
+  notice.nextUnit();
+  notice.pick(effectWeights);
+  const hitU32 = notice.nextU32();
+  const isHit = hitU32 < bonusThresholdU32(bonus1In);
+  let branchIndex: number | null = null;
+  if (isHit) {
+    branchIndex = new RNGStream(seed, 'split', bonusSerial).pick(splitWeights(spec, mode));
+  }
+  const patternIndex = new RNGStream(seed, 'pattern', bonusSerial).pick(patternWeights(patterns, isHit));
+  const patternRow = patterns[patternIndex];
+  if (patternRow === undefined) {
+    throw new Error('invalid lottery: pattern index out of range');
+  }
+  const colorIndex = new RNGStream(seed, 'holdColor', bonusSerial).pick(holdColorWeights(spec, isHit));
+  const color = LOTTERY_HOLD_COLORS[colorIndex];
+  if (color === undefined) {
+    throw new Error('invalid lottery: color index out of range');
+  }
+  let hot = patternRow.hot;
+  if (color === 'red') {
+    hot = Math.min(5, hot + 1);
+  } else if (color === 'gold') {
+    hot = 5;
+  }
+  return { serial: bonusSerial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0 };
+}
+
 /** ヘソ入賞時の取得時判定（当否・振分け・パターン・色を全部確定）。 */
 export function drawHold(
   spec: MachineSpec,

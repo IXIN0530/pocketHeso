@@ -14,7 +14,7 @@ import {
 
 /** IdleEconomy の複写（Engine の snapshot.economy に入る）。 */
 export interface IdleEconomySnapshot {
-  readonly v: 1;
+  readonly v: 2;
   readonly lv: readonly number[];
   readonly awakened: readonly number[];
   readonly idleStage: number;
@@ -32,6 +32,7 @@ export interface IdleEconomySnapshot {
   readonly lastStreakDay: string;
   readonly boostMs: number;
   readonly boostOn: boolean;
+  readonly feverMs: number;
 }
 
 /** 役物表示（Lv・覚醒数・次の価格。描画と購入UIが見る）。 */
@@ -180,6 +181,7 @@ export class IdleEconomy implements EconomyPort {
   private lastStreakDayState = '';
   private boostMsState = 0;
   private boostOnState = true;
+  private feverMsState = 0;
 
   /** 仕様から価格表（growth^0..10000）を作る。 */
   constructor(spec: EconomySpec) {
@@ -192,7 +194,7 @@ export class IdleEconomy implements EconomyPort {
   /** 状態の複写。 */
   snapshot(): IdleEconomySnapshot {
     return {
-      v: 1,
+      v: 2,
       lv: [...this.lvState],
       awakened: [...this.awakenedState],
       idleStage: this.idleStageState,
@@ -210,15 +212,17 @@ export class IdleEconomy implements EconomyPort {
       lastStreakDay: this.lastStreakDayState,
       boostMs: this.boostMsState,
       boostOn: this.boostOnState,
+      feverMs: this.feverMsState,
     };
   }
 
-  /** 複写から復元する。 */
+  /** 複写から復元する（v1 は fever=0 として読む）。 */
   restore(s: unknown): void {
     if (!isRecord(s)) {
       fail('snapshot must be an object');
     }
-    if (s['v'] !== 1) {
+    const v = s['v'];
+    if (v !== 1 && v !== 2) {
       fail('snapshot version mismatch');
     }
     const lv = s['lv'];
@@ -265,6 +269,13 @@ export class IdleEconomy implements EconomyPort {
     if (typeof boostOn !== 'boolean') {
       fail('boostOn must be boolean');
     }
+    let feverMs = 0;
+    if (v === 2) {
+      feverMs = asFinite(s['feverMs'] as number, 'feverMs');
+      if (feverMs < 0) {
+        fail('feverMs must be >= 0');
+      }
+    }
     this.lvState = lvCopy;
     this.awakenedState = awCopy;
     this.idleStageState = idleStage;
@@ -282,6 +293,7 @@ export class IdleEconomy implements EconomyPort {
     this.lastStreakDayState = lastStreakDay;
     this.boostMsState = boostMs;
     this.boostOnState = boostOn;
+    this.feverMsState = feverMs;
   }
 
   /** 独立した複製。 */
@@ -352,7 +364,7 @@ export class IdleEconomy implements EconomyPort {
     return sum;
   }
 
-  /** 現在の毎秒生産（常連・連日・ブースト・状態係数込み、予告バフは×1）。 */
+  /** 現在の毎秒生産（常連・連日・ブースト・予告フィーバー・状態係数込み）。 */
   getPerSec(fg: boolean, fuelMs: number): number {
     const base = this.basePerSec();
     if (base === 0) {
@@ -372,7 +384,24 @@ export class IdleEconomy implements EconomyPort {
     if (this.boostOnState && this.boostMsState > 0 && fg) {
       boostF = this.spec.factors.boostMult;
     }
-    return base * regularF * streakF * boostF * stateF;
+    let feverF = 1;
+    if (this.feverMsState > 0) {
+      feverF = this.spec.notice.feverMult;
+    }
+    return base * regularF * streakF * boostF * feverF * stateF;
+  }
+
+  /** フィーバー残量ms（前面・背面を問わずtickで減る）。 */
+  getFeverMs(): number {
+    return this.feverMsState;
+  }
+
+  /** フィーバー発動（残量の延長は長い方を取る）。 */
+  onNoticeFever(): void {
+    const want = this.spec.notice.feverMs;
+    if (want > this.feverMsState) {
+      this.feverMsState = want;
+    }
   }
 
   /** ブースト残量ms。 */
@@ -426,14 +455,109 @@ export class IdleEconomy implements EconomyPort {
     return v as number;
   }
 
+  /** 予告の設定（Engineのスケジュール・効果判定用。参照を返さないよう複写）。 */
+  getNoticeConfig(): {
+    minFgMs: number;
+    maxFgMs: number;
+    displayMs: number;
+    feverMult: number;
+    feverMs: number;
+    feverWeight: number;
+    rushRate: number;
+    rushCapS: number;
+    rushWeight: number;
+    bonus1In: number;
+    bonusWeight: number;
+  } {
+    const n = this.spec.notice;
+    return {
+      minFgMs: n.minFgMs,
+      maxFgMs: n.maxFgMs,
+      displayMs: n.displayMs,
+      feverMult: n.feverMult,
+      feverMs: n.feverMs,
+      feverWeight: n.feverWeight,
+      rushRate: n.rushRate,
+      rushCapS: n.rushCapS,
+      rushWeight: n.rushWeight,
+      bonus1In: n.bonus1In,
+      bonusWeight: n.bonusWeight,
+    };
+  }
+
   /** 変動短縮の適用回数（T3用）。 */
   shortenCount(): number {
     return this.shortenStageState;
   }
 
+  /** 変動短縮の倍率（factor^stagesを乗算で）。 */
+  shortenMult(): number {
+    let m = 1;
+    for (let i = 0; i < this.shortenStageState; i = i + 1) {
+      m = m * this.spec.upgrades.shortenFactor;
+    }
+    return m;
+  }
+
   /** 保留プラスの適用回数（T3用）。 */
   holdPlusCount(): number {
     return this.holdStageState;
+  }
+
+  /** 実効hold_max（base+holdPlus、上限6）。 */
+  effectiveHoldMax(baseHoldMax: number): number {
+    if (Math.floor(baseHoldMax) !== baseHoldMax || baseHoldMax < 1 || baseHoldMax > 8) {
+      fail('baseHoldMax out of range');
+    }
+    const v = baseHoldMax + this.holdStageState;
+    return v > 6 ? 6 : v;
+  }
+
+  /** 役物の実効周期s（マイルストーン込み。描画位相用）。 */
+  effectivePeriodSFor(id: string, lv: number): number {
+    const idx = this.yakumonoIndex(id);
+    if (idx < 0) {
+      fail('unknown yakumono');
+    }
+    const def = this.spec.yakumono[idx] as { periodS: number };
+    if (Math.floor(lv) !== lv || lv < 0) {
+      fail('lv out of range');
+    }
+    return effectivePeriodS(
+      (def as { periodS: number }).periodS,
+      lv,
+      this.spec.milestones.thresholds,
+      this.spec.milestones.step,
+      this.spec.milestones.stepFrom,
+    );
+  }
+
+  /** オート打ちの解放済みか。 */
+  isAutoUnlocked(): boolean {
+    return this.autoOwnedState;
+  }
+
+  /** 止め打ちの所持か。 */
+  isTomeuchiEnabled(): boolean {
+    return this.tomeuchiOwnedState;
+  }
+
+  /** レートが解放済みか（rates[0..rateStage]のいずれかと一致）。 */
+  isRateAllowed(rate: number): boolean {
+    if (Math.floor(rate) !== rate || rate < 1) {
+      return false;
+    }
+    const rates = this.spec.upgrades.rates;
+    const maxIdx = this.rateStageState;
+    if (maxIdx >= rates.length) {
+      fail('rateStage out of range');
+    }
+    for (let i = 0; i <= maxIdx; i = i + 1) {
+      if ((rates[i] as number) === rate) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Grant適用（燃料は上限・溢れ→ブースト、メダル加算、連日更新）。 */
@@ -505,7 +629,7 @@ export class IdleEconomy implements EconomyPort {
     }
   }
 
-  /** 1000ms分の生産と消費（開始時状態で1秒分。燃料・ブーストを消費し玉を産む）。 */
+  /** 1000ms分の生産と消費（開始時状態で1秒分。燃料・ブースト・フィーバーを消費し玉を産む）。 */
   onTick(fg: boolean, curFuelMs: number): { ballGain: number; fuelMs: number; fuelBecameEmpty: boolean } {
     asFinite(curFuelMs, 'curFuelMs');
     if (curFuelMs < 0) {
@@ -532,6 +656,13 @@ export class IdleEconomy implements EconomyPort {
         this.boostMsState = 0;
       } else {
         this.boostMsState = this.boostMsState - 1000;
+      }
+    }
+    if (this.feverMsState > 0) {
+      if (this.feverMsState <= 1000) {
+        this.feverMsState = 0;
+      } else {
+        this.feverMsState = this.feverMsState - 1000;
       }
     }
     return { ballGain: gain, fuelMs: fuel, fuelBecameEmpty: becameEmpty };
