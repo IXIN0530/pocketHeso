@@ -63,3 +63,36 @@
 ## 出玉
 - 大当たり出玉 = `rounds × count × payout_per_ball × rate`。メダル = `per_jackpot`（確変なら `per_kakuhen`）。
 - 期待値の目安（初期・レート1）: 1玉あたりの払い戻し ≈ 0.85。強化で 1 付近まで（spec/23 の上限）。
+
+## モード拡張: 時短・LT・上乗せ（D-037。実装は P2-T7〜T9）
+リゼロ2のような一撃型に寄せる拡張。**取得時に全部確定（D-017）は変えない**。上乗せ量も取得時に決まり、演出は後から段階的に見せるだけ。
+
+### モード
+| モード | 役割 | 確率 | 回数 |
+|---|---|---|---|
+| `normal` | 通常時 | `modes.normal` | 無制限 |
+| `jitan` | 時短（通常当たり後の引き戻しチャンス） | `modes.jitan`（通常と同じ確率が基本） | `spins` 回 |
+| `st` | RUSH | `modes.st` | `spins` 回 |
+| `lt` | 上位 RUSH（ラッキートリガー） | `modes.lt` | `spins` 回 |
+- 各モードの JSON は `{"jackpot_1_in": N, "spins": M}`（旧 `st_spins` も読む）。`jitan`・`lt` は省略可（省略した機種では出ない）。
+- 大当たり終了時に、その枝の `next` のモードへ移り、残り回数を `spins` にする。残り回数は変動1回ごとに −1、0 で `normal` へ。
+- 時短・RUSH・LT 中の変動は保留数によらず短縮パターンを使う（ST と同じ扱い）。
+
+### 振分けの枝
+`{"kind", "rounds", "bonus_rounds"?, "next"?, "weight", "weight_jitan"?, "weight_st"?, "weight_lt"?}`
+- `next`: 終了後のモード。省略時は `kakuhen`→`st`、`tsujo`→`normal`（今の機種と同じ動き）。
+- 重みの省略時: `weight_jitan` = `weight`、`weight_st` = `weight`、`weight_lt` = `weight_st`。
+- `bonus_rounds`: **上乗せ**（省略時は 0）。出玉 = `(rounds + bonus_rounds) × count × payout_per_ball × rate`。大当たり時間も合計ラウンド分。
+- 同じ `(kind, rounds, bonus_rounds, next)` の枝は重複不可。合計ラウンドは 60 以内。
+
+### 上乗せイベント・投影
+- `jackpotStarted` に `bonusRounds` を足す（演出が上乗せの大きさを先に知るため。見せるのは後）。
+- `uwanose { entry, at, addRounds, totalRounds }` を基本ラウンドの消化が終わる時刻（開始 + `rounds × ms_per_round`）に出す。
+- 投影に `chain`（RUSH 入りからの連チャン数）と `chainBalls`（その累計出玉）を足す。LT 中の「累計◯◯発」表示に使う。
+- 上乗せの見せ方（段階表示・音・光）は spec/43 で扱う。
+
+### 例: `lt-middle-01`（理論値。P2-T9 で pachisim の実測と照合）
+- 通常 1/349.9。初当たりは 3R（450玉）で、25% は RUSH へ直行、75% は時短 100 回（引き戻し約25%。時短中の当たりはすべて RUSH 行き）。実質の RUSH 突入率は約44%。
+- RUSH: 1/39.9 × 56回（継続率約76%）。当たりは 10R（1500玉）で、そのうち 4% が LT 昇格。RUSH に入ったうち約11%が LT に届く。
+- LT: 1/39.9 × 91回（継続率約90%）。当たりは 10R に上乗せ +0/+10/+20/+40R を 60/25/10/5 で振り分け、平均 約2,475玉。
+- 通常1回転あたりの期待出玉は約9.88玉で、light-middle-01（9.74玉）と揃えている。初当たり1回で5万玉以上になるのは約0.75%、10万玉以上は約0.09%。

@@ -40,3 +40,29 @@ Owner: Muse Spark（Review: Claude Code）| Read: spec/21-core-lottery
 Do: `pnpm sim run --balls 10000000 --seed N [--json]` → 回転率/1000発、初当たり確率、ST 継続率、平均出玉、最大ハマり、1玉あたり払い戻し。
 Accept:
 - [ ] 理論値と観測値を並べた表を出し、許容差内であることをテストで確認
+
+### P2-T7 モード拡張（時短・LT）
+Owner: 誰でも（Review: Claude Code）| Read: spec/21-core-lottery（モード拡張節）, spec/22-core-engine（イベント節）
+Do: `LotteryMode` に `jitan`・`lt` を追加、機種 JSON の `modes.jitan/lt`・`spins`・枝の `next`・`weight_jitan/lt` を読む、
+`SpinMachine` の遷移（大当たり終了で `next` へ・回数 0 で `normal`）、`modeChanged`・投影の `mode` を拡張。spec/22 の `Mode` を更新。
+Accept:
+- [ ] light-middle-01・rush-middle-01 の既存テストが**変更なしで**通る（省略時の既定値で今と同じ動き）
+- [ ] 手書きシナリオ（通常→通常当たり→時短→引き戻し→RUSH→LT 昇格→LT→LT 抜け→通常）が期待イベント列と一致
+- [ ] 時短・LT 中の取得はそのモードの確率と重みで判定される（100万取得で ±3σ）
+
+### P2-T8 上乗せ
+Owner: 誰でも（Review: Claude Code）| Read: spec/21-core-lottery（モード拡張節）, spec/22-core-engine（イベント節）
+Do: 枝の `bonus_rounds`、出玉と大当たり時間への反映、`jackpotStarted.bonusRounds`、`uwanose` イベント、投影の `chain`・`chainBalls`。
+Accept:
+- [ ] `uwanose` が「開始 + rounds × ms_per_round」に出て、出玉が合計ラウンド分になる
+- [ ] 決定論契約 1・2（spec/22）が上乗せを含む区間（大当たり中・LT 中の区切り）で通る
+- [ ] `chain`・`chainBalls` が RUSH 入りで 0 から数え始め、通常に戻るとリセットされる
+
+### P2-T9 lt-middle-01 と3機種比較
+Owner: 誰でも（Review: Claude Code）| Read: spec/21-core-lottery
+Do: `resources/machines/lt-middle-01.json` を spec/21 の例どおりに追加。pachisim の理論値をモード遷移（マルコフ連鎖）で計算できるようにし、
+light / rush / lt の3機種を同じ表に並べる（初当たり確率・実質突入率・各継続率・LT 到達率・初当たりあたり平均出玉・5万/10万玉以上の割合・最大ハマり・1玉あたり払い戻し）。
+Accept:
+- [ ] 3機種とも観測値が理論値の許容差内（テスト）
+- [ ] 通常1回転あたりの期待出玉が light-middle-01 の ±5% 以内。外れたら数値を調整して DECISIONS に記録
+- [ ] 既定の機種をどれにするか人間に確認し、STATUS Notes に残す
