@@ -1,6 +1,13 @@
 # P5 App: 画面・描画・保存
 前提: P2-T5 完了（P3 未完の間は EconomyPort の仮実装で進めてよい）。
 
+### P5-T0 描画担当の比較（Opus 5.5 vs Muse Spark 1.3）
+Owner: 人間（進行）＋両エージェント | Read: ref/graphics-bakeoff
+Do: ref/graphics-bakeoff の手順で、同じ課題（`?spike=bakeoff`）を `bakeoff/opus` と `bakeoff/muse` で作らせ、実機で伏せて見比べる。
+Accept:
+- [ ] 両ブランチのプレビュー URL が実機で開け、評価表が埋まっている（STATUS Notes に要約）
+- [ ] P5-T2・P5-T3・P6-T2 の Owner を決め、DECISIONS に1行、tooling.md の分担表を更新
+
 ### P5-T1 Engine Worker と保存
 Owner: Claude Code | Read: spec/10-architecture（保存節）, spec/40-app-ui（状態管理節）, spec/41-pwa-platform（保存節）
 Do: `engine.worker.ts`（RPC）、IndexedDB（idb）スキーマと版数移行、起動時の復元（snapshot 無しでも seed+claims+actions から再計算）、
