@@ -7,6 +7,7 @@ import {
   atlasKeyForBall,
   bytesToHex,
   decodeAtlasHeader,
+  defaultNextForKind,
   drawHold,
   jackpotPayoutBalls,
   parseBoardText,
@@ -39,8 +40,8 @@ export interface RunArgs {
   readonly json: boolean;
 }
 
-/** 既定で比べる機種（P2-T6: light/rush 比較）。 */
-export const DEFAULT_RUN_MACHINES: readonly string[] = ['light-middle-01', 'rush-middle-01'];
+/** 既定で比べる機種（P2-T9: light/rush/lt の3機種比較）。 */
+export const DEFAULT_RUN_MACHINES: readonly string[] = ['light-middle-01', 'rush-middle-01', 'lt-middle-01'];
 
 function asIntOption(value: string | undefined, what: string): number {
   if (value === undefined) {
@@ -138,11 +139,21 @@ export function loadRunAtlas(): { buffer: ArrayBuffer; hesoRate: number } {
   return { buffer: ab, hesoRate: heso / ATLAS_ENTRY_COUNT };
 }
 
-/** 理論値（マルコフ連鎖の closed-form。kakuhen→st・tsujo→normal を仮定。P2-T6 は normal/st のみ）。 */
+/** 理論値（モード遷移のマルコフ連鎖。normal/jitan/st/lt の `next` と各モード重みをそのまま使う。P2-T9）。 */
 export interface RunTheory {
   readonly hatsuariProb: number;
   readonly hatsuari1In: number;
+  /** 実質 RUSH 突入率（初当たり1回が st/lt に入る確率。jitan 経由を含む）。 */
+  readonly rushEntryRate: number;
+  /** 時短の継続率（jitan 突入が RUSH に繋がる確率。jitan なしは 0）。 */
+  readonly jitanContinuation: number;
   readonly stContinuation: number;
+  /** LT の継続率（lt 突入が RUSH に繋がる確率。lt なしは 0）。 */
+  readonly ltContinuation: number;
+  /** LT 到達率（初当たり1回が lt に届く確率。lt なしは 0）。 */
+  readonly ltArrivalPerHatsuari: number;
+  /** LT 到達率（RUSH 突入あたり。st 突入が lt に届く確率。lt なしは 0）。 */
+  readonly ltArrivalPerRush: number;
   readonly avgJackpot: number;
   readonly avgPerHatsuari: number;
   readonly perNormalSpin: number;
@@ -150,64 +161,289 @@ export interface RunTheory {
   readonly payoutPerBall: number;
 }
 
+function weightForMode(
+  spec: MachineSpec,
+  branchIndex: number,
+  mode: LotteryMode,
+): number {
+  const b = spec.jackpotSplit[branchIndex];
+  if (b === undefined) {
+    throw new Error('invalid run: branch out of range');
+  }
+  if (mode === 'normal') {
+    return b.weight;
+  }
+  if (mode === 'jitan') {
+    return b.weightJitan === undefined ? b.weight : b.weightJitan;
+  }
+  if (mode === 'st') {
+    return b.weightSt;
+  }
+  const ltW = b.weightLt === undefined ? b.weightSt : b.weightLt;
+  return ltW;
+}
+
+function nextForBranch(spec: MachineSpec, branchIndex: number): LotteryMode {
+  const b = spec.jackpotSplit[branchIndex];
+  if (b === undefined) {
+    throw new Error('invalid run: branch out of range');
+  }
+  const next = b.next === undefined ? defaultNextForKind(b.kind) : b.next;
+  return next;
+}
+
+function spinsForTheoryMode(spec: MachineSpec, mode: LotteryMode): number {
+  if (mode === 'normal') {
+    return 0;
+  }
+  if (mode === 'jitan') {
+    return spec.jitan === undefined ? 0 : spec.jitan.stSpins;
+  }
+  if (mode === 'st') {
+    return spec.st.stSpins;
+  }
+  return spec.lt === undefined ? 0 : spec.lt.stSpins;
+}
+
+function hitRateForTheoryMode(spec: MachineSpec, mode: LotteryMode): number {
+  if (mode === 'normal') {
+    return 1 / spec.normal.jackpot1In;
+  }
+  if (mode === 'jitan') {
+    return spec.jitan === undefined ? 0 : 1 / spec.jitan.jackpot1In;
+  }
+  if (mode === 'st') {
+    return 1 / spec.st.jackpot1In;
+  }
+  return spec.lt === undefined ? 0 : 1 / spec.lt.jackpot1In;
+}
+
+/** 3x3 連立（(I - H Q) x = b）をガウス消去で解く。特異時は 0 ベクトル。 */
+function solve3(a: readonly (readonly number[])[], b: readonly number[]): number[] {
+  const m: number[][] = [
+    [a[0]![0] as number, a[0]![1] as number, a[0]![2] as number, b[0] as number],
+    [a[1]![0] as number, a[1]![1] as number, a[1]![2] as number, b[1] as number],
+    [a[2]![0] as number, a[2]![1] as number, a[2]![2] as number, b[2] as number],
+  ];
+  for (let col = 0; col < 3; col = col + 1) {
+    let pivot = col;
+    let best = Math.abs(m[col]![col] as number);
+    for (let row = col + 1; row < 3; row = row + 1) {
+      const v = Math.abs(m[row]![col] as number);
+      if (v > best) {
+        best = v;
+        pivot = row;
+      }
+    }
+    if (best < 1e-12) {
+      return [0, 0, 0];
+    }
+    if (pivot !== col) {
+      const tmp = m[col] as number[];
+      m[col] = m[pivot] as number[];
+      m[pivot] = tmp;
+    }
+    const div = m[col]![col] as number;
+    for (let k = col; k < 4; k = k + 1) {
+      (m[col] as number[])[k] = ((m[col] as number[])[k] as number) / div;
+    }
+    for (let row = 0; row < 3; row = row + 1) {
+      if (row === col) {
+        continue;
+      }
+      const factor = (m[row] as number[])[col] as number;
+      if (factor === 0) {
+        continue;
+      }
+      for (let k = col; k < 4; k = k + 1) {
+        (m[row] as number[])[k] = ((m[row] as number[])[k] as number) - factor * ((m[col] as number[])[k] as number);
+      }
+    }
+  }
+  return [m[0]![3] as number, m[1]![3] as number, m[2]![3] as number];
+}
+
+/** 2x2 連立を解く。特異時は [0, 0]。 */
+function solve2(a11: number, a12: number, b1: number, a21: number, a22: number, b2: number): number[] {
+  const det = a11 * a22 - a12 * a21;
+  if (Math.abs(det) < 1e-12) {
+    return [0, 0];
+  }
+  return [(b1 * a22 - b2 * a12) / det, (a11 * b2 - a21 * b1) / det];
+}
+
 export function computeTheory(spec: MachineSpec, hesoRate: number): RunTheory {
-  const pN = 1 / spec.normal.jackpot1In;
-  const pS = 1 / spec.st.jackpot1In;
-  let sumWN = 0;
-  let sumPayN = 0;
-  let sumKakuN = 0;
-  for (let i = 0; i < spec.jackpotSplit.length; i = i + 1) {
-    const b = spec.jackpotSplit[i];
-    if (b === undefined) {
+  const modes: readonly LotteryMode[] = ['normal', 'jitan', 'st', 'lt'];
+  const sumW: number[] = [0, 0, 0, 0];
+  const sumPay: number[] = [0, 0, 0, 0];
+  // next 行列 Q[m][n]（m,n は modes 順）。normal 行も初当たりの遷移として使う。
+  const q: number[][] = [
+    [0, 0, 0, 0],
+    [0, 0, 0, 0],
+    [0, 0, 0, 0],
+    [0, 0, 0, 0],
+  ];
+  for (let m = 0; m < modes.length; m = m + 1) {
+    const mode = modes[m] as LotteryMode;
+    if ((mode === 'jitan' && spec.jitan === undefined) || (mode === 'lt' && spec.lt === undefined)) {
       continue;
     }
-    const pay = jackpotPayoutBalls(spec, i, 1);
-    sumWN = sumWN + b.weight;
-    sumPayN = sumPayN + b.weight * pay;
-    if (b.kind === 'kakuhen') {
-      sumKakuN = sumKakuN + b.weight;
+    let s = 0;
+    let sp = 0;
+    const toNext: number[] = [0, 0, 0, 0];
+    for (let i = 0; i < spec.jackpotSplit.length; i = i + 1) {
+      const w = weightForMode(spec, i, mode);
+      const pay = jackpotPayoutBalls(spec, i, 1);
+      s = s + w;
+      sp = sp + w * pay;
+      const next = nextForBranch(spec, i);
+      let n = 0;
+      if (next === 'jitan') {
+        n = 1;
+      } else if (next === 'st') {
+        n = 2;
+      } else if (next === 'lt') {
+        n = 3;
+      }
+      toNext[n] = (toNext[n] as number) + w;
+    }
+    sumW[m] = s;
+    sumPay[m] = sp;
+    if (s > 0) {
+      for (let n = 0; n < 4; n = n + 1) {
+        (q[m] as number[])[n] = ((toNext[n] as number) / s);
+      }
     }
   }
-  let sumWS = 0;
-  let sumPayS = 0;
-  let sumKakuS = 0;
-  for (let i = 0; i < spec.jackpotSplit.length; i = i + 1) {
-    const b = spec.jackpotSplit[i];
-    if (b === undefined) {
-      continue;
-    }
-    const pay = jackpotPayoutBalls(spec, i, 1);
-    sumWS = sumWS + b.weightSt;
-    sumPayS = sumPayS + b.weightSt * pay;
-    if (b.kind === 'kakuhen') {
-      sumKakuS = sumKakuS + b.weightSt;
-    }
-  }
-  if (sumWN <= 0 || sumWS <= 0) {
+  if ((sumW[0] as number) <= 0 || (sumW[2] as number) <= 0) {
     throw new Error('invalid run: split weights must be positive');
   }
-  const avgPayN = sumPayN / sumWN;
-  const avgPayS = sumPayS / sumWS;
-  const cN = sumKakuN / sumWN;
-  const cS = sumKakuS / sumWS;
-  const missS = 1 - pS;
-  const stSpins = spec.st.stSpins;
-  const h1 = stSpins <= 0 ? 0 : 1 - Math.pow(missS, stSpins);
-  const cont = h1 * cS;
-  const denom = 1 - cont;
-  const eHits = denom <= 0 ? 0 : h1 / denom;
-  const ePay = denom <= 0 ? 0 : (h1 * avgPayS) / denom;
-  const eSpins = denom <= 0 || pS <= 0 ? 0 : h1 / pS / denom;
-  const totalPayout = avgPayN + cN * ePay;
-  const totalJackpots = 1 + cN * eHits;
-  const totalSpins = 1 / pN + cN * eSpins;
+  if (spec.jitan !== undefined && (sumW[1] as number) <= 0) {
+    throw new Error('invalid run: split weights must be positive');
+  }
+  if (spec.lt !== undefined && (sumW[3] as number) <= 0) {
+    throw new Error('invalid run: split weights must be positive');
+  }
+  const avgPay = [0, 0, 0, 0];
+  for (let m = 0; m < 4; m = m + 1) {
+    avgPay[m] = (sumW[m] as number) > 0 ? ((sumPay[m] as number) / (sumW[m] as number)) : 0;
+  }
+  const pN = 1 / spec.normal.jackpot1In;
+  const hasJitan = spec.jitan !== undefined;
+  const hasLt = spec.lt !== undefined;
+  // 各モード突入時の当たり率 h（jitan/st/lt。なしは 0）
+  const h: number[] = [0, 0, 0];
+  const ps: LotteryMode[] = ['jitan', 'st', 'lt'];
+  for (let k = 0; k < 3; k = k + 1) {
+    const mode = ps[k] as LotteryMode;
+    if ((mode === 'jitan' && !hasJitan) || (mode === 'lt' && !hasLt)) {
+      h[k] = 0;
+      continue;
+    }
+    const p = hitRateForTheoryMode(spec, mode);
+    const spins = spinsForTheoryMode(spec, mode);
+    h[k] = spins <= 0 ? 0 : 1 - Math.pow(1 - p, spins);
+  }
+  const hJ = h[0] as number;
+  const hS = h[1] as number;
+  const hL = h[2] as number;
+  // Q の部分行列（jitan/st/lt 間。modes index 1..3 → 0..2）
+  const qq: number[][] = [
+    [(q[1] as number[])[1] as number, (q[1] as number[])[2] as number, (q[1] as number[])[3] as number],
+    [(q[2] as number[])[1] as number, (q[2] as number[])[2] as number, (q[2] as number[])[3] as number],
+    [(q[3] as number[])[1] as number, (q[3] as number[])[2] as number, (q[3] as number[])[3] as number],
+  ];
+  const eyeMinus = (hh: readonly number[]): number[][] => [
+    [1 - (hh[0] as number) * ((qq[0] as number[])[0] as number), -(hh[0] as number) * ((qq[0] as number[])[1] as number), -(hh[0] as number) * ((qq[0] as number[])[2] as number)],
+    [-(hh[1] as number) * ((qq[1] as number[])[0] as number), 1 - (hh[1] as number) * ((qq[1] as number[])[1] as number), -(hh[1] as number) * ((qq[1] as number[])[2] as number)],
+    [-(hh[2] as number) * ((qq[2] as number[])[0] as number), -(hh[2] as number) * ((qq[2] as number[])[1] as number), 1 - (hh[2] as number) * ((qq[2] as number[])[2] as number)],
+  ];
+  const aMat = eyeMinus(h);
+  // V: 突入後の期待将来出玉
+  const vSol = solve3(aMat, [hJ * (avgPay[1] as number), hS * (avgPay[2] as number), hL * (avgPay[3] as number)]);
+  // J: 突入後の期待将来当たり回数
+  const jSol = solve3(aMat, [hJ, hS, hL]);
+  // S: 突入後の期待将来回転数（突入内訳の E[visit] = h/p）
+  const eVisit = [0, 0, 0];
+  for (let k = 0; k < 3; k = k + 1) {
+    const mode = ps[k] as LotteryMode;
+    if ((mode === 'jitan' && !hasJitan) || (mode === 'lt' && !hasLt)) {
+      eVisit[k] = 0;
+      continue;
+    }
+    const p = hitRateForTheoryMode(spec, mode);
+    eVisit[k] = p > 0 ? ((h[k] as number) / p) : 0;
+  }
+  const sSol = solve3(aMat, eVisit);
+  // E: RUSH 到達（st/lt は 1 固定。jitan のみ求める）
+  let eJitan = 0;
+  if (hasJitan) {
+    const qRush = ((qq[0] as number[])[1] as number) + ((qq[0] as number[])[2] as number);
+    const denomE = 1 - hJ * ((qq[0] as number[])[0] as number);
+    eJitan = denomE > 1e-12 ? (hJ * qRush) / denomE : 0;
+    if (eJitan < 0) {
+      eJitan = 0;
+    }
+    if (eJitan > 1) {
+      eJitan = 1;
+    }
+  }
+  // L: LT 到達（lt は 1 固定。jitan/st を 2x2 で解く。lt なしは 0）
+  let lJitan = 0;
+  let lSt = 0;
+  if (hasLt) {
+    const qJl = (qq[0] as number[])[2] as number;
+    const qJs = (qq[0] as number[])[1] as number;
+    const qJj = (qq[0] as number[])[0] as number;
+    const qSl = (qq[1] as number[])[2] as number;
+    const qSs = (qq[1] as number[])[1] as number;
+    const qSj = (qq[1] as number[])[0] as number;
+    if (hasJitan) {
+      const sol = solve2(1 - hJ * qJj, -hJ * qJs, hJ * qJl, -hS * qSj, 1 - hS * qSs, hS * qSl);
+      lJitan = sol[0] as number;
+      lSt = sol[1] as number;
+    } else {
+      const denomL = 1 - hS * qSs;
+      lJitan = 0;
+      lSt = denomL > 1e-12 ? (hS * qSl) / denomL : 0;
+    }
+    if (!(lJitan >= 0 && lJitan <= 1)) {
+      lJitan = lJitan < 0 ? 0 : 1;
+    }
+    if (!(lSt >= 0 && lSt <= 1)) {
+      lSt = lSt < 0 ? 0 : 1;
+    }
+  }
+  const qN = q[0] as number[];
+  const vJ = vSol[0] as number;
+  const vS = vSol[1] as number;
+  const vL = vSol[2] as number;
+  const jJ = jSol[0] as number;
+  const jS = jSol[1] as number;
+  const jL = jSol[2] as number;
+  const sJ = sSol[0] as number;
+  const sS = sSol[1] as number;
+  const sL = sSol[2] as number;
+  const totalPayout = (avgPay[0] as number) + (qN[1] as number) * vJ + (qN[2] as number) * vS + (qN[3] as number) * vL;
+  const totalJackpots = 1 + (qN[1] as number) * jJ + (qN[2] as number) * jS + (qN[3] as number) * jL;
+  const totalSpins = 1 / pN + (qN[1] as number) * sJ + (qN[2] as number) * sS + (qN[3] as number) * sL;
   const avgJackpot = totalJackpots > 0 ? totalPayout / totalJackpots : 0;
   const perNormalSpin = totalPayout * pN;
   const perSpinJackpot = totalSpins > 0 ? totalPayout / totalSpins : 0;
+  const rushEntryRate = (qN[1] as number) * eJitan + (qN[2] as number) * 1 + (qN[3] as number) * 1;
+  const ltArrivalPerHatsuari = (qN[1] as number) * lJitan + (qN[2] as number) * lSt + (qN[3] as number) * 1;
+  const qJ = q[1] as number[];
+  const qS = q[2] as number[];
+  const qL = q[3] as number[];
   return {
     hatsuariProb: pN,
     hatsuari1In: spec.normal.jackpot1In,
-    stContinuation: cont,
+    rushEntryRate,
+    jitanContinuation: hasJitan ? hJ * ((qJ[2] as number) + (qJ[3] as number)) : 0,
+    stContinuation: hS * ((qS[2] as number) + (qS[3] as number)),
+    ltContinuation: hasLt ? hL * ((qL[2] as number) + (qL[3] as number)) : 0,
+    ltArrivalPerHatsuari,
+    ltArrivalPerRush: hasLt ? lSt : 0,
     avgJackpot,
     avgPerHatsuari: totalPayout,
     perNormalSpin,
@@ -216,32 +452,76 @@ export function computeTheory(spec: MachineSpec, hesoRate: number): RunTheory {
   };
 }
 
-/** 観測値（玉レベルの純抽選シミュレーション。保留溢れ・変動時間は無視）。 */
+/** 観測値（玉レベルの純抽選シミュレーション。保留溢れ・変動時間は無視。P2-T9 で jitan/lt・連チャン分布を追加）。 */
 export interface RunObserved {
   readonly balls: number;
   readonly spins: number;
   readonly normalSpins: number;
   readonly normalHits: number;
+  readonly jitanSpins: number;
+  readonly jitanHits: number;
+  readonly jitanEntries: number;
+  readonly jitanContinued: number;
   readonly stSpins: number;
   readonly stHits: number;
   readonly stEntries: number;
   readonly stContinued: number;
+  readonly ltSpins: number;
+  readonly ltHits: number;
+  readonly ltEntries: number;
+  readonly ltContinued: number;
   readonly jackpots: number;
   readonly jackpotPayout: number;
   readonly hesoPayout: number;
   readonly spinsPer1000: number;
   readonly hatsuariProb: number;
   readonly hatsuari1In: number;
+  readonly rushEntryRate: number;
+  readonly jitanContinuation: number;
   readonly stContinuation: number;
+  readonly ltContinuation: number;
+  readonly ltArrivalPerHatsuari: number;
+  readonly ltArrivalPerRush: number;
   readonly avgJackpot: number;
   readonly avgPerHatsuari: number;
   readonly perNormalSpin: number;
   readonly payoutPerBall: number;
   readonly maxHama: number;
+  /** RUSH に届いた初当たり連チャンの数。 */
+  readonly chainsReachedRush: number;
+  /** LT に届いた初当たり連チャンの数。 */
+  readonly chainsReachedLt: number;
+  /** 初当たり連チャン出玉が 5万玉以上の数。 */
+  readonly chainGe50k: number;
+  /** 初当たり連チャン出玉が 10万玉以上の数。 */
+  readonly chainGe100k: number;
+  readonly chainGe50kRate: number;
+  readonly chainGe100kRate: number;
   /** 大当たり1回ごとの出玉の二乗和（標準誤差用）。 */
   readonly jackpotPaySumSq: number;
-  /** 初当たり1回（とそれに続く ST 連チャン）ごとの出玉の二乗和（標準誤差用）。 */
+  /** 初当たり1回（とそれに続く jitan/ST/LT 連チャン）ごとの出玉の二乗和（標準誤差用）。 */
   readonly chainPaySumSq: number;
+}
+
+/** 50k/100k のしきい値（初当たり連チャン出玉の裾。spec/21 の lt 例: 約0.75%/約0.09%）。 */
+export const CHAIN_GE_50K = 50000;
+export const CHAIN_GE_100K = 100000;
+
+function spinsForObservedMode(spec: MachineSpec, mode: LotteryMode): number {
+  if (mode === 'normal') {
+    return 0;
+  }
+  if (mode === 'jitan') {
+    return spec.jitan === undefined ? 0 : spec.jitan.stSpins;
+  }
+  if (mode === 'st') {
+    return spec.st.stSpins;
+  }
+  return spec.lt === undefined ? 0 : spec.lt.stSpins;
+}
+
+function isRushMode(mode: LotteryMode): boolean {
+  return mode === 'st' || mode === 'lt';
 }
 
 export function simulateBalls(
@@ -260,33 +540,75 @@ export function simulateBalls(
   decodeAtlasHeader(atlas);
   const view = new DataView(atlas);
   let mode: LotteryMode = 'normal';
-  let stLeft = 0;
+  let modeLeft = 0;
   let spins = 0;
   let normalSpins = 0;
   let normalHits = 0;
+  let jitanSpins = 0;
+  let jitanHits = 0;
+  let jitanEntries = 0;
+  let jitanContinued = 0;
   let stSpins = 0;
   let stHits = 0;
   let stEntries = 0;
   let stContinued = 0;
+  let ltSpins = 0;
+  let ltHits = 0;
+  let ltEntries = 0;
+  let ltContinued = 0;
   let jackpots = 0;
   let jackpotPayout = 0;
   let curHama = 0;
   let maxHama = 0;
   let jackpotPaySumSq = 0;
-  let chainPay = 0;
+  // 初当たり連チャン（通常当たり〜通常復帰まで）の追跡
+  let inChain = false;
+  let curChainPay = 0;
+  let curReachedRush = false;
+  let curReachedLt = false;
   let chainPaySumSq = 0;
+  let chainsReachedRush = 0;
+  let chainsReachedLt = 0;
+  let chainGe50k = 0;
+  let chainGe100k = 0;
+  const finishChain = (): void => {
+    if (!inChain) {
+      return;
+    }
+    chainPaySumSq = chainPaySumSq + curChainPay * curChainPay;
+    if (curReachedRush) {
+      chainsReachedRush = chainsReachedRush + 1;
+    }
+    if (curReachedLt) {
+      chainsReachedLt = chainsReachedLt + 1;
+    }
+    if (curChainPay >= CHAIN_GE_50K) {
+      chainGe50k = chainGe50k + 1;
+    }
+    if (curChainPay >= CHAIN_GE_100K) {
+      chainGe100k = chainGe100k + 1;
+    }
+    inChain = false;
+    curChainPay = 0;
+    curReachedRush = false;
+    curReachedLt = false;
+  };
   for (let ball = 0; ball < balls; ball = ball + 1) {
     const key = atlasKeyForBall(seed >>> 0, ball);
     if (view.getUint8(atlasKindOffset(key)) !== ATLAS_KIND_START1) {
       continue;
     }
     const entry = drawHold(spec, patterns, seed >>> 0, mode, ball, 1);
-    const isStSpin = mode === 'st';
+    const spinMode = mode;
     spins = spins + 1;
-    if (isStSpin) {
+    if (spinMode === 'normal') {
+      normalSpins = normalSpins + 1;
+    } else if (spinMode === 'jitan') {
+      jitanSpins = jitanSpins + 1;
+    } else if (spinMode === 'st') {
       stSpins = stSpins + 1;
     } else {
-      normalSpins = normalSpins + 1;
+      ltSpins = ltSpins + 1;
     }
     if (entry.isHit) {
       curHama = 0;
@@ -297,80 +619,142 @@ export function simulateBalls(
       jackpots = jackpots + 1;
       jackpotPayout = jackpotPayout + pay;
       jackpotPaySumSq = jackpotPaySumSq + pay * pay;
-      if (!isStSpin) {
-        chainPaySumSq = chainPaySumSq + chainPay * chainPay;
-        chainPay = 0;
-      }
-      chainPay = chainPay + pay;
-      const branch = spec.jackpotSplit[entry.branchIndex];
-      if (branch === undefined) {
-        throw new Error('invalid run: branch out of range');
-      }
-      const toSt = branch.kind === 'kakuhen';
-      if (isStSpin) {
-        stHits = stHits + 1;
-        if (toSt) {
-          stContinued = stContinued + 1;
-          stEntries = stEntries + 1;
-          mode = 'st';
-          stLeft = spec.st.stSpins;
-        } else {
-          mode = 'normal';
-          stLeft = 0;
-        }
-      } else {
+      const next = nextForBranch(spec, entry.branchIndex);
+      const nextRush = isRushMode(next);
+      const nextLt = next === 'lt';
+      if (spinMode === 'normal') {
         normalHits = normalHits + 1;
-        if (toSt) {
-          stEntries = stEntries + 1;
-          mode = 'st';
-          stLeft = spec.st.stSpins;
+        inChain = true;
+        curChainPay = pay;
+        curReachedRush = nextRush;
+        curReachedLt = nextLt;
+      } else {
+        if (!inChain) {
+          throw new Error('invalid run: hit outside chain');
         }
+        if (spinMode === 'jitan') {
+          jitanHits = jitanHits + 1;
+          if (nextRush) {
+            jitanContinued = jitanContinued + 1;
+          }
+        } else if (spinMode === 'st') {
+          stHits = stHits + 1;
+          if (nextRush) {
+            stContinued = stContinued + 1;
+          }
+        } else {
+          ltHits = ltHits + 1;
+          if (nextRush) {
+            ltContinued = ltContinued + 1;
+          }
+        }
+        curChainPay = curChainPay + pay;
+        if (nextRush) {
+          curReachedRush = true;
+        }
+        if (nextLt) {
+          curReachedLt = true;
+        }
+      }
+      if (next === 'jitan') {
+        jitanEntries = jitanEntries + 1;
+        mode = 'jitan';
+        modeLeft = spinsForObservedMode(spec, 'jitan');
+      } else if (next === 'st') {
+        stEntries = stEntries + 1;
+        mode = 'st';
+        modeLeft = spinsForObservedMode(spec, 'st');
+      } else if (next === 'lt') {
+        ltEntries = ltEntries + 1;
+        mode = 'lt';
+        modeLeft = spinsForObservedMode(spec, 'lt');
+      } else {
+        mode = 'normal';
+        modeLeft = 0;
+        finishChain();
       }
     } else {
       curHama = curHama + 1;
       if (curHama > maxHama) {
         maxHama = curHama;
       }
-      if (isStSpin) {
-        stLeft = stLeft - 1;
-        if (stLeft <= 0) {
+      if (spinMode !== 'normal') {
+        modeLeft = modeLeft - 1;
+        if (modeLeft <= 0) {
           mode = 'normal';
-          stLeft = 0;
+          modeLeft = 0;
+          finishChain();
         }
       }
     }
   }
-  if (mode === 'st') {
+  // 末尾の未完突入は分母から除外（P2-T6 の ST と同じ扱いを jitan/st/lt に一般化）
+  if (mode === 'jitan') {
+    jitanEntries = jitanEntries - 1;
+    if (jitanEntries < 0) {
+      jitanEntries = 0;
+    }
+  } else if (mode === 'st') {
     stEntries = stEntries - 1;
     if (stEntries < 0) {
       stEntries = 0;
     }
+  } else if (mode === 'lt') {
+    ltEntries = ltEntries - 1;
+    if (ltEntries < 0) {
+      ltEntries = 0;
+    }
   }
-  chainPaySumSq = chainPaySumSq + chainPay * chainPay;
+  // 未完連チャンは裾・到達率の集計には含めず、分散用にだけ平方を足す
+  // （末尾1連チャンの有無は 1M 球では誤差1件分で無視できるが、継続率と同様に除外する）
+  let tailChainPaySumSq = chainPaySumSq;
+  if (inChain) {
+    tailChainPaySumSq = tailChainPaySumSq + curChainPay * curChainPay;
+  }
   const hesoPayout = spins * spec.hesoPayout;
+  const chainsForRate = normalHits;
   return {
     balls,
     spins,
     normalSpins,
     normalHits,
+    jitanSpins,
+    jitanHits,
+    jitanEntries,
+    jitanContinued,
     stSpins,
     stHits,
     stEntries,
     stContinued,
+    ltSpins,
+    ltHits,
+    ltEntries,
+    ltContinued,
     jackpots,
     jackpotPayout,
     hesoPayout,
     spinsPer1000: balls > 0 ? (spins * 1000) / balls : 0,
     hatsuariProb: normalSpins > 0 ? normalHits / normalSpins : 0,
     hatsuari1In: normalHits > 0 ? normalSpins / normalHits : 0,
+    rushEntryRate: chainsForRate > 0 ? chainsReachedRush / chainsForRate : 0,
+    jitanContinuation: jitanEntries > 0 ? jitanContinued / jitanEntries : 0,
     stContinuation: stEntries > 0 ? stContinued / stEntries : 0,
+    ltContinuation: ltEntries > 0 ? ltContinued / ltEntries : 0,
+    ltArrivalPerHatsuari: chainsForRate > 0 ? chainsReachedLt / chainsForRate : 0,
+    ltArrivalPerRush: chainsReachedRush > 0 ? chainsReachedLt / chainsReachedRush : 0,
     avgJackpot: jackpots > 0 ? jackpotPayout / jackpots : 0,
     avgPerHatsuari: normalHits > 0 ? jackpotPayout / normalHits : 0,
     perNormalSpin: normalSpins > 0 ? jackpotPayout / normalSpins : 0,
     payoutPerBall: balls > 0 ? (jackpotPayout + hesoPayout) / balls : 0,
     maxHama,
+    chainsReachedRush,
+    chainsReachedLt,
+    chainGe50k,
+    chainGe100k,
+    chainGe50kRate: chainsForRate > 0 ? chainGe50k / chainsForRate : 0,
+    chainGe100kRate: chainsForRate > 0 ? chainGe100k / chainsForRate : 0,
     jackpotPaySumSq,
-    chainPaySumSq,
+    chainPaySumSq: tailChainPaySumSq,
   };
 }
 
@@ -445,7 +829,7 @@ function fmt(n: number, digits: number): string {
   return n.toFixed(digits);
 }
 
-/** 人間向けの表（理論×観測）。 */
+/** 人間向けの表（理論×観測。P2-T9: light/rush/lt の3機種比較）。 */
 export function formatReports(reports: readonly MachineReport[]): string {
   const lines: string[] = [];
   for (let i = 0; i < reports.length; i = i + 1) {
@@ -461,7 +845,22 @@ export function formatReports(reports: readonly MachineReport[]): string {
       `hatsuari 1/in | ${fmt(t.hatsuari1In, 1)} | ${o.normalHits > 0 ? fmt(o.hatsuari1In, 1) : '-'} | ${o.normalHits > 0 ? fmt((o.hatsuari1In - t.hatsuari1In) / t.hatsuari1In * 100, 2) + '%' : '-'}`,
     );
     lines.push(
+      `rush entry/hatsuari | ${fmt(t.rushEntryRate * 100, 2)}% | ${o.normalHits > 0 ? fmt(o.rushEntryRate * 100, 2) + '%' : '-'} (n=${o.normalHits}) | ${o.normalHits > 0 ? fmt((o.rushEntryRate - t.rushEntryRate) * 100, 2) + 'pp' : '-'}`,
+    );
+    lines.push(
+      `jitan continuation | ${fmt(t.jitanContinuation * 100, 2)}% | ${o.jitanEntries > 0 ? fmt(o.jitanContinuation * 100, 2) + '%' : '-'} (n=${o.jitanEntries}) | ${o.jitanEntries > 0 ? fmt((o.jitanContinuation - t.jitanContinuation) * 100, 2) + 'pp' : '-'}`,
+    );
+    lines.push(
       `st continuation | ${fmt(t.stContinuation * 100, 2)}% | ${o.stEntries > 0 ? fmt(o.stContinuation * 100, 2) + '%' : '-'} (n=${o.stEntries}) | ${o.stEntries > 0 ? fmt((o.stContinuation - t.stContinuation) * 100, 2) + 'pp' : '-'}`,
+    );
+    lines.push(
+      `lt continuation | ${fmt(t.ltContinuation * 100, 2)}% | ${o.ltEntries > 0 ? fmt(o.ltContinuation * 100, 2) + '%' : '-'} (n=${o.ltEntries}) | ${o.ltEntries > 0 ? fmt((o.ltContinuation - t.ltContinuation) * 100, 2) + 'pp' : '-'}`,
+    );
+    lines.push(
+      `lt arrival/hatsuari | ${fmt(t.ltArrivalPerHatsuari * 100, 2)}% | ${o.normalHits > 0 ? fmt(o.ltArrivalPerHatsuari * 100, 2) + '%' : '-'} (n=${o.normalHits}) | ${o.normalHits > 0 ? fmt((o.ltArrivalPerHatsuari - t.ltArrivalPerHatsuari) * 100, 2) + 'pp' : '-'}`,
+    );
+    lines.push(
+      `lt arrival/rush | ${fmt(t.ltArrivalPerRush * 100, 2)}% | ${o.chainsReachedRush > 0 ? fmt(o.ltArrivalPerRush * 100, 2) + '%' : '-'} (n=${o.chainsReachedRush}) | ${o.chainsReachedRush > 0 ? fmt((o.ltArrivalPerRush - t.ltArrivalPerRush) * 100, 2) + 'pp' : '-'}`,
     );
     lines.push(
       `avg jackpot | ${fmt(t.avgJackpot, 1)} | ${o.jackpots > 0 ? fmt(o.avgJackpot, 1) : '-'} | ${o.jackpots > 0 && t.avgJackpot > 0 ? fmt((o.avgJackpot - t.avgJackpot) / t.avgJackpot * 100, 2) + '%' : '-'}`,
@@ -477,6 +876,12 @@ export function formatReports(reports: readonly MachineReport[]): string {
     );
     lines.push(
       `payout/ball target(spec/21) | ${fmt(PAYOUT_PER_BALL_TARGET, 4)} | - | theory ${fmt((t.payoutPerBall - PAYOUT_PER_BALL_TARGET) / PAYOUT_PER_BALL_TARGET * 100, 2)}%`,
+    );
+    lines.push(
+      `chain >=50k/hatsuari | - | ${o.normalHits > 0 ? fmt(o.chainGe50kRate * 100, 3) + '%' : '-'} (n=${o.chainGe50k}/${o.normalHits}) | -`,
+    );
+    lines.push(
+      `chain >=100k/hatsuari | - | ${o.normalHits > 0 ? fmt(o.chainGe100kRate * 100, 3) + '%' : '-'} (n=${o.chainGe100k}/${o.normalHits}) | -`,
     );
     lines.push(`max hama | - | ${o.maxHama} | -`);
   }

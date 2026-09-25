@@ -10,11 +10,11 @@ import {
   simulateBalls,
 } from './run.ts';
 
-test('parseRunArgs は --balls/--seed を読み省略時は light/rush 両方', () => {
+test('parseRunArgs は --balls/--seed を読み省略時は light/rush/lt の3機種', () => {
   expect(parseRunArgs(['--balls', '1000', '--seed', '7'])).toEqual({
     balls: 1000,
     seed: 7,
-    machines: ['light-middle-01', 'rush-middle-01'],
+    machines: ['light-middle-01', 'rush-middle-01', 'lt-middle-01'],
     json: false,
   });
   expect(parseRunArgs(['--balls', '10', '--seed', '1', '--machine', 'light-middle-01', '--json'])).toEqual({
@@ -29,14 +29,17 @@ test('parseRunArgs は --balls/--seed を読み省略時は light/rush 両方', 
   expect(() => parseRunArgs(['--balls', '10', '--seed', '1', '--unknown'])).toThrow();
 });
 
-test('理論値は STATUS の目安と一致する（light 9.74・rush 9.85 付近）', () => {
+test('理論値は STATUS の目安と一致する（light 9.74・rush 9.85・lt 9.88 付近）', () => {
   const { hesoRate } = loadRunAtlas();
   const light = loadRunMachine('light-middle-01');
   const rush = loadRunMachine('rush-middle-01');
+  const ltm = loadRunMachine('lt-middle-01');
   const lt = computeTheory(light.spec, hesoRate);
   const rt = computeTheory(rush.spec, hesoRate);
+  const ltt = computeTheory(ltm.spec, hesoRate);
   expect(lt.hatsuari1In).toBeCloseTo(199.8, 6);
   expect(rt.hatsuari1In).toBeCloseTo(349.9, 6);
+  expect(ltt.hatsuari1In).toBeCloseTo(349.9, 6);
   expect(lt.stContinuation).toBeGreaterThan(0.4);
   expect(lt.stContinuation).toBeLessThan(0.52);
   expect(rt.stContinuation).toBeGreaterThan(0.8);
@@ -47,6 +50,28 @@ test('理論値は STATUS の目安と一致する（light 9.74・rush 9.85 付�
   expect(rt.perNormalSpin).toBeLessThan(10.5);
   expect(Math.abs(lt.perNormalSpin - 9.74) / 9.74).toBeLessThan(0.05);
   expect(Math.abs(rt.perNormalSpin - 9.85) / 9.85).toBeLessThan(0.05);
+  // lt-middle-01 は spec/21 の例どおり（P2-T9）
+  expect(ltm.spec.jitan?.stSpins).toBe(100);
+  expect(ltm.spec.st.stSpins).toBe(56);
+  expect(ltm.spec.lt?.stSpins).toBe(91);
+  expect(ltt.rushEntryRate).toBeGreaterThan(0.4);
+  expect(ltt.rushEntryRate).toBeLessThan(0.48);
+  expect(ltt.jitanContinuation).toBeGreaterThan(0.2);
+  expect(ltt.jitanContinuation).toBeLessThan(0.3);
+  expect(ltt.stContinuation).toBeGreaterThan(0.7);
+  expect(ltt.stContinuation).toBeLessThan(0.82);
+  expect(ltt.ltContinuation).toBeGreaterThan(0.85);
+  expect(ltt.ltContinuation).toBeLessThan(0.95);
+  expect(ltt.ltArrivalPerRush).toBeGreaterThan(0.07);
+  expect(ltt.ltArrivalPerRush).toBeLessThan(0.16);
+  expect(ltt.ltArrivalPerHatsuari).toBeGreaterThan(0.02);
+  expect(ltt.ltArrivalPerHatsuari).toBeLessThan(0.08);
+  expect(ltt.perNormalSpin).toBeGreaterThan(9.0);
+  expect(ltt.perNormalSpin).toBeLessThan(10.5);
+  expect(Math.abs(ltt.perNormalSpin - 9.88) / 9.88).toBeLessThan(0.05);
+  // 通常1回転あたり期待出玉は light の ±5% 以内（P2-T9 Accept）
+  expect(Math.abs(ltt.perNormalSpin - lt.perNormalSpin) / lt.perNormalSpin).toBeLessThan(0.05);
+  expect(Math.abs(rt.perNormalSpin - lt.perNormalSpin) / lt.perNormalSpin).toBeLessThan(0.05);
 });
 
 test('simulateBalls は決定的（同seedは一致・異seedはほぼ不一致）', () => {
@@ -60,11 +85,11 @@ test('simulateBalls は決定的（同seedは一致・異seedはほぼ不一致�
 });
 
 test(
-  '理論値と観測値が許容差内（light/rush・100万球）',
+  '理論値と観測値が許容差内（light/rush/lt の3機種・100万球）',
   { timeout: 180000 },
   () => {
-    const reports = runMachines(20260925, 1000000, ['light-middle-01', 'rush-middle-01']);
-    expect(reports.length).toBe(2);
+    const reports = runMachines(20260925, 1000000, ['light-middle-01', 'rush-middle-01', 'lt-middle-01']);
+    expect(reports.length).toBe(3);
     for (let i = 0; i < reports.length; i = i + 1) {
       const r = reports[i];
       if (r === undefined) {
@@ -85,10 +110,32 @@ test(
       // 初当たり: 二項分布の 3σ
       const seHat = Math.sqrt((t.hatsuariProb * (1 - t.hatsuariProb)) / o.normalSpins);
       expect(Math.abs(o.hatsuariProb - t.hatsuariProb)).toBeLessThanOrEqual(3 * seHat + 1e-12);
-      // ST 継続率: 二項分布の 3σ（entries が少なければ緩める）
+      // 実質 RUSH 突入率: 二項分布の 3σ
+      if (o.normalHits >= 30) {
+        const seRush = Math.sqrt((t.rushEntryRate * (1 - t.rushEntryRate)) / o.normalHits);
+        expect(Math.abs(o.rushEntryRate - t.rushEntryRate)).toBeLessThanOrEqual(3 * seRush + 1e-12);
+      }
+      // 各継続率: 二項分布の 3σ（entries が少なければ緩める）
+      if (o.jitanEntries >= 30) {
+        const seJitan = Math.sqrt((t.jitanContinuation * (1 - t.jitanContinuation)) / o.jitanEntries);
+        expect(Math.abs(o.jitanContinuation - t.jitanContinuation)).toBeLessThanOrEqual(3 * seJitan + 1e-12);
+      }
       if (o.stEntries >= 30) {
         const seSt = Math.sqrt((t.stContinuation * (1 - t.stContinuation)) / o.stEntries);
         expect(Math.abs(o.stContinuation - t.stContinuation)).toBeLessThanOrEqual(3 * seSt + 1e-12);
+      }
+      if (o.ltEntries >= 30) {
+        const seLt = Math.sqrt((t.ltContinuation * (1 - t.ltContinuation)) / o.ltEntries);
+        expect(Math.abs(o.ltContinuation - t.ltContinuation)).toBeLessThanOrEqual(3 * seLt + 1e-12);
+      }
+      // LT 到達率: 二項分布の 3σ
+      if (o.normalHits >= 30 && t.ltArrivalPerHatsuari > 0) {
+        const seLtHat = Math.sqrt((t.ltArrivalPerHatsuari * (1 - t.ltArrivalPerHatsuari)) / o.normalHits);
+        expect(Math.abs(o.ltArrivalPerHatsuari - t.ltArrivalPerHatsuari)).toBeLessThanOrEqual(3 * seLtHat + 1e-12);
+      }
+      if (o.chainsReachedRush >= 30 && t.ltArrivalPerRush > 0) {
+        const seLtRush = Math.sqrt((t.ltArrivalPerRush * (1 - t.ltArrivalPerRush)) / o.chainsReachedRush);
+        expect(Math.abs(o.ltArrivalPerRush - t.ltArrivalPerRush)).toBeLessThanOrEqual(3 * seLtRush + 1e-12);
       }
       // 出玉系: 標本分散からの標準誤差で 3σ（D-039）
       const se = observedStdErrors(o, loadRunMachine(r.machine).spec.hesoPayout);
@@ -96,10 +143,18 @@ test(
       expect(Math.abs(o.avgPerHatsuari - t.avgPerHatsuari)).toBeLessThanOrEqual(3 * se.avgPerHatsuari + 1e-9);
       expect(Math.abs(o.perNormalSpin - t.perNormalSpin)).toBeLessThanOrEqual(3 * se.perNormalSpin + 1e-9);
       expect(Math.abs(o.payoutPerBall - t.payoutPerBall)).toBeLessThanOrEqual(3 * se.payoutPerBall + 1e-9);
+      // 裾（5万/10万）は観測値の報告のみ（理論なし）。件数と率の整合だけ見る。
+      expect(o.chainGe50kRate).toBeCloseTo(o.normalHits > 0 ? o.chainGe50k / o.normalHits : 0, 12);
+      expect(o.chainGe100kRate).toBeCloseTo(o.normalHits > 0 ? o.chainGe100k / o.normalHits : 0, 12);
+      expect(o.chainGe100k).toBeLessThanOrEqual(o.chainGe50k);
     }
     const text = formatReports(reports);
     expect(text).toContain('light-middle-01');
     expect(text).toContain('rush-middle-01');
+    expect(text).toContain('lt-middle-01');
+    expect(text).toContain('rush entry/hatsuari');
+    expect(text).toContain('lt arrival/rush');
+    expect(text).toContain('chain >=50k/hatsuari');
     expect(text).toContain('payout/ball target(spec/21)');
   },
 );
