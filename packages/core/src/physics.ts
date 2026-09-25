@@ -38,6 +38,19 @@ export interface BallOutcome {
   readonly steps: number;
 }
 
+/** 描画用の軌跡サンプル（位置とステップ番号）。 */
+export interface TrajectorySample {
+  readonly x: number;
+  readonly y: number;
+  readonly step: number;
+}
+
+/** 描画用の軌跡（サンプル列と `run` と一致する結果）。 */
+export interface Trajectory {
+  readonly samples: readonly TrajectorySample[];
+  readonly outcome: BallOutcome;
+}
+
 /**
  * 玉の可変状態（1ステップの計算用。速度性能のため破壊的更新する。
  * Vec2 の不変契約とは別物で、物理内部の一時値）。
@@ -432,5 +445,43 @@ export class BallSimulator {
       }
     }
     return { kind: 'lost', flightMs: 20000, steps: PHYS_MAX_STEPS };
+  }
+
+  /**
+   * 描画用の軌跡（`run` と同じ `step`＋`sense` の循環で進める。コピペではなく共有）。
+   * `every` ごとの位置と開始点（step 0）、終了点を必ず含む。
+   * 終了点は `every` の倍数でなくても含み、`outcome` は `run` と一致する。
+   */
+  trajectory(p: LaunchParams, every: number): Trajectory {
+    if (!isInt(every) || every <= 0) {
+      throw new Error('invalid every');
+    }
+    const s = this.initialState(p);
+    const samples: TrajectorySample[] = [{ x: s.x, y: s.y, step: 0 }];
+    let nextAt = every;
+    for (let step = 1; step <= PHYS_MAX_STEPS; step = step + 1) {
+      this.step(s);
+      const kind = this.sense(s);
+      if (kind !== null) {
+        if (step === nextAt) {
+          samples.push({ x: s.x, y: s.y, step });
+        } else {
+          const last = samples[samples.length - 1] as TrajectorySample;
+          if (last.step !== step) {
+            samples.push({ x: s.x, y: s.y, step });
+          }
+        }
+        return { samples, outcome: { kind, flightMs: (step * 1000) / 960, steps: step } };
+      }
+      if (step === nextAt) {
+        samples.push({ x: s.x, y: s.y, step });
+        nextAt = nextAt + every;
+      }
+    }
+    const last = samples[samples.length - 1] as TrajectorySample;
+    if (last.step !== PHYS_MAX_STEPS) {
+      samples.push({ x: s.x, y: s.y, step: PHYS_MAX_STEPS });
+    }
+    return { samples, outcome: { kind: 'lost', flightMs: 20000, steps: PHYS_MAX_STEPS } };
   }
 }

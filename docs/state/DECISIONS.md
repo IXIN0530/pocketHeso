@@ -29,3 +29,4 @@
 - D-026 | 2026-09-25 | 描画を PixiJS から Three.js に全面移行（spec/50 を書き直し）。ブルームは常時使わず、CueSheet の `bloom` キューで激熱・当たり確定の数秒だけ ON | P0-T6 実測: 16e でブルーム OFF なら 60fps、ON で約 40fps。立体の質感（金属の玉・ガラス・カメラワーク）が 2D より大きく勝り、gzip も Pixi 一式より小さい（約 144KB vs 165KB）
 - D-027 | 2026-09-25 | launch_dirs は真上中心±0.1rad の1024表（生成は pachisim、Core は読むだけ）。正規化は全数 toFixed(6)・キー固定順。SHA-256 実装は正規化文字列を受ける関数として注入（ブラウザは subtle で直接ハッシュ） | spec/20 の表参照・キーソート・Node/ブラウザ両対応を満たす最小形
 - D-028 | 2026-09-25 | BallSimulator は (board, dirs) で方向表を注入・速度は speedMin..Max を speedQ で線形・kind に 'lost' 追加・センサーは盤面順/境界含む・flightMs=steps*1000/960 | spec/20 の constructor(board) だけでは表を引けず決定的に実行できないため最小拡張
+- D-029 | 2026-09-25 | trajectory は Trajectory {samples, outcome} を返す（spec/20 の TrajectorySample[] から拡張）。samples は step0＋every毎＋最終点を必ず含む | kind・steps の一致を呼出側で再計算なしに保証し描画の最終位置ずれを防ぐため

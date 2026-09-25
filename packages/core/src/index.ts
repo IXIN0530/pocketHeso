@@ -5,7 +5,7 @@ export type { Vec2 } from './vec2.ts';
 export { addVec2, dotVec2, lengthSquaredVec2, lengthVec2, scaleVec2, subVec2, vec2 } from './vec2.ts';
 export type { RNGStreamID } from './rng.ts';
 export { RNG_STREAM_IDS, RNGStream, fnv1a32, splitmix32, streamSeedU32, xoshiro128ss } from './rng.ts';
-export type { BallOutcome, BallOutcomeKind, BallState, LaunchParams } from './physics.ts';
+export type { BallOutcome, BallOutcomeKind, BallState, LaunchParams, Trajectory, TrajectorySample } from './physics.ts';
 export {
   BALL_RADIUS_MM,
   BallSimulator,

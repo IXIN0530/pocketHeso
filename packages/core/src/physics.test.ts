@@ -264,3 +264,50 @@ test(
     expect(a).toEqual(b);
   },
 );
+
+test('trajectory は不正な every を拒否する', () => {
+  const sim = new BallSimulator(scaleBoard(), upFanDirs());
+  const params: LaunchParams = { dirIndex: 0, speedQ: 0 };
+  expect(() => sim.trajectory(params, 0)).toThrow();
+  expect(() => sim.trajectory(params, -1)).toThrow();
+  expect(() => sim.trajectory(params, 1.5)).toThrow();
+  expect(() => sim.trajectory({ dirIndex: -1, speedQ: 0 }, 4)).toThrow();
+});
+
+test('trajectory のサンプルは単調で最終が outcome と一致する', () => {
+  const sim = new BallSimulator(scaleBoard(), upFanDirs());
+  const params: LaunchParams = { dirIndex: 7, speedQ: 12345 };
+  const every = 4;
+  const runOutcome = sim.run(params);
+  const traj = sim.trajectory(params, every);
+  expect(traj.outcome).toEqual(runOutcome);
+  expect(traj.samples.length).toBeGreaterThan(0);
+  expect(traj.samples[0]?.step).toBe(0);
+  const last = traj.samples[traj.samples.length - 1] as { x: number; y: number; step: number };
+  expect(last.step).toBe(runOutcome.steps);
+  for (let i = 1; i < traj.samples.length; i = i + 1) {
+    const prev = traj.samples[i - 1] as { step: number };
+    const cur = traj.samples[i] as { step: number };
+    expect(cur.step).toBeGreaterThan(prev.step);
+  }
+  for (let i = 1; i < traj.samples.length - 1; i = i + 1) {
+    const cur = traj.samples[i] as { step: number };
+    expect((cur.step - every * Math.floor(cur.step / every)) === 0).toBe(true);
+  }
+});
+
+test(
+  '1万ケースで run と trajectory の kind・steps が一致する',
+  { timeout: 180000 },
+  () => {
+    const sim = new BallSimulator(scaleBoard(), upFanDirs());
+    for (let i = 0; i < 10000; i = i + 1) {
+      const params: LaunchParams = { dirIndex: i % 1024, speedQ: (i * 37) % 65536 };
+      const o = sim.run(params);
+      const t = sim.trajectory(params, 4);
+      expect(t.outcome.kind).toBe(o.kind);
+      expect(t.outcome.steps).toBe(o.steps);
+      expect(t.outcome.flightMs).toBe(o.flightMs);
+    }
+  },
+);
