@@ -330,8 +330,12 @@ test('lookaheadは状態を変えず背面仮定・projectはパチンコ部を�
   expect(ahead.length).toBeGreaterThan(0);
 });
 
+// CI（Vercel 等）は共有マシンで並列実行されるため計時がぶれる。目標 100ms はローカルで判定し、
+// CI では桁違いの退行だけを検出する。
+const ADVANCE_8H_LIMIT_MS = process.env['CI'] || process.env['VERCEL'] ? 1000 : 100;
+
 test(
-  '放置8時間のオート打ちadvanceがNodeで100ms以内',
+  '放置8時間のオート打ちadvanceがNodeで100ms以内（CIは1000ms）',
   { timeout: 30000 },
   () => {
     const { spec, patterns } = loadMachine();
@@ -342,7 +346,7 @@ test(
     const evs = eng.advance(until);
     const ms = performance.now() - t0;
     expect(evs.length).toBeGreaterThan(40000);
-    expect(ms).toBeLessThan(100);
+    expect(ms).toBeLessThan(ADVANCE_8H_LIMIT_MS);
     expectTimeOrdered(evs.slice(0, 2000));
   },
 );

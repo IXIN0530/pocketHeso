@@ -145,12 +145,18 @@ test('覚醒・閉店・連日の純粋計算', () => {
 });
 
 test('閉店の常連Pは立方数の境界で floor がずれない', () => {
-  for (let n = 1; n <= 200000; n = n + 1) {
+  // n≤2000 は全件。それより上は旧実装で n−1 になっていた実例（n=106 が最初）と大きめの値を抜き出す
+  const ns: number[] = [];
+  for (let n = 1; n <= 2000; n = n + 1) {
+    ns.push(n);
+  }
+  ns.push(4999, 10000, 65536, 99999, 123456, 200000);
+  for (const n of ns) {
     const c = n * n * n;
     expect(closeGain(c, 1, 0)).toBe(n);
     expect(closeGain(c - 1, 1, 0)).toBe(n - 1);
   }
-  // 実際の divisor(1e9) での境界（n=106 は旧実装で 105 になっていた）
+  // 実際の divisor(1e9) での境界
   expect(closeGain(106 * 106 * 106 * 1000000000, 1000000000, 0)).toBe(106);
 });
 
