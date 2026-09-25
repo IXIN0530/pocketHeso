@@ -34,6 +34,27 @@ export type {
   BoardYakumono,
   SensorKind,
 } from './board.ts';
+export type {
+  HoldColor,
+  HoldColorWeight,
+  JackpotBranch,
+  JackpotKind,
+  MachineMode,
+  MachineSpec,
+  MachineTier,
+  PatternTable,
+  SpinPattern,
+} from './machine.ts';
+export {
+  HOLD_COLORS,
+  JACKPOT_KINDS,
+  MACHINE_TIERS,
+  jackpotThresholdU32,
+  parseMachine,
+  parseMachineText,
+  parsePatterns,
+  parsePatternsText,
+} from './machine.ts';
 export {
   LAUNCH_DIR_COUNT,
   LAUNCH_DIR_TABLE_ID,
