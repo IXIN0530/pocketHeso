@@ -3,11 +3,11 @@ import type { HoldColor, JackpotBranch, MachineMode, MachineSpec, PatternTable, 
 import { HOLD_COLORS } from './machine.ts';
 import { RNGStream } from './rng.ts';
 
-/** 抽選時のモード（取得時のモードで当否を判定する）。 */
-export type LotteryMode = 'normal' | 'st';
+/** 抽選時のモード（取得時のモードで当否を判定する。時短・LT拡張はspec/21 モード拡張節）。 */
+export type LotteryMode = 'normal' | 'jitan' | 'st' | 'lt';
 
 /** 既知の抽選モード（順序固定）。 */
-export const LOTTERY_MODES: readonly LotteryMode[] = ['normal', 'st'];
+export const LOTTERY_MODES: readonly LotteryMode[] = ['normal', 'jitan', 'st', 'lt'];
 
 /** 保留色の抽選結果（`white` は重み残余として暗黙に存在）。 */
 export type LotteryHoldColor = HoldColor | 'white';
@@ -35,10 +35,25 @@ export interface HoldEntry {
 
 /** 抽選モードに対応する確率表を返す。 */
 export function modeOf(spec: MachineSpec, mode: LotteryMode): MachineMode {
-  if (mode !== 'normal' && mode !== 'st') {
-    throw new Error('invalid lottery: mode must be normal or st');
+  if (mode === 'normal') {
+    return spec.normal;
   }
-  return mode === 'normal' ? spec.normal : spec.st;
+  if (mode === 'jitan') {
+    if (spec.jitan === undefined) {
+      throw new Error('invalid lottery: jitan mode is missing');
+    }
+    return spec.jitan;
+  }
+  if (mode === 'st') {
+    return spec.st;
+  }
+  if (mode === 'lt') {
+    if (spec.lt === undefined) {
+      throw new Error('invalid lottery: lt mode is missing');
+    }
+    return spec.lt;
+  }
+  throw new Error('invalid lottery: mode must be normal, jitan, st or lt');
 }
 
 /** レート（1発あたりの玉数）を検証する。 */
@@ -92,12 +107,22 @@ export function holdColorWeights(spec: MachineSpec, isHit: boolean): readonly nu
   return w;
 }
 
-/** 振分けの重み列（`jackpotSplit` と同順。取得時のモードで通常/ST の重みを選ぶ）。 */
+/** 振分けの重み列（`jackpotSplit` と同順。取得時のモードで重みを選ぶ。省略時の既定は weight_jitan=weight・weight_lt=weight_st）。 */
 export function splitWeights(spec: MachineSpec, mode: LotteryMode): number[] {
   const w: number[] = [];
   for (let i = 0; i < spec.jackpotSplit.length; i = i + 1) {
     const b = spec.jackpotSplit[i] as JackpotBranch;
-    w.push(mode === 'st' ? b.weightSt : b.weight);
+    if (mode === 'normal') {
+      w.push(b.weight);
+    } else if (mode === 'jitan') {
+      w.push(b.weightJitan === undefined ? b.weight : b.weightJitan);
+    } else if (mode === 'st') {
+      w.push(b.weightSt);
+    } else if (mode === 'lt') {
+      w.push(b.weightLt === undefined ? b.weightSt : b.weightLt);
+    } else {
+      throw new Error('invalid lottery: mode must be normal, jitan, st or lt');
+    }
   }
   return w;
 }

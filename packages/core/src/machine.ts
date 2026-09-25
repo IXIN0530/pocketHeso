@@ -21,19 +21,34 @@ export type HoldColor = 'blue' | 'green' | 'red' | 'gold';
 /** 既知の保留色（順序固定）。 */
 export const HOLD_COLORS: readonly HoldColor[] = ['blue', 'green', 'red', 'gold'];
 
-/** モード別確率（閾値はロード時に確定）。 */
+/** 抽選モード（通常・時短・ST(RUSH)・LT。spec/21 モード拡張節）。 */
+export type LotteryModeId = 'normal' | 'jitan' | 'st' | 'lt';
+
+/** 既知の抽選モード（順序固定）。 */
+export const LOTTERY_MODE_IDS: readonly LotteryModeId[] = ['normal', 'jitan', 'st', 'lt'];
+
+/** 大当たり終了後の遷移先モード。 */
+export type JackpotNext = LotteryModeId;
+
+/** 既知の遷移先（順序固定）。 */
+export const JACKPOT_NEXTS: readonly JackpotNext[] = ['normal', 'jitan', 'st', 'lt'];
+
+/** モード別確率（閾値はロード時に確定。`stSpins` は残り回転数で `spins` 別名も読む）。 */
 export interface MachineMode {
   readonly jackpot1In: number;
   readonly thresholdU32: number;
   readonly stSpins: number;
 }
 
-/** 大当たり振分けの1枝（weightは通常時・weightStはST中の重み。0なら当該モードで出ない）。 */
+/** 大当たり振分けの1枝（weightは通常時・各モード重み。省略時は既定値。0なら当該モードで出ない。next省略時はkakuhen→st・tsujo→normal）。 */
 export interface JackpotBranch {
   readonly kind: JackpotKind;
   readonly weight: number;
   readonly weightSt: number;
+  readonly weightJitan?: number | undefined;
+  readonly weightLt?: number | undefined;
   readonly rounds: number;
+  readonly next?: JackpotNext | undefined;
 }
 
 /** 保留色の重み（当否別）。 */
@@ -43,13 +58,15 @@ export interface HoldColorWeight {
   readonly wMiss: number;
 }
 
-/** 機種仕様（検証済み）。 */
+/** 機種仕様（検証済み。`jitan`・`lt` は省略可で省略した機種では出ない）。 */
 export interface MachineSpec {
   readonly id: string;
   readonly version: number;
   readonly tier: MachineTier;
   readonly normal: MachineMode;
+  readonly jitan?: MachineMode | undefined;
   readonly st: MachineMode;
+  readonly lt?: MachineMode | undefined;
   readonly jackpotSplit: readonly JackpotBranch[];
   readonly roundCount: number;
   readonly payoutPerBall: number;
@@ -165,15 +182,43 @@ export function jackpotThresholdU32(jackpot1In: number): number {
   return (Math.floor(UINT32_RANGE / jackpot1In) >>> 0);
 }
 
+function isJackpotNext(value: string): value is JackpotNext {
+  for (let i = 0; i < JACKPOT_NEXTS.length; i = i + 1) {
+    if (JACKPOT_NEXTS[i] === value) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** 省略時の遷移先（kakuhen→st・tsujo→normal。今の機種と同じ動き）。 */
+export function defaultNextForKind(kind: JackpotKind): JackpotNext {
+  return kind === 'kakuhen' ? 'st' : 'normal';
+}
+
 function parseMode(value: unknown, what: string): MachineMode {
   const o = asRecord(value, what);
   const jackpot1In = asNumber(o['jackpot_1_in'], what + '.jackpot_1_in');
   if (jackpot1In <= 1 || jackpot1In > 100000) {
     fail(what + '.jackpot_1_in out of range');
   }
-  const stSpins = asInt(o['st_spins'], what + '.st_spins');
+  const spinsRaw: unknown = o['spins'];
+  const stSpinsRaw: unknown = o['st_spins'];
+  let stSpins: number;
+  if (spinsRaw !== undefined && stSpinsRaw !== undefined) {
+    const a = asInt(spinsRaw, what + '.spins');
+    const b = asInt(stSpinsRaw, what + '.st_spins');
+    if (a !== b) {
+      fail(what + '.spins and st_spins differ');
+    }
+    stSpins = a;
+  } else if (spinsRaw !== undefined) {
+    stSpins = asInt(spinsRaw, what + '.spins');
+  } else {
+    stSpins = asInt(stSpinsRaw, what + '.st_spins');
+  }
   if (stSpins < 0 || stSpins > 10000) {
-    fail(what + '.st_spins out of range');
+    fail(what + '.spins out of range');
   }
   return { jackpot1In, thresholdU32: jackpotThresholdU32(jackpot1In), stSpins };
 }
@@ -196,6 +241,14 @@ export function parseMachine(json: unknown): MachineSpec {
   const modes = asRecord(o['modes'], 'modes');
   const normal = parseMode(modes['normal'], 'modes.normal');
   const st = parseMode(modes['st'], 'modes.st');
+  let jitan: MachineMode | undefined;
+  let lt: MachineMode | undefined;
+  if (modes['jitan'] !== undefined) {
+    jitan = parseMode(modes['jitan'], 'modes.jitan');
+  }
+  if (modes['lt'] !== undefined) {
+    lt = parseMode(modes['lt'], 'modes.lt');
+  }
 
   const splitRaw = asArray(o['jackpot_split'], 'jackpot_split');
   if (splitRaw.length === 0) {
@@ -210,31 +263,115 @@ export function parseMachine(json: unknown): MachineSpec {
       fail(what + '.kind unknown');
     }
     const weight = asNonNegativeInt(bo['weight'], what + '.weight');
-    const weightSt = bo['weight_st'] === undefined ? weight : asNonNegativeInt(bo['weight_st'], what + '.weight_st');
-    if (weight > 1000000 || weightSt > 1000000) {
+    const weightStRaw: unknown = bo['weight_st'];
+    const weightJitanRaw: unknown = bo['weight_jitan'];
+    const weightLtRaw: unknown = bo['weight_lt'];
+    const weightSt = weightStRaw === undefined ? weight : asNonNegativeInt(weightStRaw, what + '.weight_st');
+    let weightJitan: number | undefined;
+    let weightLt: number | undefined;
+    if (weightJitanRaw !== undefined) {
+      weightJitan = asNonNegativeInt(weightJitanRaw, what + '.weight_jitan');
+    }
+    if (weightLtRaw !== undefined) {
+      weightLt = asNonNegativeInt(weightLtRaw, what + '.weight_lt');
+    }
+    const effJitan = weightJitan === undefined ? weight : weightJitan;
+    const effLt = weightLt === undefined ? weightSt : weightLt;
+    if (weight > 1000000 || weightSt > 1000000 || effJitan > 1000000 || effLt > 1000000) {
       fail(what + '.weight out of range');
     }
     const rounds = asInt(bo['rounds'], what + '.rounds');
     if (rounds < 1 || rounds > 16) {
       fail(what + '.rounds out of range');
     }
+    let next: JackpotNext | undefined;
+    if (bo['next'] !== undefined) {
+      const nextRaw = asString(bo['next'], what + '.next');
+      if (!isJackpotNext(nextRaw)) {
+        fail(what + '.next unknown');
+      }
+      next = nextRaw;
+    }
+    const normNext: JackpotNext = next === undefined ? defaultNextForKind(kindRaw) : next;
     for (let j = 0; j < jackpotSplit.length; j = j + 1) {
       const prev = jackpotSplit[j] as JackpotBranch;
-      if (prev.kind === kindRaw && prev.rounds === rounds) {
-        fail(what + ' duplicates jackpot_split[' + j + '] (same kind and rounds)');
+      const prevNext: JackpotNext = prev.next === undefined ? defaultNextForKind(prev.kind) : prev.next;
+      if (prev.kind === kindRaw && prev.rounds === rounds && prevNext === normNext) {
+        fail(what + ' duplicates jackpot_split[' + j + '] (same kind, rounds and next)');
       }
     }
-    jackpotSplit.push({ kind: kindRaw, weight, weightSt, rounds });
+    if (weightStRaw === undefined && weightJitan === undefined && weightLt === undefined && next === undefined) {
+      jackpotSplit.push({ kind: kindRaw, weight, weightSt, rounds });
+    } else if (weightStRaw === undefined) {
+      // weight_st 省略時は weight と同値だが、既存の完全一致を保つため weightSt は必ず保持する
+      const base = { kind: kindRaw, weight, weightSt, rounds };
+      if (weightJitan !== undefined && weightLt !== undefined && next !== undefined) {
+        jackpotSplit.push({ ...base, weightJitan, weightLt, next });
+      } else if (weightJitan !== undefined && weightLt !== undefined) {
+        jackpotSplit.push({ ...base, weightJitan, weightLt });
+      } else if (weightJitan !== undefined && next !== undefined) {
+        jackpotSplit.push({ ...base, weightJitan, next });
+      } else if (weightLt !== undefined && next !== undefined) {
+        jackpotSplit.push({ ...base, weightLt, next });
+      } else if (weightJitan !== undefined) {
+        jackpotSplit.push({ ...base, weightJitan });
+      } else if (weightLt !== undefined) {
+        jackpotSplit.push({ ...base, weightLt });
+      } else {
+        jackpotSplit.push({ ...base, next: next as JackpotNext });
+      }
+    } else if (weightJitan === undefined && weightLt === undefined && next === undefined) {
+      jackpotSplit.push({ kind: kindRaw, weight, weightSt, rounds });
+    } else {
+      const base = { kind: kindRaw, weight, weightSt, rounds };
+      if (weightJitan !== undefined && weightLt !== undefined && next !== undefined) {
+        jackpotSplit.push({ ...base, weightJitan, weightLt, next });
+      } else if (weightJitan !== undefined && weightLt !== undefined) {
+        jackpotSplit.push({ ...base, weightJitan, weightLt });
+      } else if (weightJitan !== undefined && next !== undefined) {
+        jackpotSplit.push({ ...base, weightJitan, next });
+      } else if (weightLt !== undefined && next !== undefined) {
+        jackpotSplit.push({ ...base, weightLt, next });
+      } else if (weightJitan !== undefined) {
+        jackpotSplit.push({ ...base, weightJitan });
+      } else if (weightLt !== undefined) {
+        jackpotSplit.push({ ...base, weightLt });
+      } else {
+        jackpotSplit.push({ ...base, next: next as JackpotNext });
+      }
+    }
   }
   let sumNormal = 0;
   let sumSt = 0;
+  let sumJitan = 0;
+  let sumLt = 0;
   for (let i = 0; i < jackpotSplit.length; i = i + 1) {
     const b = jackpotSplit[i] as JackpotBranch;
+    const effJ = b.weightJitan === undefined ? b.weight : b.weightJitan;
+    const effL = b.weightLt === undefined ? b.weightSt : b.weightLt;
     sumNormal = sumNormal + b.weight;
     sumSt = sumSt + b.weightSt;
+    sumJitan = sumJitan + effJ;
+    sumLt = sumLt + effL;
   }
   if (sumNormal <= 0 || sumSt <= 0) {
     fail('jackpot_split needs a positive total weight in each mode');
+  }
+  if (jitan !== undefined && sumJitan <= 0) {
+    fail('jackpot_split needs a positive total weight_jitan');
+  }
+  if (lt !== undefined && sumLt <= 0) {
+    fail('jackpot_split needs a positive total weight_lt');
+  }
+  for (let i = 0; i < jackpotSplit.length; i = i + 1) {
+    const b = jackpotSplit[i] as JackpotBranch;
+    const dst: JackpotNext = b.next === undefined ? defaultNextForKind(b.kind) : b.next;
+    if (dst === 'jitan' && jitan === undefined) {
+      fail('jackpot_split[' + i + '].next jitan needs modes.jitan');
+    }
+    if (dst === 'lt' && lt === undefined) {
+      fail('jackpot_split[' + i + '].next lt needs modes.lt');
+    }
   }
 
   const round = asRecord(o['round'], 'round');
@@ -297,12 +434,73 @@ export function parseMachine(json: unknown): MachineSpec {
     holdColors.push({ color: colorRaw, wHit, wMiss });
   }
 
+  if (jitan === undefined && lt === undefined) {
+    return {
+      id,
+      version,
+      tier: tierRaw,
+      normal,
+      st,
+      jackpotSplit,
+      roundCount,
+      payoutPerBall,
+      msPerRound,
+      hesoPayout,
+      holdMax,
+      medalPerJackpot,
+      medalPerKakuhen,
+      spinPatterns,
+      holdColors,
+    };
+  }
+  if (jitan !== undefined && lt === undefined) {
+    return {
+      id,
+      version,
+      tier: tierRaw,
+      normal,
+      jitan,
+      st,
+      jackpotSplit,
+      roundCount,
+      payoutPerBall,
+      msPerRound,
+      hesoPayout,
+      holdMax,
+      medalPerJackpot,
+      medalPerKakuhen,
+      spinPatterns,
+      holdColors,
+    };
+  }
+  if (jitan === undefined && lt !== undefined) {
+    return {
+      id,
+      version,
+      tier: tierRaw,
+      normal,
+      st,
+      lt,
+      jackpotSplit,
+      roundCount,
+      payoutPerBall,
+      msPerRound,
+      hesoPayout,
+      holdMax,
+      medalPerJackpot,
+      medalPerKakuhen,
+      spinPatterns,
+      holdColors,
+    };
+  }
   return {
     id,
     version,
     tier: tierRaw,
     normal,
+    jitan: jitan as MachineMode,
     st,
+    lt: lt as MachineMode,
     jackpotSplit,
     roundCount,
     payoutPerBall,

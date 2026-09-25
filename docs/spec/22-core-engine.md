@@ -38,6 +38,7 @@ type SimEvent =
   | { k: 'closed'; at: SimTime; regularPoints: number }
   | { k: 'rejected'; at: SimTime; action: Action['k']; reason: string }
 type HoldEntry = { serial: number; hit: boolean; kind?: JackpotKind; pattern: PatternId; color: HoldColor; hot: number }
+type Mode = 'normal' | 'jitan' | 'st' | 'lt'  // spec/21 モード拡張節。stRemaining は jitan/st/lt の残り回転数（normal は 0）
 ```
 経済の毎秒の増減はイベントにしない（量が多い）。状態（`economy`）とスナップショットにだけ残す。
 

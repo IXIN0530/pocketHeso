@@ -1,7 +1,31 @@
 /** 変動・大当たり・モード状態機械（spec/21 の消化〜モード、spec/22 のイベント順）。 */
 import type { JackpotBranch, JackpotKind, MachineSpec, PatternTable } from './machine.ts';
+import { defaultNextForKind } from './machine.ts';
 import type { HoldEntry, LotteryMode } from './lottery.ts';
 import { jackpotMedals, jackpotPayoutBalls } from './lottery.ts';
+
+/** モードの残り回転数（normal は 0。jitan/st/lt は各 `spins`）。 */
+function spinsForMode(spec: MachineSpec, mode: LotteryMode): number {
+  if (mode === 'normal') {
+    return 0;
+  }
+  if (mode === 'jitan') {
+    if (spec.jitan === undefined) {
+      throw new Error('invalid spin: jitan mode is missing');
+    }
+    return spec.jitan.stSpins;
+  }
+  if (mode === 'st') {
+    return spec.st.stSpins;
+  }
+  if (mode === 'lt') {
+    if (spec.lt === undefined) {
+      throw new Error('invalid spin: lt mode is missing');
+    }
+    return spec.lt.stSpins;
+  }
+  throw new Error('invalid spin: mode must be normal, jitan, st or lt');
+}
 
 /** 時刻（UNIX ms 整数。2^53 未満）。 */
 export type SimTime = number;
@@ -117,8 +141,14 @@ export class SpinMachine {
       throw new Error('invalid spin: patterns must not be empty');
     }
     const mode = initial !== undefined && initial.mode !== undefined ? initial.mode : 'normal';
-    if (mode !== 'normal' && mode !== 'st') {
-      throw new Error('invalid spin: mode must be normal or st');
+    if (mode !== 'normal' && mode !== 'jitan' && mode !== 'st' && mode !== 'lt') {
+      throw new Error('invalid spin: mode must be normal, jitan, st or lt');
+    }
+    if (mode === 'jitan' && spec.jitan === undefined) {
+      throw new Error('invalid spin: jitan mode is missing');
+    }
+    if (mode === 'lt' && spec.lt === undefined) {
+      throw new Error('invalid spin: lt mode is missing');
     }
     const stRemaining = initial !== undefined && initial.stRemaining !== undefined ? initial.stRemaining : 0;
     if (typeof stRemaining !== 'number' || !Number.isFinite(stRemaining) || Math.floor(stRemaining) !== stRemaining || stRemaining < 0) {
@@ -140,7 +170,7 @@ export class SpinMachine {
     return this.currentMode;
   }
 
-  /** ST 残り回転数（normal 時は 0）。 */
+  /** モード残り回転数（normal 時は 0。jitan/st/lt の残り）。 */
   get stRemaining(): number {
     return this.stLeft;
   }
@@ -223,9 +253,9 @@ export class SpinMachine {
     if (at !== active.endsAt) {
       throw new Error('invalid spin: at must equal spin endsAt');
     }
-    if (this.currentMode === 'st') {
+    if (this.currentMode !== 'normal') {
       if (this.stLeft <= 0) {
-        throw new Error('invalid spin: st has no spins left');
+        throw new Error('invalid spin: ' + this.currentMode + ' has no spins left');
       }
       this.stLeft = this.stLeft - 1;
     }
@@ -249,7 +279,7 @@ export class SpinMachine {
     }
     this.activeState = null;
     this.nowMsState = at;
-    if (this.currentMode === 'st' && this.stLeft === 0) {
+    if (this.currentMode !== 'normal' && this.stLeft === 0) {
       this.currentMode = 'normal';
       return [resolved, { k: 'modeChanged', to: 'normal', at, stRemaining: 0 }];
     }
@@ -277,8 +307,8 @@ export class SpinMachine {
     const payout = jackpotPayoutBalls(this.spec, jackpot.branchIndex, rate);
     const medals = jackpotMedals(this.spec, jackpot.branchIndex);
     const ended: SpinEvent = { k: 'jackpotEnded', entry: jackpot.serial, at, payout, medals };
-    const nextMode: LotteryMode = b.kind === 'kakuhen' ? 'st' : 'normal';
-    const nextSt = b.kind === 'kakuhen' ? this.spec.st.stSpins : 0;
+    const nextMode: LotteryMode = b.next === undefined ? defaultNextForKind(b.kind) : b.next;
+    const nextSt = spinsForMode(this.spec, nextMode);
     this.jackpotState = null;
     this.nowMsState = at;
     if (nextMode !== this.currentMode || nextSt !== this.stLeft) {
