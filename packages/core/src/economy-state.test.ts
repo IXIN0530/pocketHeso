@@ -34,8 +34,19 @@ function loadAtlas(): ArrayBuffer {
   return ab;
 }
 
+/** spec/23 表の初期値（手計算シナリオはこれで固定し、default.json の調整（D-048）に左右されないようにする）。 */
+const SPEC_YIELDS = [1, 8, 60, 400, 2600, 16000, 100000, 650000];
+
 function loadEconomy(): IdleEconomy {
-  const json = JSON.parse(readFileSync('../../resources/economy/default.json', 'utf8')) as unknown;
+  const json = JSON.parse(readFileSync('../../resources/economy/default.json', 'utf8')) as Record<string, unknown>;
+  const yak = json['yakumono'] as Record<string, unknown>[];
+  for (let i = 0; i < yak.length; i = i + 1) {
+    (yak[i] as Record<string, unknown>)['yield'] = SPEC_YIELDS[i];
+  }
+  (json['awaken'] as Record<string, unknown>)['medal_base'] = 5;
+  (json['factors'] as Record<string, unknown>)['closed'] = 0.1;
+  (json['close'] as Record<string, unknown>)['required_run_total'] = 1000000000;
+  (json['close'] as Record<string, unknown>)['divisor'] = 1000000000;
   return new IdleEconomy(parseEconomy(json));
 }
 
@@ -190,7 +201,8 @@ test('閉店は条件・常連P・リセット範囲', () => {
   expect(done.ok).toBe(true);
   if (done.ok) {
     expect(done.gain).toBe(1);
-    expect(done.balls).toBe(0);
+    expect(done.balls).toBe(econ.startBalls());
+    expect(done.balls).toBeGreaterThan(0);
   }
   expect(econ.getRegular()).toBe(1);
   expect(econ.getRunTotal()).toBe(0);

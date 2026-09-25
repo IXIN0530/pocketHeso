@@ -8,6 +8,7 @@ import {
   parseAtlasArgs,
   writeAtlasFile,
 } from './atlas.ts';
+import { formatEcon, measurePachinkoEv, parseEconArgs, runEcon } from './econ.ts';
 import { formatReports, parseRunArgs, runMachines } from './run.ts';
 
 /** 性能しきい値（発/秒・単スレッド）。未達は終了コード 1（Blockers に計測値を記録する）。 */
@@ -80,6 +81,24 @@ function run(argv: string[]): void {
   console.log(formatReports(reports));
 }
 
+/** 経済試算（`pnpm sim econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--json]`）。 */
+function econ(argv: string[]): void {
+  const args = parseEconArgs(argv);
+  const result = runEcon(args.profile, args.days, args.seed, args.machine, args.economy);
+  const ev =
+    args.evHours > 0
+      ? {
+          init: measurePachinkoEv(args.machine, args.seed, args.evHours, false, args.economy),
+          full: measurePachinkoEv(args.machine, args.seed, args.evHours, true, args.economy),
+        }
+      : null;
+  if (args.json) {
+    console.log(JSON.stringify({ ...result, ev }, null, 2));
+    return;
+  }
+  console.log(formatEcon(result, ev));
+}
+
 const [command = 'help', ...rest] = process.argv.slice(2);
 switch (command) {
   case 'version':
@@ -94,8 +113,11 @@ switch (command) {
   case 'run':
     run(rest);
     break;
+  case 'econ':
+    econ(rest);
+    break;
   default:
     console.log(
-      'usage: pachisim <version|bench [count]|atlas --board <id> [--jobs <n>]|run --balls <n> --seed <s> [--machine <id>]... [--json]>',
+      'usage: pachisim <version|bench [count]|atlas --board <id> [--jobs <n>]|run --balls <n> --seed <s> [--machine <id>]... [--json]|econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--json]>',
     );
 }

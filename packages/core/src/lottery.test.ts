@@ -187,7 +187,7 @@ test('取得時判定が各ストリームの手計算と一致しモード別�
       } else {
         expect(e.branchIndex).toBeNull();
       }
-      expect(e.hesoPayoutBalls).toBe(3);
+      expect(e.hesoPayoutBalls).toBe(8);
     }
   }
   expect(drawHold(spec, patterns, seed, 'normal', 0, 1)).toEqual(drawHold(spec, patterns, seed, 'normal', 0, 1));
@@ -201,8 +201,8 @@ test('保留色の white 残余が分母の10べきカバーになる（D-032）
 
 test('レート倍率とメダル・不正入力', () => {
   const { spec, patterns } = loadMachine();
-  expect(hesoPayoutBalls(spec, 1)).toBe(3);
-  expect(hesoPayoutBalls(spec, 4)).toBe(12);
+  expect(hesoPayoutBalls(spec, 1)).toBe(8);
+  expect(hesoPayoutBalls(spec, 4)).toBe(32);
   expect(jackpotPayoutBalls(spec, 0, 1)).toBe(1500);
   expect(jackpotPayoutBalls(spec, 1, 4)).toBe(2400);
   expect(jackpotMedals(spec, 0)).toBe(2);

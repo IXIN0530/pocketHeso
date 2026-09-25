@@ -312,6 +312,11 @@ export class IdleEconomy implements EconomyPort {
     return (h as number) * 3600000;
   }
 
+  /** 新規開始・閉店後の持ち玉（役物0からの再出発に使う）。 */
+  startBalls(): number {
+    return this.spec.close.startBalls;
+  }
+
   /** ブースト上限ms。 */
   boostCapMs(): number {
     return this.spec.upgrades.boostCapHours * 3600000;
@@ -849,7 +854,7 @@ export class IdleEconomy implements EconomyPort {
     this.boostOnState = on;
   }
 
-  /** 閉店（条件・常連P計算・リセット範囲）。 */
+  /** 閉店（条件・常連P計算・リセット範囲。玉はstart_ballsに戻す）。 */
   onClose(curBalls: number): { ok: true; balls: number; gain: number } | { ok: false; reason: string } {
     asFinite(curBalls, 'curBalls');
     if (this.runTotalState < this.spec.close.requiredRunTotal) {
@@ -867,6 +872,6 @@ export class IdleEconomy implements EconomyPort {
     this.autoOwnedState = false;
     this.tomeuchiOwnedState = false;
     this.runTotalState = 0;
-    return { ok: true, balls: 0, gain };
+    return { ok: true, balls: this.spec.close.startBalls, gain };
   }
 }

@@ -91,10 +91,11 @@ export interface EconomyNotice {
   readonly bonusWeight: number;
 }
 
-/** 閉店の数値（条件と常連 P の除数）。 */
+/** 閉店の数値（条件・常連 P の除数・新規開始/閉店後の持ち玉）。 */
 export interface EconomyClose {
   readonly requiredRunTotal: Amount;
   readonly divisor: Amount;
+  readonly startBalls: Amount;
 }
 
 /** claims 節の数値（連日倍率。燃料換算は claims 側）。 */
@@ -362,6 +363,7 @@ export function parseEconomy(json: unknown): EconomySpec {
   const cl = asRecord(o['close'], 'close');
   const requiredRunTotal = asPositive(cl['required_run_total'], 'close.required_run_total');
   const divisor = asPositive(cl['divisor'], 'close.divisor');
+  const startBalls = asIntRange(cl['start_balls'], 'close.start_balls', 0, 1000000);
   const claims = asRecord(o['claims'], 'claims');
   const streakPerDay = asNumber(claims['streak_per_day'], 'claims.streak_per_day');
   if (streakPerDay < 0 || streakPerDay > 1) {
@@ -407,7 +409,7 @@ export function parseEconomy(json: unknown): EconomySpec {
       bonus1In,
       bonusWeight,
     },
-    close: { requiredRunTotal, divisor },
+    close: { requiredRunTotal, divisor, startBalls },
     claims: { streakPerDay, streakMaxDays },
   };
 }

@@ -4,21 +4,21 @@
   "bulk_sizes": [10, 100],
   "yakumono": [
     { "id": "windmill", "name": "風車", "period_s": 2, "yield": 1, "base_price": 15 },
-    { "id": "kaitentai", "name": "回転体", "period_s": 4, "yield": 8, "base_price": 100 },
-    { "id": "croon", "name": "クルーン", "period_s": 6, "yield": 60, "base_price": 1100 },
-    { "id": "reel", "name": "液晶リール", "period_s": 8, "yield": 400, "base_price": 12000 },
-    { "id": "attacker", "name": "アタッカー", "period_s": 10, "yield": 2600, "base_price": 130000 },
-    { "id": "vzone", "name": "V入賞口", "period_s": 12, "yield": 16000, "base_price": 1400000 },
-    { "id": "denchu", "name": "電チュー", "period_s": 14, "yield": 100000, "base_price": 20000000 },
-    { "id": "shima", "name": "島設備", "period_s": 16, "yield": 650000, "base_price": 330000000 }
+    { "id": "kaitentai", "name": "回転体", "period_s": 4, "yield": 10, "base_price": 100 },
+    { "id": "croon", "name": "クルーン", "period_s": 6, "yield": 78, "base_price": 1100 },
+    { "id": "reel", "name": "液晶リール", "period_s": 8, "yield": 520, "base_price": 12000 },
+    { "id": "attacker", "name": "アタッカー", "period_s": 10, "yield": 3380, "base_price": 130000 },
+    { "id": "vzone", "name": "V入賞口", "period_s": 12, "yield": 20800, "base_price": 1400000 },
+    { "id": "denchu", "name": "電チュー", "period_s": 14, "yield": 130000, "base_price": 20000000 },
+    { "id": "shima", "name": "島設備", "period_s": 16, "yield": 845000, "base_price": 330000000 }
   ],
   "milestones": { "thresholds": [25, 50, 100], "step": 50, "step_from": 150 },
-  "awaken": { "min_lv": 100, "mult": 10, "medal_base": 5, "medal_growth": 2 },
-  "factors": { "fg": 1.0, "idle_base": 0.5, "closed": 0.1, "boost_mult": 2.0 },
+  "awaken": { "min_lv": 100, "mult": 10, "medal_base": 150, "medal_growth": 2 },
+  "factors": { "fg": 1.0, "idle_base": 0.5, "closed": 0.005, "boost_mult": 2.0 },
   "upgrades": {
     "idle_efficiency": { "values": [0.5, 0.6, 0.7, 0.8, 0.9, 1.0], "costs": [1000, 10000, 100000, 1000000, 10000000] },
     "tank_hours": { "values": [12, 18, 24, 36, 48], "boost_cap_hours": 24, "costs": [5000, 50000, 500000, 5000000] },
-    "nail_q": { "values": [0, 0.01, 0.02, 0.03, 0.04, 0.05], "costs": [20000, 200000, 2000000, 20000000, 200000000] },
+    "nail_q": { "values": [0, 0.0006, 0.0012, 0.0018, 0.0024, 0.003], "costs": [20000, 200000, 2000000, 20000000, 200000000] },
     "shorten": { "factor": 0.9, "stages": 3, "costs": [50000, 500000, 5000000] },
     "hold_plus": { "stages": 2, "costs": [100000, 1000000] },
     "auto": { "cost": 50000 },
@@ -38,6 +38,6 @@
     "bonus_1_in": 10,
     "bonus_weight": 5
   },
-  "close": { "required_run_total": 1000000000, "divisor": 1000000000 },
+  "close": { "required_run_total": 10000000000, "divisor": 10000000000, "start_balls": 100 },
   "claims": { "streak_per_day": 0.05, "streak_max_days": 20 }
 }

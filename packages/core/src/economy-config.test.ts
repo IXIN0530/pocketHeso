@@ -11,25 +11,27 @@ function clone(v: unknown): Record<string, unknown> {
   return JSON.parse(JSON.stringify(v)) as Record<string, unknown>;
 }
 
-test('既定の経済定義が spec/23 の数値と一致する', () => {
+test('既定の経済定義が spec/23 の数値（P3-T4 調整 D-048 を含む）と一致する', () => {
   const spec = parseEconomy(defaultJson());
   expect(spec.version).toBe(1);
   expect(spec.priceGrowth).toBe(1.15);
   expect(spec.bulkSizes).toEqual([10, 100]);
   expect(spec.yakumono.map((y) => y.id)).toEqual([...ECONOMY_YAKUMONO_IDS]);
   expect(spec.yakumono[0]).toMatchObject({ id: 'windmill', periodS: 2, yield: 1, basePrice: 15 });
-  expect(spec.yakumono[2]).toMatchObject({ id: 'croon', periodS: 6, yield: 60, basePrice: 1100 });
-  expect(spec.yakumono[7]).toMatchObject({ id: 'shima', periodS: 16, yield: 650000, basePrice: 330000000 });
+  expect(spec.yakumono[2]).toMatchObject({ id: 'croon', periodS: 6, yield: 78, basePrice: 1100 });
+  expect(spec.yakumono[7]).toMatchObject({ id: 'shima', periodS: 16, yield: 845000, basePrice: 330000000 });
   expect(spec.milestones).toEqual({ thresholds: [25, 50, 100], step: 50, stepFrom: 150 });
-  expect(spec.awaken).toEqual({ minLv: 100, mult: 10, medalBase: 5, medalGrowth: 2 });
-  expect(spec.factors).toEqual({ fg: 1.0, idleBase: 0.5, closed: 0.1, boostMult: 2.0 });
+  expect(spec.awaken).toEqual({ minLv: 100, mult: 10, medalBase: 150, medalGrowth: 2 });
+  expect(spec.factors).toEqual({ fg: 1.0, idleBase: 0.5, closed: 0.005, boostMult: 2.0 });
   expect(spec.notice.feverMult).toBe(7);
   expect(spec.notice.feverMs).toBe(77000);
   expect(spec.notice.rushRate).toBe(0.15);
   expect(spec.notice.rushCapS).toBe(900);
   expect(spec.notice.bonus1In).toBe(10);
-  expect(spec.close.requiredRunTotal).toBe(1000000000);
-  expect(spec.close.divisor).toBe(1000000000);
+  expect(spec.close.requiredRunTotal).toBe(10000000000);
+  expect(spec.close.divisor).toBe(10000000000);
+  expect(spec.close.startBalls).toBe(100);
+  expect(spec.upgrades.nailValues).toEqual([0, 0.0006, 0.0012, 0.0018, 0.0024, 0.003]);
   expect(spec.claims).toEqual({ streakPerDay: 0.05, streakMaxDays: 20 });
 });
 
@@ -68,6 +70,11 @@ test('不正な経済定義を拒否する', () => {
   const badClose = clone(defaultJson());
   ((badClose['close'] as Record<string, unknown>)['divisor'] as number) = 0;
   expect(() => parseEconomy(badClose)).toThrow();
+  for (const v of [-1, 1.5, undefined]) {
+    const badStart = clone(defaultJson());
+    (badStart['close'] as Record<string, unknown>)['start_balls'] = v;
+    expect(() => parseEconomy(badStart)).toThrow();
+  }
 
   const badClaims = clone(defaultJson());
   ((badClaims['claims'] as Record<string, unknown>)['streak_per_day'] as number) = 2;

@@ -19,14 +19,14 @@ test('保留キューはFIFO・満タンでoverflow・賞球は支払う', () =>
     const r = acquireHold(spec, patterns, 555, 'normal', s, 1, queue);
     expect(r.overflow).toBe(false);
     expect(r.entry === null ? -1 : r.entry.serial).toBe(s);
-    expect(r.hesoPayoutBalls).toBe(3);
+    expect(r.hesoPayoutBalls).toBe(8);
   }
   expect(queue.size).toBe(4);
   expect(queue.isFull()).toBe(true);
   const over = acquireHold(spec, patterns, 555, 'normal', 4, 1, queue);
   expect(over.overflow).toBe(true);
   expect(over.entry).toBeNull();
-  expect(over.hesoPayoutBalls).toBe(3);
+  expect(over.hesoPayoutBalls).toBe(8);
   expect(queue.size).toBe(4);
   for (let s = 0; s < 4; s = s + 1) {
     const first = queue.takeFirst();
@@ -48,7 +48,7 @@ test('hold_max 可変（上限変更・小さい上限・peek/clear）', () => {
   const r = acquireHold(spec, patterns, 777, 'st', 2, 4, queue);
   expect(r.overflow).toBe(false);
   expect(r.entry === null ? -1 : r.entry.modeAtDraw).toBe('st');
-  expect(r.entry === null ? -1 : r.entry.hesoPayoutBalls).toBe(12);
+  expect(r.entry === null ? -1 : r.entry.hesoPayoutBalls).toBe(32);
   expect(queue.peekAll().length).toBe(3);
   const added = queue.peekAll()[0] as HoldEntry;
   const single = new HoldQueue(1);
