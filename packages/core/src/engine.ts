@@ -29,7 +29,7 @@ export type Action =
   | { readonly t: SimTime; readonly k: 'boost'; readonly on: boolean }
   | { readonly t: SimTime; readonly k: 'close' };
 
-/** Engineが出すイベント（P2-T5の部分集合＋granted/rejected＋P2-T8上乗せ）。 */
+/** Engineが出すイベント（P2-T5の部分集合＋granted/rejected＋P2-T8上乗せ＋P3-T2経済）。 */
 export type SimEvent =
   | { readonly k: 'fired'; readonly ball: number; readonly at: SimTime; readonly rate: number }
   | { readonly k: 'sensor'; readonly ball: number; readonly at: SimTime; readonly kind: 'start1' | 'out' | 'lost' }
@@ -42,6 +42,9 @@ export type SimEvent =
   | { readonly k: 'jackpotEnded'; readonly entry: number; readonly at: SimTime; readonly payout: number; readonly medals: number }
   | { readonly k: 'modeChanged'; readonly to: LotteryMode; readonly at: SimTime; readonly stRemaining: number }
   | { readonly k: 'granted'; readonly claimId: string; readonly at: SimTime; readonly fuelMs: number; readonly medals: number }
+  | { readonly k: 'fuelEmpty'; readonly at: SimTime }
+  | { readonly k: 'fuelRefilled'; readonly at: SimTime }
+  | { readonly k: 'closed'; readonly at: SimTime; readonly regularPoints: number }
   | { readonly k: 'rejected'; readonly at: SimTime; readonly action: Action['k']; readonly reason: string };
 
 /** Engineの設定（seed・機種・盤面Atlas・初期持ち玉。economyはP3差し込み口）。 */
@@ -111,10 +114,12 @@ export interface JackpotView {
   readonly endsAt: SimTime;
 }
 
-/** 役物表示（P2-T5では空。P3以降で埋める）。 */
+/** 役物表示（P3-T2はLv・覚醒・次の価格。描画位相はT3以降）。 */
 export interface YakumonoView {
   readonly id: string;
   readonly lv: number;
+  readonly awakened?: number | undefined;
+  readonly nextPrice?: number | undefined;
 }
 
 /** Hall投影（UIはこれだけ見る。P2-T5はパチンコ部の項目のみ実値＋P2-T8 chain/chainBalls）。 */
@@ -275,8 +280,8 @@ export class Engine {
     const initialBalls = cfg.initialBalls === undefined ? 0 : cfg.initialBalls;
     const initialMedals = cfg.initialMedals === undefined ? 0 : cfg.initialMedals;
     const initialFuelMs = cfg.initialFuelMs === undefined ? 0 : cfg.initialFuelMs;
-    if (Math.floor(initialBalls) !== initialBalls) {
-      throw new Error('invalid engine: initialBalls must be an int');
+    if (typeof initialBalls !== 'number' || !Number.isFinite(initialBalls)) {
+      throw new Error('invalid engine: initialBalls must be finite');
     }
     if (Math.floor(initialMedals) !== initialMedals || initialMedals < 0) {
       throw new Error('invalid engine: initialMedals must be a non-negative int');
@@ -337,6 +342,9 @@ export class Engine {
     if (Math.floor(g.medals) !== g.medals || g.medals < 0) {
       throw new Error('invalid engine: grant.medals must be a non-negative int');
     }
+    if (g.streakDay !== undefined && typeof g.streakDay !== 'string') {
+      throw new Error('invalid engine: grant.streakDay must be a string');
+    }
     if (g.at < this.nowMsState) {
       throw new Error('invalid engine: grant.at must be >= now');
     }
@@ -344,7 +352,17 @@ export class Engine {
     if (last !== undefined && g.at < last.at) {
       throw new Error('invalid engine: grants must be in time order');
     }
-    this.grantsState.push({ claimId: g.claimId, at: g.at, fuelMs: g.fuelMs, medals: g.medals });
+    if (g.streakDay === undefined) {
+      this.grantsState.push({ claimId: g.claimId, at: g.at, fuelMs: g.fuelMs, medals: g.medals });
+    } else {
+      this.grantsState.push({
+        claimId: g.claimId,
+        at: g.at,
+        fuelMs: g.fuelMs,
+        medals: g.medals,
+        streakDay: g.streakDay,
+      });
+    }
   }
 
   /** 入力を追加する（t ≥ now・時刻昇順のみ。now時刻はまだ未処理なので同刻追加も通しと一致する）。 */
@@ -379,25 +397,52 @@ export class Engine {
       return;
     }
     if (a.k === 'buy') {
+      if (typeof a.target !== 'string' || a.target.length === 0) {
+        throw new Error('invalid engine: buy.target must be non-empty');
+      }
+      if (Math.floor(a.count) !== a.count || a.count < 1) {
+        throw new Error('invalid engine: buy.count must be a positive int');
+      }
       this.actionsState.push({ t: a.t, k: 'buy', target: a.target, count: a.count });
       return;
     }
     if (a.k === 'awaken') {
+      if (typeof a.yakumono !== 'string' || a.yakumono.length === 0) {
+        throw new Error('invalid engine: awaken.yakumono must be non-empty');
+      }
       this.actionsState.push({ t: a.t, k: 'awaken', yakumono: a.yakumono });
       return;
     }
     if (a.k === 'noticeTap') {
+      if (Math.floor(a.noticeId) !== a.noticeId || a.noticeId < 0) {
+        throw new Error('invalid engine: noticeTap.noticeId must be a non-negative int');
+      }
       this.actionsState.push({ t: a.t, k: 'noticeTap', noticeId: a.noticeId });
       return;
     }
     if (a.k === 'boost') {
+      if (typeof a.on !== 'boolean') {
+        throw new Error('invalid engine: boost.on must be boolean');
+      }
       this.actionsState.push({ t: a.t, k: 'boost', on: a.on });
       return;
     }
     this.actionsState.push({ t: a.t, k: 'close' });
   }
 
-  /** 次に処理する時刻（curより大きい入力・発射・センサー・変動終了・上乗せ・大当たり終了の最小値。なければto）。 */
+  /** 経済フックを持つか（StubでもIdleEconomyでもなくテスト用でも動くようダックタイピング）。 */
+  private econHook<K extends string>(name: K): unknown {
+    const e = this.economy as unknown as Record<string, unknown>;
+    return e[name];
+  }
+
+  /** 次の1000msグリッド（curより大きい最小の1000倍数）。 */
+  private static nextEconomyTick(cur: SimTime): SimTime {
+    const rem = cur - Math.floor(cur / 1000) * 1000;
+    return cur + 1000 - rem;
+  }
+
+  /** 次に処理する時刻（curより大きい入力・発射・センサー・変動終了・上乗せ・大当たり終了・経済1000msの最小値。なければto）。 */
   private nextEventTime(cur: SimTime, to: SimTime): SimTime {
     let nxt = to;
     const g = this.grantsState[this.grantIdxState] as Grant | undefined;
@@ -411,6 +456,10 @@ export class Engine {
     const nf = nextFireTick(cur);
     if (nf < nxt) {
       nxt = nf;
+    }
+    const nt = Engine.nextEconomyTick(cur);
+    if (nt < nxt) {
+      nxt = nt;
     }
     for (let i = 0; i < this.pendingState.length; i = i + 1) {
       const p = this.pendingState[i] as PendingSensor;
@@ -450,13 +499,14 @@ export class Engine {
       this.applyFiringAt(cur, out);
       this.applySensorsAt(cur, out);
       this.applySpinAt(cur, out);
+      this.applyEconomyTickAt(cur, to, out);
       cur = this.nextEventTime(cur, to);
     }
     this.nowMsState = to;
     return out;
   }
 
-  /** 同時刻のgrant/actionを適用する。 */
+  /** 同時刻のgrant/actionを適用する（経済付きは上限・検証を委譲）。 */
   private applyInputsAt(at: SimTime, out: SimEvent[]): void {
     while (true) {
       const g = this.grantsState[this.grantIdxState] as Grant | undefined;
@@ -464,9 +514,29 @@ export class Engine {
         break;
       }
       this.grantIdxState = this.grantIdxState + 1;
-      this.fuelMsState = this.fuelMsState + g.fuelMs;
-      this.medalsState = this.medalsState + g.medals;
-      out.push({ k: 'granted', claimId: g.claimId, at, fuelMs: g.fuelMs, medals: g.medals });
+      const hook = this.econHook('onGrant') as
+        | ((
+        fuelMs: number,
+        medals: number,
+        streakDay: string | undefined,
+        curFuelMs: number,
+        curMedals: number,
+      ) => { fuelMs: number; medals: number; fuelRefilled: boolean })
+        | undefined;
+      if (hook !== undefined && typeof hook === 'function') {
+        const bound = hook.bind(this.economy);
+        const r = bound(g.fuelMs, g.medals, g.streakDay, this.fuelMsState, this.medalsState);
+        this.fuelMsState = r.fuelMs;
+        this.medalsState = r.medals;
+        out.push({ k: 'granted', claimId: g.claimId, at, fuelMs: g.fuelMs, medals: g.medals });
+        if (r.fuelRefilled) {
+          out.push({ k: 'fuelRefilled', at });
+        }
+      } else {
+        this.fuelMsState = this.fuelMsState + g.fuelMs;
+        this.medalsState = this.medalsState + g.medals;
+        out.push({ k: 'granted', claimId: g.claimId, at, fuelMs: g.fuelMs, medals: g.medals });
+      }
     }
     while (true) {
       const a = this.actionsState[this.actionIdxState] as Action | undefined;
@@ -482,9 +552,98 @@ export class Engine {
         this.autoRateState = a.rate;
       } else if (a.k === 'presence') {
         this.fgState = a.fg;
+      } else if (a.k === 'buy') {
+        const hook = this.econHook('onBuy') as
+          | ((target: string, count: number, balls: number, medals: number) =>
+          | { ok: true; balls: number; medals: number }
+          | { ok: false; reason: string })
+          | undefined;
+        if (hook === undefined || typeof hook !== 'function') {
+          out.push({ k: 'rejected', at, action: a.k, reason: 'not-implemented' });
+        } else {
+          const r = (hook.bind(this.economy))(a.target, a.count, this.ballsState, this.medalsState);
+          if (r.ok) {
+            this.ballsState = r.balls;
+            this.medalsState = r.medals;
+          } else {
+            out.push({ k: 'rejected', at, action: a.k, reason: r.reason });
+          }
+        }
+      } else if (a.k === 'awaken') {
+        const hook = this.econHook('onAwaken') as
+          | ((id: string, medals: number) => { ok: true; medals: number } | { ok: false; reason: string })
+          | undefined;
+        if (hook === undefined || typeof hook !== 'function') {
+          out.push({ k: 'rejected', at, action: a.k, reason: 'not-implemented' });
+        } else {
+          const r = (hook.bind(this.economy))(a.yakumono, this.medalsState);
+          if (r.ok) {
+            this.medalsState = r.medals;
+          } else {
+            out.push({ k: 'rejected', at, action: a.k, reason: r.reason });
+          }
+        }
+      } else if (a.k === 'boost') {
+        const hook = this.econHook('onBoost') as ((on: boolean) => void) | undefined;
+        if (hook === undefined || typeof hook !== 'function') {
+          out.push({ k: 'rejected', at, action: a.k, reason: 'not-implemented' });
+        } else {
+          (hook.bind(this.economy))(a.on);
+        }
+      } else if (a.k === 'close') {
+        const hook = this.econHook('onClose') as
+          | ((balls: number) => { ok: true; balls: number; gain: number } | { ok: false; reason: string })
+          | undefined;
+        if (hook === undefined || typeof hook !== 'function') {
+          out.push({ k: 'rejected', at, action: a.k, reason: 'not-implemented' });
+        } else {
+          const r = (hook.bind(this.economy))(this.ballsState);
+          if (r.ok) {
+            this.ballsState = r.balls;
+            out.push({ k: 'closed', at, regularPoints: r.gain });
+          } else {
+            out.push({ k: 'rejected', at, action: a.k, reason: r.reason });
+          }
+        }
       } else {
         out.push({ k: 'rejected', at, action: a.k, reason: 'not-implemented' });
       }
+    }
+  }
+
+  /** 1000msグリッドの経済生産（開始時状態で1秒分。cur+1000<=toの完成秒のみ）。 */
+  private applyEconomyTickAt(cur: SimTime, to: SimTime, out: SimEvent[]): void {
+    const rem = cur - Math.floor(cur / 1000) * 1000;
+    if (rem !== 0) {
+      return;
+    }
+    if (cur + 1000 > to) {
+      return;
+    }
+    const hook = this.econHook('onTick') as
+      | ((fg: boolean, fuelMs: number) => { ballGain: number; fuelMs: number; fuelBecameEmpty: boolean })
+      | undefined;
+    if (hook === undefined || typeof hook !== 'function') {
+      return;
+    }
+    const r = (hook.bind(this.economy))(this.fgState, this.fuelMsState);
+    if (r.ballGain !== 0) {
+      this.ballsState = this.ballsState + r.ballGain;
+    }
+    this.fuelMsState = r.fuelMs;
+    if (r.fuelBecameEmpty) {
+      out.push({ k: 'fuelEmpty', at: cur });
+    }
+  }
+
+  /** 外部獲得（ヘソ・大当たり）を経済の累計に足す。 */
+  private noteEconomyGain(amount: number): void {
+    if (!(amount > 0)) {
+      return;
+    }
+    const hook = this.econHook('noteGain') as ((amount: number) => void) | undefined;
+    if (hook !== undefined && typeof hook === 'function') {
+      (hook.bind(this.economy))(amount);
     }
   }
 
@@ -551,6 +710,7 @@ export class Engine {
         fired: this.totalsState.fired,
         payoutBalls: this.totalsState.payoutBalls + entry.hesoPayoutBalls,
       };
+      this.noteEconomyGain(entry.hesoPayoutBalls);
       if (this.queue.tryAdd(entry)) {
         out.push({ k: 'holdAdded', entry, at });
       } else {
@@ -618,6 +778,7 @@ export class Engine {
                 fired: this.totalsState.fired,
                 payoutBalls: this.totalsState.payoutBalls + e.payout,
               };
+              this.noteEconomyGain(e.payout);
             }
             out.push(e);
           }
@@ -715,8 +876,8 @@ export class Engine {
     if (Math.floor(snap.nextBall) !== snap.nextBall || snap.nextBall < 0) {
       throw new Error('invalid engine: snap.nextBall must be a non-negative int');
     }
-    if (Math.floor(snap.balls) !== snap.balls) {
-      throw new Error('invalid engine: snap.balls must be an int');
+    if (typeof snap.balls !== 'number' || !Number.isFinite(snap.balls)) {
+      throw new Error('invalid engine: snap.balls must be finite');
     }
     if (Math.floor(snap.medals) !== snap.medals || snap.medals < 0) {
       throw new Error('invalid engine: snap.medals must be a non-negative int');
@@ -793,8 +954,34 @@ export class Engine {
     return clone.advance(until);
   }
 
-  /** 現在の投影（UIはこれだけを見る）。 */
+  /** 現在の投影（UIはこれだけを見る。経済付きはperSec・boost・役物を上乗せ）。 */
   project(): HallProjection {
-    return projectSnapshot(this.snapshot(), this.spec, this.patterns);
+    const base = projectSnapshot(this.snapshot(), this.spec, this.patterns);
+    const perSecHook = this.econHook('getPerSec') as
+      | ((fg: boolean, fuelMs: number) => number)
+      | undefined;
+    const boostHook = this.econHook('getBoostMs') as (() => number) | undefined;
+    const yakuHook = this.econHook('getYakumonoViews') as
+      | (() => Array<{ id: string; lv: number; awakened: number; nextPrice: number }>)
+      | undefined;
+    if (
+      perSecHook === undefined ||
+      boostHook === undefined ||
+      yakuHook === undefined ||
+      typeof perSecHook !== 'function' ||
+      typeof boostHook !== 'function' ||
+      typeof yakuHook !== 'function'
+    ) {
+      return base;
+    }
+    const perSec = (perSecHook.bind(this.economy))(this.fgState, this.fuelMsState);
+    const boostMs = (boostHook.bind(this.economy))();
+    const views = (yakuHook.bind(this.economy))();
+    const yakumono: YakumonoView[] = [];
+    for (let i = 0; i < views.length; i = i + 1) {
+      const v = views[i] as { id: string; lv: number; awakened: number; nextPrice: number };
+      yakumono.push({ id: v.id, lv: v.lv, awakened: v.awakened, nextPrice: v.nextPrice });
+    }
+    return { ...base, perSec, boostMs, yakumono };
   }
 }
