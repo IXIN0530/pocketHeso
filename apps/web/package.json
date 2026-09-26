@@ -18,7 +18,8 @@
     "idb": "^8.0.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "three": "^0.186.0"
+    "three": "^0.186.0",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",

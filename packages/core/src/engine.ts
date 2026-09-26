@@ -97,6 +97,8 @@ export interface EngineConfig {
   readonly initialMedals?: number | undefined;
   readonly initialFuelMs?: number | undefined;
   readonly economy?: EconomyPort | undefined;
+  /** 開始時刻（UNIX ms。未指定は0。grant/actionはこれ以降のみ）。 */
+  readonly startMs?: SimTime | undefined;
 }
 
 /** 飛行中の玉（発射済み・センサー待ち）。 */
@@ -429,13 +431,14 @@ export class Engine {
       throw new Error('invalid engine: initialMedals must be a non-negative int');
     }
     assertTime(initialFuelMs, 'initialFuelMs');
+    const startMs = assertTime(cfg.startMs === undefined ? 0 : cfg.startMs, 'startMs');
     this.seed = cfg.seed >>> 0;
     this.spec = cfg.spec;
     this.patterns = cfg.patterns;
     this.atlasBuffer = cfg.atlas;
     this.atlasView = new DataView(cfg.atlas);
     this.economy = cfg.economy === undefined ? new StubEconomy() : cfg.economy;
-    this.nowMsState = 0;
+    this.nowMsState = startMs;
     this.nextBallState = 0;
     this.ballsState = initialBalls;
     this.medalsState = initialMedals;
@@ -447,7 +450,7 @@ export class Engine {
     this.autoRateState = 1;
     this.fgState = true;
     this.queue = new HoldQueue(cfg.spec.holdMax);
-    this.spins = new SpinMachine(cfg.spec, cfg.patterns, { mode: 'normal', stRemaining: 0, nowMs: 0 });
+    this.spins = new SpinMachine(cfg.spec, cfg.patterns, { mode: 'normal', stRemaining: 0, nowMs: startMs });
     this.pendingState = [];
     this.grantsState = [];
     this.grantIdxState = 0;

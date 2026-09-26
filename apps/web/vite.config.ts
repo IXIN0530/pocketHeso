@@ -6,6 +6,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig({
   // ホーム画面 Web アプリは start_url から起動し `?spike=` を保持しないため、本番以外では本体にスパイクへの入口を出す。
   define: { __SHOW_SPIKES__: JSON.stringify(process.env.VERCEL_ENV !== 'production') },
+  // Engine Worker は module worker（spec/40）。
+  worker: { format: 'es' },
   plugins: [
     react(),
     VitePWA({

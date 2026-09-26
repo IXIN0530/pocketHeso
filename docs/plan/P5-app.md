@@ -13,8 +13,8 @@ Owner: Claude Code | Read: spec/10-architecture（保存節）, spec/40-app-ui�
 Do: `engine.worker.ts`（RPC）、IndexedDB（idb）スキーマと版数移行、起動時の復元（snapshot 無しでも seed+claims+actions から再計算）、
 presence 記録、時計巻き戻し検知、セーブの書き出し/読み込み。
 Accept:
-- [ ] 書き出し→全消去→読み込みで同じ Projection になるテスト
-- [ ] snapshot を壊しても再計算で起動できるテスト
+- [x] 書き出し→全消去→読み込みで同じ Projection になるテスト
+- [x] snapshot を壊しても再計算で起動できるテスト
 
 ### P5-T2 盤面描画
 Owner: Muse Spark | Read: spec/50-app-rendering, spec/20-core-physics（盤面 JSON 節）

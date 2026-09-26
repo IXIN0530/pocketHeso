@@ -2,12 +2,18 @@ import { useEffect, useState } from 'react';
 import { CORE_VERSION } from '@ph/core';
 import { isStandalone, setupServiceWorker } from '../platform/pwa.ts';
 import { ActivityScreen } from '../screens/activity-screen.tsx';
+import { EngineStatus } from '../screens/engine-status.tsx';
+import { startEngine } from '../stores/engine.ts';
 import { SPIKE_NAMES } from '../spikes/spike-names.ts';
 import styles from './app.module.css';
 
 export function App() {
   const [applyUpdate, setApplyUpdate] = useState<(() => Promise<void>) | null>(null);
   const [online, setOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    void startEngine();
+  }, []);
 
   useEffect(() => {
     const update = setupServiceWorker(() => setApplyUpdate(() => update));
@@ -31,6 +37,7 @@ export function App() {
         <dt>Core</dt>
         <dd>v{CORE_VERSION}</dd>
       </dl>
+      <EngineStatus />
       <ActivityScreen />
       {applyUpdate && (
         <button className={styles.update} onClick={() => void applyUpdate()}>

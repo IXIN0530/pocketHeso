@@ -27,4 +27,4 @@ Owner: Claude Code | Read: spec/31-shortcut-health（利用者の流れ）, spec
 Do: `platform/{shortcut,clipboard,geo,yolp}.ts`（YOLP は JSONP・保存しない・2回制限、クレジット表示）、ペアリング鍵生成、
 行動画面と受け取り確認モーダル（P5 の画面枠が未完なら最小 UI）。
 Accept:
-- [ ] 実機で「運動を受け取る」→ 燃料が増える、「トレーニング開始→20分後に終了」→ 燃料とメダルが増える（人間が確認し Notes へ）
+- [x] 実機で「運動を受け取る」→ 燃料が増える、「トレーニング開始→20分後に終了」→ 燃料とメダルが増える（人間が確認し Notes へ）

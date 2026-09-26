@@ -2,8 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import type { CheckinResult, ClaimRecord, OwnPlace } from '@ph/claims';
 import { generatePairingKey } from '../platform/shortcut.ts';
 import {
-  appendClaims,
-  closeSessionWithClaims,
   loadLedger,
   loadPlaces,
   loadSettings,
@@ -24,8 +22,10 @@ import {
   summarize,
   type ClaimPlan,
 } from '../stores/activity.ts';
+import { receiveClaims, useEngine } from '../stores/engine.ts';
 import { CheckinPanel } from './checkin-panel.tsx';
 import { ConfirmModal } from './confirm-modal.tsx';
+import { SavePanel } from './save-panel.tsx';
 import { ShortcutPanel } from './shortcut-panel.tsx';
 import styles from './activity.module.css';
 
@@ -35,10 +35,12 @@ interface Pending {
   readonly closesSession: boolean;
 }
 
-/** 行動画面（P4 の最小 UI）: 運動を受け取る・チェックイン・自己申告と、受け取った燃料の合計。 */
+/** 行動画面（P4 の最小 UI）: 運動を受け取る・チェックイン・自己申告と、燃料の残り。 */
 export function ActivityScreen() {
+  const projection = useEngine((s) => s.projection);
   const [db, setDb] = useState<Db | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [receiveError, setReceiveError] = useState<string | null>(null);
   const [ledger, setLedger] = useState<ClaimRecord[]>([]);
   const [places, setPlaces] = useState<OwnPlace[]>([]);
   const [settings, setSettings] = useState<Settings>({});
@@ -116,10 +118,11 @@ export function ActivityScreen() {
     if (pending === null) {
       return;
     }
-    if (pending.closesSession) {
-      await closeSessionWithClaims(db, pending.plan.records);
-    } else if (pending.plan.records.length > 0) {
-      await appendClaims(db, pending.plan.records);
+    try {
+      await receiveClaims(pending.plan.records, pending.closesSession);
+      setReceiveError(null);
+    } catch (e) {
+      setReceiveError(`受け取れませんでした: ${e instanceof Error ? e.message : String(e)}`);
     }
     await reload(db);
     setPending(null);
@@ -129,15 +132,16 @@ export function ActivityScreen() {
 
   return (
     <div className={styles.screen}>
+      {receiveError && <p className={styles.error}>{receiveError}</p>}
       <div className={styles.summary}>
         <div>
-          <small>受け取った燃料</small>
-          <b>{formatFuel(sum.fuelMs)}</b>
+          <small>燃料の残り</small>
+          <b>{projection === null ? '—' : formatFuel(projection.fuelMs)}</b>
           <small>今日 +{formatFuel(sum.todayFuelMs)}</small>
         </div>
         <div>
           <small>メダル</small>
-          <b>{sum.medals}</b>
+          <b>{projection === null ? '—' : projection.medals}</b>
         </div>
         <div>
           <small>連続日数</small>
@@ -174,6 +178,7 @@ export function ActivityScreen() {
           </button>
         </div>
       </section>
+      <SavePanel lastExportAt={settings.lastExportAt} onImported={() => reload(db)} />
       {pending && <ConfirmModal plan={pending.plan} onConfirm={confirm} onCancel={() => setPending(null)} />}
     </div>
   );

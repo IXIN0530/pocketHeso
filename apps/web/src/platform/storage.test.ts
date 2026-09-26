@@ -7,9 +7,11 @@ import {
   loadLedger,
   loadPlaces,
   loadSettings,
+  migrateMeta,
   openStorage,
   putPlace,
   putSetting,
+  putSnapshot,
   type StoredSession,
 } from './storage.ts';
 
@@ -55,4 +57,23 @@ test('settings, places and closing a session with its claims', async () => {
   await putSetting(db, 'session', session);
   await expect(closeSessionWithClaims(db, [rec('checkin:s', 6)])).rejects.toThrow();
   expect((await loadSettings(db)).session).toEqual(session);
+});
+
+test('migrateMeta: 版1は最古の受け取り（now より前なら）を開始時刻にし、版2はそのまま・新しすぎる版は拒否', () => {
+  expect(migrateMeta({ schema: 1 }, 500, 1000, 7)).toEqual({ schema: 2, seed: 7, createdAt: 500, machineId: 'light-middle-01' });
+  expect(migrateMeta({}, undefined, 1000, 7)).toMatchObject({ createdAt: 1000 });
+  expect(migrateMeta({}, 2000, 1000, 7)).toMatchObject({ createdAt: 1000 });
+  const v2 = { schema: 2, seed: 1, createdAt: 2, machineId: 'lt-middle-01' };
+  expect(migrateMeta(v2, 0, 1000, 7)).toEqual(v2);
+  expect(() => migrateMeta({ schema: 3 }, 0, 0, 0)).toThrow('新しい版');
+});
+
+test('スナップショットは latest と日毎7件だけ残す', async () => {
+  const db = await openStorage('t-snap');
+  for (let d = 1; d <= 9; d++) {
+    await putSnapshot(db, `day:2026-09-0${d}`, d);
+  }
+  await putSnapshot(db, 'latest', 0);
+  const keys = await db.getAllKeys('snapshot');
+  expect(keys).toEqual(['day:2026-09-03', 'day:2026-09-04', 'day:2026-09-05', 'day:2026-09-06', 'day:2026-09-07', 'day:2026-09-08', 'day:2026-09-09', 'latest']);
 });

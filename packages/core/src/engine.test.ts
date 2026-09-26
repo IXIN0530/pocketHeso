@@ -266,6 +266,27 @@ test('advance(T)後にt===Tで追加した入力・付与は最初から渡し�
   expect(once.filter((e) => e.k === 'fired').map((e) => e.at)).toEqual([0, 600]);
 });
 
+test('startMs: 実時刻起点でも0起点と同じ進み方（発射・経済の刻みが揃う倍数）・起点前の入力は拒否', () => {
+  const { spec, patterns } = loadMachine();
+  const atlas = loadAtlas();
+  const T = 6000 * 298333333;
+  const base = new Engine({ seed: 5, spec, patterns, atlas, initialBalls: 50000 }, [{ claimId: 'g', at: 3000, fuelMs: 60000, medals: 1 }], [
+    { t: 0, k: 'auto', share: 1, rate: 1 },
+  ]);
+  const late = new Engine({ seed: 5, spec, patterns, atlas, initialBalls: 50000, startMs: T }, [{ claimId: 'g', at: T + 3000, fuelMs: 60000, medals: 1 }], [
+    { t: T, k: 'auto', share: 1, rate: 1 },
+  ]);
+  expect(late.nowMs).toBe(T);
+  const a = base.advance(300000);
+  const b = late.advance(T + 300000);
+  expect(b.map((e) => e.k)).toEqual(a.map((e) => e.k));
+  expect(b.filter((e) => e.k === 'fired').map((e) => e.at - T)).toEqual(a.filter((e) => e.k === 'fired').map((e) => e.at));
+  const sa = base.snapshot();
+  const sb = late.snapshot();
+  expect([sb.balls, sb.medals, sb.fuelMs, sb.totals]).toEqual([sa.balls, sa.medals, sa.fuelMs, sa.totals]);
+  expect(() => new Engine({ seed: 5, spec, patterns, atlas, startMs: T }, [{ claimId: 'x', at: T - 1, fuelMs: 0, medals: 0 }], [])).toThrow();
+});
+
 /** 状態（呼び出し回数）を持つテスト用経済。 */
 class CountingEconomy implements EconomyPort {
   count = 0;
