@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
-import { planGrants } from './ledger.ts';
+import { planGrants, type ClaimRecord } from './ledger.ts';
 import { parseClaimRules } from './rules.ts';
 import { sha256Hex } from './sha256.ts';
 import { parseShortcutCode } from './shortcut-code.ts';
@@ -60,6 +60,29 @@ describe('real-device fixtures', () => {
     }
     const recs = planGrants([], r, parseClaimRules(economy));
     expect(recs.filter((x) => x.kind === 'steps').map((x) => x.day)).toEqual(['2026-09-22', '2026-09-23', '2026-09-24']);
+  });
+
+  test('sequential real codes add only the increase', () => {
+    const economy = JSON.parse(readFileSync('../../resources/economy/default.json', 'utf8')) as Record<string, unknown>;
+    const rules = parseClaimRules(economy);
+    let ledger: ClaimRecord[] = [];
+    const steps: [string, number][][] = [];
+    for (const f of SHORTCUT_FIXTURES) {
+      const r = parseShortcutCode(f.code, FIXTURE_KEY, Date.parse(f.genIso) + MIN);
+      if (r.k !== 'health') {
+        throw new Error(r.message);
+      }
+      const recs = planGrants(ledger, r, rules);
+      steps.push(recs.filter((x) => x.kind === 'steps').map((x) => [x.day, x.grant.fuelMs]));
+      ledger = ledger.concat(recs);
+    }
+    // 1,000歩 = 10分 = 600ms/歩、1万歩超は半分。09-24 は 10,368 → 12,702 歩、09-26 の2回目は 2,300 → 2,410 歩の差分だけ。
+    const t = (n: number): number => (n <= 10000 ? n : 10000 + (n - 10000) / 2) * 600;
+    expect(steps).toEqual([
+      [['2026-09-22', t(10340)], ['2026-09-23', t(10231)], ['2026-09-24', t(10368)]],
+      [['2026-09-24', t(12702) - t(10368)], ['2026-09-25', t(3123)], ['2026-09-26', t(2300)]],
+      [['2026-09-26', t(2410) - t(2300)]],
+    ]);
   });
 });
 

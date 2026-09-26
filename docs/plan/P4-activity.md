@@ -14,7 +14,7 @@ Owner: Claude Code | Read: spec/31-shortcut-health, spec/30-activity-claims（AP
 Do: `parseShortcutCode`（形式・sig・鮮度・範囲）。P0-T3 で得た実機のコード例を fixture にする。
 `resources/shortcut/README.md` を利用者向け手順として完成させる（iCloud リンクは人間が作成して記入）。
 Accept:
-- [ ] 実機由来 fixture 3件以上が通り、壊れたコード・別の鍵・古いコードがそれぞれ別のエラーになる
+- [x] 実機由来 fixture 3件以上が通り、壊れたコード・別の鍵・古いコードがそれぞれ別のエラーになる
 
 ### P4-T3 チェックイン判定
 Owner: Claude Code | Read: spec/32-training-checkin
