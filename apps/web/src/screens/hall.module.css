@@ -1,0 +1,144 @@
+.hall {
+  display: grid;
+  gap: 10px;
+}
+
+.board {
+  position: relative;
+}
+
+/* 予告は盤面の下寄りに重ねる（片手の親指が届く位置）。 */
+.notice {
+  position: absolute;
+  left: 50%;
+  bottom: 14%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 2px;
+  min-width: 60%;
+  padding: 12px 18px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 16px;
+  color: #fff;
+  font-size: 13px;
+  box-shadow: 0 0 24px currentColor;
+  animation: pulse 0.9s ease-in-out infinite alternate;
+}
+
+.notice b {
+  font-size: 18px;
+}
+
+.fever {
+  background: linear-gradient(135deg, #ff3a6e, #ff9a2e);
+}
+
+.rush {
+  background: linear-gradient(135deg, #2e7bff, #8a5cff);
+}
+
+.bonus {
+  background: linear-gradient(135deg, #d4a017, #ff5ec4);
+}
+
+@keyframes pulse {
+  from {
+    transform: translateX(-50%) scale(0.97);
+  }
+  to {
+    transform: translateX(-50%) scale(1.03);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notice {
+    animation: none;
+  }
+}
+
+.hud {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 0;
+  padding: 10px 8px;
+  border-radius: 12px;
+  background: #1c2145;
+  text-align: center;
+}
+
+.hud dt {
+  color: #a8acc8;
+  font-size: 11px;
+}
+
+.hud dd {
+  margin: 2px 0 0;
+  color: #e8b840;
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  color: #d0d3ea;
+  font-size: 13px;
+}
+
+.hot {
+  color: #ff7a8a;
+  font-weight: 600;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.shoot {
+  flex: 1 1 60%;
+  min-height: 52px;
+  border: 0;
+  border-radius: 14px;
+  background: #e8b840;
+  color: #121630;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.shoot.on {
+  background: #2c325e;
+  color: #f2f2f7;
+  box-shadow: inset 0 0 0 2px #e8b840;
+}
+
+.shoot:disabled,
+.rates button:disabled {
+  opacity: 0.6;
+}
+
+.rates {
+  display: flex;
+  gap: 4px;
+}
+
+.rates button {
+  min-width: 52px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: #2c325e;
+  color: #f2f2f7;
+  font-size: 14px;
+}
+
+.rates .picked {
+  background: #8a5cff;
+  font-weight: 700;
+}

@@ -1,6 +1,6 @@
 // Engine Worker の窓口（spec/40 状態管理）: 最新の HallProjection を持ち、前面中は 1Hz で前進、前面/背面を記録する。
 import type { ClaimRecord } from '@ph/claims';
-import type { AwaySummary, HallProjection } from '@ph/core';
+import type { AwaySummary, EngineSimEvent, HallProjection } from '@ph/core';
 import { create } from 'zustand';
 import type { ActionInput, BootResult, EngineView, Shot } from '../engine/engine-host.ts';
 import { wrap, type Port, type Remote } from '../engine/rpc.ts';
@@ -46,12 +46,28 @@ export function onShots(fn: ShotListener): () => void {
   return () => shotListeners.delete(fn);
 }
 
-function show(v: EngineView): void {
+type ViewListener = (projection: HallProjection, events: readonly EngineSimEvent[]) => void;
+const viewListeners = new Set<ViewListener>();
+
+/**
+ * 前進ごとの Projection とイベント（液晶の保留・変動の再生用, spec/40）。戻り値で解除。
+ * 登録時に最新の Projection を（イベント無しで）渡す。
+ */
+export function onView(fn: ViewListener): () => void {
+  viewListeners.add(fn);
+  const p = useEngine.getState().projection;
+  if (p !== null) fn(p, []);
+  return () => viewListeners.delete(fn);
+}
+
+function show(v: EngineView & { readonly events?: readonly EngineSimEvent[] }): void {
   useEngine.setState({ projection: v.projection, clockBack: v.clockBack });
   lastShots = v.shots;
   if (v.shots.length > 0) {
     shotListeners.forEach((fn) => fn(v.shots));
   }
+  const events = v.events ?? [];
+  viewListeners.forEach((fn) => fn(v.projection, events));
 }
 
 function need(): Remote<EngineApi> {

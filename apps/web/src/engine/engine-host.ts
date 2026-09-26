@@ -160,16 +160,17 @@ export class EngineHost {
     if (t === null) {
       return { ...this.view(true), events: [] };
     }
+    let before: EngineSimEvent[];
     try {
-      this.engine.advance(t);
+      before = this.engine.advance(t);
       const persist = apply(t);
       await persist();
     } catch (e) {
       await this.rebuild(t);
       throw e;
     }
-    // 半開区間 [now, to) なので t の入力は t+1 まで進めて反映する。
-    const events = this.engine.advance(t + 1);
+    // 半開区間 [now, to) なので t の入力は t+1 まで進めて反映する。前回の前進から t までのイベントも渡す（液晶・盤面が取りこぼさない）。
+    const events = [...before, ...this.engine.advance(t + 1)];
     return { ...this.view(false, events), events };
   }
 

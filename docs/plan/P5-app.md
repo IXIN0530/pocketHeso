@@ -27,7 +27,7 @@ Accept:
 Owner: Claude Code | Read: spec/40-app-ui（画面節）, spec/21-core-lottery（流れ節）
 Do: 簡易図柄変動（3列）、保留（色＋形）、HUD、打つトグルとレート選択、予告の表示とタップ。演出は P6 で差し替える最小版。
 Accept:
-- [ ] 保留が増減し、変動と連動して正しく消化される
+- [x] 保留が増減し、変動と連動して正しく消化される（`board/lcd-timeline.test.ts`: 実 Engine 4台で先頭から1つずつ消化・取りこぼし無し・Projection と一致）
 
 ### P5-T4 強化・記録・設定・留守中サマリー
 Owner: Claude Code | Read: spec/40-app-ui, spec/23-core-economy（役物・強化節）

@@ -105,6 +105,9 @@ test('発射は600ms絶対倍数・Atlas参照でセンサー時刻が決まる�
     { k: 'fired', ball: 1, at: 600, rate: 1 },
     { k: 'fired', ball: 2, at: 1200, rate: 1 },
   ]);
+  // 投影に打つの状態と解放済みレート（経済なしは [1]）が出る。
+  expect(eng.project().shoot).toEqual({ on: true, rate: 1 });
+  expect(eng.project().rates).toEqual([1]);
   const later = eng.advance(90000);
   const all = [...evs, ...later];
   expectTimeOrdered(all);

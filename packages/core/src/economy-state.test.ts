@@ -194,8 +194,10 @@ test('閉店は条件・常連P・リセット範囲', () => {
   econ.onGrant(0, 7, undefined, 0, 0);
   const r1 = econ.onBuy('idle', 1, 1000000000, 0);
   expect(r1.ok).toBe(true);
+  expect(econ.getUnlockedRates()).toEqual([1]);
   const r2 = econ.onBuy('rate', 1, 0, 7);
   expect(r2.ok).toBe(true);
+  expect(econ.getUnlockedRates().length).toBe(2);
   // 消費しても累計獲得メダルは減らない
   expect(econ.getMedalsEarned()).toBe(7);
   const done = econ.onClose(12345);

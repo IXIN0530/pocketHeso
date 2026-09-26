@@ -592,6 +592,19 @@ export class IdleEconomy implements EconomyPort {
     return this.tomeuchiOwnedState;
   }
 
+  /** 解放済みのレート（rates[0..rateStage]。昇順）。 */
+  getUnlockedRates(): number[] {
+    const rates = this.spec.upgrades.rates;
+    if (this.rateStageState >= rates.length) {
+      fail('rateStage out of range');
+    }
+    const out: number[] = [];
+    for (let i = 0; i <= this.rateStageState; i = i + 1) {
+      out.push(rates[i] as number);
+    }
+    return out;
+  }
+
   /** レートが解放済みか（rates[0..rateStage]のいずれかと一致）。 */
   isRateAllowed(rate: number): boolean {
     if (Math.floor(rate) !== rate || rate < 1) {

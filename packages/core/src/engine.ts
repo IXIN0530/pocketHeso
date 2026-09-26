@@ -206,6 +206,10 @@ export interface HallProjection {
   readonly totals: Totals;
   readonly chain: number;
   readonly chainBalls: number;
+  /** 前面の「打つ」（on と選択中のレート。UI のトグル表示用）。 */
+  readonly shoot: { readonly on: boolean; readonly rate: number };
+  /** 解放済みのレート（昇順。経済なしは [1]）。 */
+  readonly rates: readonly number[];
 }
 
 /** 発射グリッドms（絶対時刻の倍数に揃える）。 */
@@ -333,6 +337,8 @@ export function projectSnapshot(
     totals: { ...snap.totals },
     chain: spinSnap.chain === undefined ? 0 : spinSnap.chain,
     chainBalls: spinSnap.chainBalls === undefined ? 0 : spinSnap.chainBalls,
+    shoot: { on: snap.shootOn, rate: snap.shootRate },
+    rates: [1],
   };
 }
 
@@ -1588,7 +1594,11 @@ export class Engine {
 
   /** 現在の投影（UIはこれだけを見る。経済付きはperSec・boost・役物・フィーバーを上乗せ）。 */
   project(): HallProjection {
-    const base = projectSnapshot(this.snapshot(), this.spec, this.patterns);
+    const snapBase = projectSnapshot(this.snapshot(), this.spec, this.patterns);
+    const ratesHook = this.econHook('getUnlockedRates') as (() => number[]) | undefined;
+    const base = ratesHook !== undefined && typeof ratesHook === 'function'
+      ? { ...snapBase, rates: (ratesHook.bind(this.economy))() }
+      : snapBase;
     const perSecHook = this.econHook('getPerSec') as
       | ((fg: boolean, fuelMs: number) => number)
       | undefined;

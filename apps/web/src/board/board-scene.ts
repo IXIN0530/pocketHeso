@@ -38,13 +38,14 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { BALL_RADIUS_MM, type Board, type BoardYakumono, type Vec2 } from '@ph/core';
+import { BALL_RADIUS_MM, type Board, type BoardYakumono, type EngineSimEvent, type HallProjection, type Vec2 } from '@ph/core';
 import type { Shot } from '../engine/engine-host.ts';
 import { LCD_RECT, bakeBoard, bakeGlare, bakeHall, bakeSoftDot, bakeSymbolAtlas } from './art.ts';
 import { BallTracks, DISPLAY_LAG_MS, MAX_BALLS, PREROLL_MS } from './ball-tracks.ts';
 import { CAB, Cabinet, bakeCabinetEnv, ledTube } from './cabinet.ts';
 import { summarize, type FrameStats } from './frame-stats.ts';
 import { LcdReels } from './lcd.ts';
+import { LcdTimeline } from './lcd-timeline.ts';
 
 export interface DrawInfo {
   calls: number;
@@ -112,6 +113,8 @@ export class BoardScene {
   private yakuStates: readonly YakumonoState[] = [];
   private yakuAt = 0;
   private readonly lcd: LcdReels;
+  private readonly lcdTimeline = new LcdTimeline();
+  private lastJackpot = -1;
   private readonly ballMeshes: Mesh[] = [];
   private readonly ballShadows: InstancedMesh;
   private readonly yaku: Yaku[] = [];
@@ -133,7 +136,8 @@ export class BoardScene {
   private homeDist = 1400;
   private readonly homeY = (CAB.top + CAB.bottom) / 2;
 
-  constructor(host: HTMLElement, board: Board, dirs: readonly Vec2[], clock: SceneClock) {
+  /** patternHot は変動パターンの熱さ（1 以上をリーチとして見せる, spec/21）。 */
+  constructor(host: HTMLElement, board: Board, dirs: readonly Vec2[], clock: SceneClock, patternHot?: (pattern: string) => number) {
     this.host = host;
     this.board = board;
     this.clock = clock;
@@ -172,7 +176,7 @@ export class BoardScene {
     this.scene.add(this.buildYakuRings());
 
     const atlas = tex(bakeSymbolAtlas());
-    this.lcd = new LcdReels(atlas);
+    this.lcd = new LcdReels(atlas, patternHot);
     this.scene.add(this.buildLcd());
 
     this.scene.add(this.cabinet.group);
@@ -245,10 +249,14 @@ export class BoardScene {
     });
   }
 
+  /** Engine の前進結果（液晶の保留・変動・大当たり。盤面の玉と同じ表示時刻で再生する）。 */
+  pushView(projection: HallProjection, events: readonly EngineSimEvent[]): void {
+    this.lcdTimeline.push(projection, events);
+  }
+
   /** 当たり演出（3秒。連打したら頭から）。 */
   win(): void {
     this.winMs = 0;
-    this.lcd.win();
   }
 
   setRunning(running: boolean): void {
@@ -321,14 +329,18 @@ export class BoardScene {
 
     const display = this.displayNow();
     this.tracks.update(display, (kind) => {
-      if (kind !== 'start1') return;
-      this.lcd.addHold();
-      this.hesoFlash = 1;
+      if (kind === 'start1') this.hesoFlash = 1;
     });
+    const lcdState = this.lcdTimeline.advance(display);
+    const jackpot = lcdState.jackpot?.entry ?? -1;
+    if (jackpot !== this.lastJackpot) {
+      this.lastJackpot = jackpot;
+      if (jackpot >= 0) this.win();
+    }
     this.hesoFlash = Math.max(0, this.hesoFlash - dt / 500);
     this.updateBalls();
     this.updateYakumono(display, winLevel);
-    this.lcd.update(dt, winLevel);
+    this.lcd.update(dt, display, this.clock.scale, lcdState, (e) => this.lcdTimeline.peekResult(e), winLevel);
     this.updateLamps(sec, winLevel, white);
     this.updateCamera();
 
