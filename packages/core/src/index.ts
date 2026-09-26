@@ -87,7 +87,6 @@ export {
   hesoPayoutBalls,
   holdColorWeights,
   jackpotBonusRounds,
-  jackpotMedals,
   jackpotPayoutBalls,
   jackpotTotalRounds,
   modeOf,
@@ -105,6 +104,7 @@ export type { Amount } from './economy-math.ts';
 export {
   CBRT_ITERATIONS,
   awakenMedalCost,
+  ballPoints,
   buildGrowthTable,
   buildPow115Table,
   cbrt40,
@@ -122,6 +122,7 @@ export type {
   EconomyClaims,
   EconomyClose,
   EconomyFactors,
+  EconomyJackpotFever,
   EconomyMilestones,
   EconomyNotice,
   EconomySpec,

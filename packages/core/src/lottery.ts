@@ -31,6 +31,8 @@ export interface HoldEntry {
   readonly color: LotteryHoldColor;
   readonly hot: number;
   readonly hesoPayoutBalls: number;
+  /** 打ったレート（1 は省略。大当たりの出玉とフィーバー倍率に使う, D-050）。 */
+  readonly rate?: number | undefined;
 }
 
 /** 抽選モードに対応する確率表を返す。 */
@@ -233,7 +235,8 @@ export function drawHold(
   } else if (color === 'gold') {
     hot = 5;
   }
-  return { serial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: spec.hesoPayout * rate };
+  const entry: HoldEntry = { serial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: spec.hesoPayout * rate };
+  return rate === 1 ? entry : { ...entry, rate };
 }
 
 /** ヘソ賞球（`heso_payout × rate`。満タン時も支払う）。 */
@@ -273,10 +276,4 @@ export function jackpotPayoutBalls(spec: MachineSpec, branchIndex: number, rate:
   const b = branchAt(spec, branchIndex);
   const bonus = b.bonusRounds === undefined ? 0 : b.bonusRounds;
   return (b.rounds + bonus) * spec.roundCount * spec.payoutPerBall * rate;
-}
-
-/** 大当たりメダル（確変なら `per_kakuhen`、通常なら `per_jackpot`）。 */
-export function jackpotMedals(spec: MachineSpec, branchIndex: number): number {
-  const b = branchAt(spec, branchIndex);
-  return b.kind === 'kakuhen' ? spec.medalPerKakuhen : spec.medalPerJackpot;
 }

@@ -74,8 +74,6 @@ export interface MachineSpec {
   readonly msPerRound: number;
   readonly hesoPayout: number;
   readonly holdMax: number;
-  readonly medalPerJackpot: number;
-  readonly medalPerKakuhen: number;
   readonly spinPatterns: string;
   readonly holdColors: readonly HoldColorWeight[];
 }
@@ -415,13 +413,6 @@ export function parseMachine(json: unknown): MachineSpec {
     fail('hold_max out of range');
   }
 
-  const medal = asRecord(o['medal'], 'medal');
-  const medalPerJackpot = asNonNegativeInt(medal['per_jackpot'], 'medal.per_jackpot');
-  const medalPerKakuhen = asNonNegativeInt(medal['per_kakuhen'], 'medal.per_kakuhen');
-  if (medalPerJackpot > 100 || medalPerKakuhen > 100) {
-    fail('medal out of range');
-  }
-
   const spinPatterns = asString(o['spin_patterns'], 'spin_patterns');
   if (spinPatterns.length > 128) {
     fail('spin_patterns too long');
@@ -465,8 +456,6 @@ export function parseMachine(json: unknown): MachineSpec {
       msPerRound,
       hesoPayout,
       holdMax,
-      medalPerJackpot,
-      medalPerKakuhen,
       spinPatterns,
       holdColors,
     };
@@ -485,8 +474,6 @@ export function parseMachine(json: unknown): MachineSpec {
       msPerRound,
       hesoPayout,
       holdMax,
-      medalPerJackpot,
-      medalPerKakuhen,
       spinPatterns,
       holdColors,
     };
@@ -505,8 +492,6 @@ export function parseMachine(json: unknown): MachineSpec {
       msPerRound,
       hesoPayout,
       holdMax,
-      medalPerJackpot,
-      medalPerKakuhen,
       spinPatterns,
       holdColors,
     };
@@ -525,8 +510,6 @@ export function parseMachine(json: unknown): MachineSpec {
     msPerRound,
     hesoPayout,
     holdMax,
-    medalPerJackpot,
-    medalPerKakuhen,
     spinPatterns,
     holdColors,
   };

@@ -191,12 +191,13 @@ test('閉店は条件・常連P・リセット範囲', () => {
   const early = econ.onClose(0);
   expect(early.ok).toBe(false);
   econ.noteGain(1000000000);
+  econ.onGrant(0, 7, undefined, 0, 0);
   const r1 = econ.onBuy('idle', 1, 1000000000, 0);
   expect(r1.ok).toBe(true);
-  const r2 = econ.onBuy('rate', 1, 0, 10);
+  const r2 = econ.onBuy('rate', 1, 0, 7);
   expect(r2.ok).toBe(true);
-  const fuelBefore = 5000;
-  void fuelBefore;
+  // 消費しても累計獲得メダルは減らない
+  expect(econ.getMedalsEarned()).toBe(7);
   const done = econ.onClose(12345);
   expect(done.ok).toBe(true);
   if (done.ok) {
@@ -207,11 +208,62 @@ test('閉店は条件・常連P・リセット範囲', () => {
   expect(econ.getRegular()).toBe(1);
   expect(econ.getRunTotal()).toBe(0);
   expect(econ.getTotalTotal()).toBe(1000000000);
+  expect(econ.getMedalsEarned()).toBe(7);
   const views = econ.getYakumonoViews();
   expect((views[0] as { lv: number }).lv).toBe(0);
   expect(econ.idleValue()).toBe(0.5);
   const buyRate2 = econ.onBuy('rate', 1, 0, 8);
   expect(buyRate2.ok).toBe(true);
+});
+
+test('常連Pは行動由来が上限・生産×(1+1.0×P)（D-049）', () => {
+  const econ = loadEconomy();
+  // 玉由来3（27e9/1e9）でも行動0なら獲得0（閉店自体はできる, D-044）
+  econ.noteGain(27000000000);
+  const none = econ.onClose(0);
+  expect(none.ok && none.gain).toBe(0);
+  expect(econ.getRegular()).toBe(0);
+  // 行動14枚で行動由来2 → 獲得2
+  econ.noteGain(1000000000);
+  econ.onGrant(0, 14, undefined, 0, 0);
+  const two = econ.onClose(0);
+  expect(two.ok && two.gain).toBe(2);
+  // 行動を増やしても玉由来3（28e9）で頭打ち
+  econ.noteGain(1000000000);
+  econ.onGrant(0, 70, undefined, 0, 0);
+  const cap = econ.onClose(0);
+  expect(cap.ok && cap.gain).toBe(1);
+  expect(econ.getRegular()).toBe(3);
+  const buy = econ.onBuy('windmill', 1, 1000, 0);
+  expect(buy.ok).toBe(true);
+  expect(econ.getPerSec(true, 1000)).toBe(econ.basePerSec() * 4);
+});
+
+test('大当たりフィーバーはレート別倍率・予告フィーバーと掛け算・snapshotに残る（D-050）', () => {
+  const econ = loadEconomy();
+  econ.onBuy('windmill', 1, 1000, 0);
+  const base = econ.getPerSec(true, 1000);
+  econ.onJackpotFever(1);
+  expect(econ.getJackpotFeverMult()).toBe(3);
+  expect(econ.getPerSec(true, 1000)).toBe(base * 3);
+  econ.onNoticeFever();
+  expect(econ.getPerSec(true, 1000)).toBe(base * 7 * 3);
+  econ.onJackpotFever(4);
+  expect(econ.getJackpotFeverMult()).toBe(4);
+  const copy = econ.fork();
+  expect(copy.getJackpotFeverMult()).toBe(4);
+  econ.onJackpotFever(null);
+  expect(econ.getJackpotFeverMult()).toBe(1);
+  expect(copy.getJackpotFeverMult()).toBe(4);
+  expect(() => econ.onJackpotFever(2)).toThrow();
+  // 旧版 snapshot（v2）は累計獲得メダル0・フィーバーなしで読む
+  const v2: Record<string, unknown> = { ...(copy.snapshot() as unknown as Record<string, unknown>), v: 2 };
+  delete v2['medalsEarned'];
+  delete v2['jackpotFeverMult'];
+  const old = loadEconomy();
+  old.restore(v2);
+  expect(old.getMedalsEarned()).toBe(0);
+  expect(old.getJackpotFeverMult()).toBe(1);
 });
 
 test('連日は同日維持・翌日+1・空きリセット・不正無視', () => {

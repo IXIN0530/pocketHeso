@@ -24,7 +24,6 @@ function machineFixture(): Record<string, unknown> {
     round: { count: 10, payout_per_ball: 15, ms_per_round: 25000 },
     heso_payout: 3,
     hold_max: 4,
-    medal: { per_jackpot: 1, per_kakuhen: 2 },
     spin_patterns: 'patterns.json',
     hold_colors: [
       { color: 'blue', w_hit: 10, w_miss: 900 },
@@ -71,8 +70,6 @@ test('機種 JSON を検証して読み込み、閾値を変換する', () => {
   expect(spec.payoutPerBall).toBe(15);
   expect(spec.hesoPayout).toBe(3);
   expect(spec.holdMax).toBe(4);
-  expect(spec.medalPerJackpot).toBe(1);
-  expect(spec.medalPerKakuhen).toBe(2);
   expect(spec.holdColors.length).toBe(4);
 });
 

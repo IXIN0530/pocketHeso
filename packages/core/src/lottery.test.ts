@@ -8,7 +8,6 @@ import {
   drawHold,
   hesoPayoutBalls,
   holdColorWeights,
-  jackpotMedals,
   jackpotPayoutBalls,
   modeOf,
   splitWeights,
@@ -205,12 +204,9 @@ test('レート倍率とメダル・不正入力', () => {
   expect(hesoPayoutBalls(spec, 4)).toBe(32);
   expect(jackpotPayoutBalls(spec, 0, 1)).toBe(1500);
   expect(jackpotPayoutBalls(spec, 1, 4)).toBe(2400);
-  expect(jackpotMedals(spec, 0)).toBe(2);
-  expect(jackpotMedals(spec, 1)).toBe(1);
   expect(() => hesoPayoutBalls(spec, 0)).toThrow();
   expect(() => jackpotPayoutBalls(spec, 0, 0)).toThrow();
   expect(() => jackpotPayoutBalls(spec, 2, 1)).toThrow();
-  expect(() => jackpotMedals(spec, -1)).toThrow();
   expect(() => drawHold(spec, patterns, 1, 'normal', -1, 1)).toThrow();
   expect(() => drawHold(spec, patterns, 1, 'normal', 1.5, 1)).toThrow();
   expect(() => drawHold(spec, patterns, 1, 'normal', 0, 0)).toThrow();

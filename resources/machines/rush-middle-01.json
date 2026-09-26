@@ -14,7 +14,6 @@
   "round": { "count": 10, "payout_per_ball": 15, "ms_per_round": 25000 },
   "heso_payout": 8,
   "hold_max": 4,
-  "medal": { "per_jackpot": 1, "per_kakuhen": 2 },
   "spin_patterns": "patterns.json",
   "hold_colors": [
     { "color": "blue", "w_hit": 10, "w_miss": 900 },

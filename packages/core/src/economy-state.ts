@@ -14,7 +14,7 @@ import {
 
 /** IdleEconomy の複写（Engine の snapshot.economy に入る）。 */
 export interface IdleEconomySnapshot {
-  readonly v: 2;
+  readonly v: 3;
   readonly lv: readonly number[];
   readonly awakened: readonly number[];
   readonly idleStage: number;
@@ -33,6 +33,10 @@ export interface IdleEconomySnapshot {
   readonly boostMs: number;
   readonly boostOn: boolean;
   readonly feverMs: number;
+  /** 累計獲得メダル（Grant でだけ増え、消費しても減らない。D-049）。 */
+  readonly medalsEarned: number;
+  /** 大当たりフィーバー倍率（大当たり中でなければ 1。D-050）。 */
+  readonly jackpotFeverMult: number;
 }
 
 /** 役物表示（Lv・覚醒数・次の価格。描画と購入UIが見る）。 */
@@ -182,6 +186,8 @@ export class IdleEconomy implements EconomyPort {
   private boostMsState = 0;
   private boostOnState = true;
   private feverMsState = 0;
+  private medalsEarnedState = 0;
+  private jackpotFeverMultState = 1;
 
   /** 仕様から価格表（growth^0..10000）を作る。 */
   constructor(spec: EconomySpec) {
@@ -194,7 +200,7 @@ export class IdleEconomy implements EconomyPort {
   /** 状態の複写。 */
   snapshot(): IdleEconomySnapshot {
     return {
-      v: 2,
+      v: 3,
       lv: [...this.lvState],
       awakened: [...this.awakenedState],
       idleStage: this.idleStageState,
@@ -213,16 +219,18 @@ export class IdleEconomy implements EconomyPort {
       boostMs: this.boostMsState,
       boostOn: this.boostOnState,
       feverMs: this.feverMsState,
+      medalsEarned: this.medalsEarnedState,
+      jackpotFeverMult: this.jackpotFeverMultState,
     };
   }
 
-  /** 複写から復元する（v1 は fever=0 として読む）。 */
+  /** 複写から復元する（v1 は fever=0、v1/v2 は累計獲得メダル=0・大当たりフィーバーなしとして読む）。 */
   restore(s: unknown): void {
     if (!isRecord(s)) {
       fail('snapshot must be an object');
     }
     const v = s['v'];
-    if (v !== 1 && v !== 2) {
+    if (v !== 1 && v !== 2 && v !== 3) {
       fail('snapshot version mismatch');
     }
     const lv = s['lv'];
@@ -270,10 +278,19 @@ export class IdleEconomy implements EconomyPort {
       fail('boostOn must be boolean');
     }
     let feverMs = 0;
-    if (v === 2) {
+    if (v === 2 || v === 3) {
       feverMs = asFinite(s['feverMs'] as number, 'feverMs');
       if (feverMs < 0) {
         fail('feverMs must be >= 0');
+      }
+    }
+    let medalsEarned = 0;
+    let jackpotFeverMult = 1;
+    if (v === 3) {
+      medalsEarned = asNonNegInt(s['medalsEarned'] as number, 'medalsEarned');
+      jackpotFeverMult = asFinite(s['jackpotFeverMult'] as number, 'jackpotFeverMult');
+      if (jackpotFeverMult < 1) {
+        fail('jackpotFeverMult must be >= 1');
       }
     }
     this.lvState = lvCopy;
@@ -294,6 +311,8 @@ export class IdleEconomy implements EconomyPort {
     this.boostMsState = boostMs;
     this.boostOnState = boostOn;
     this.feverMsState = feverMs;
+    this.medalsEarnedState = medalsEarned;
+    this.jackpotFeverMultState = jackpotFeverMult;
   }
 
   /** 独立した複製。 */
@@ -369,13 +388,13 @@ export class IdleEconomy implements EconomyPort {
     return sum;
   }
 
-  /** 現在の毎秒生産（常連・連日・ブースト・予告フィーバー・状態係数込み）。 */
+  /** 現在の毎秒生産（常連・連日・ブースト・予告/大当たりフィーバー・状態係数込み）。 */
   getPerSec(fg: boolean, fuelMs: number): number {
     const base = this.basePerSec();
     if (base === 0) {
       return 0;
     }
-    const regularF = 1 + 0.01 * this.regularState;
+    const regularF = 1 + this.spec.close.regularMult * this.regularState;
     const streakF = streakMult(
       this.streakDaysState,
       this.spec.claims.streakPerDay,
@@ -393,7 +412,7 @@ export class IdleEconomy implements EconomyPort {
     if (this.feverMsState > 0) {
       feverF = this.spec.notice.feverMult;
     }
-    return base * regularF * streakF * boostF * feverF * stateF;
+    return base * regularF * streakF * boostF * feverF * this.jackpotFeverMultState * stateF;
   }
 
   /** フィーバー残量ms（前面・背面を問わずtickで減る）。 */
@@ -407,6 +426,32 @@ export class IdleEconomy implements EconomyPort {
     if (want > this.feverMsState) {
       this.feverMsState = want;
     }
+  }
+
+  /** 大当たりフィーバーの開始（打ったレートの倍率）と終了（null）。 */
+  onJackpotFever(rate: number | null): void {
+    if (rate === null) {
+      this.jackpotFeverMultState = 1;
+      return;
+    }
+    const rates = this.spec.upgrades.rates;
+    for (let i = 0; i < rates.length; i = i + 1) {
+      if ((rates[i] as number) === rate) {
+        this.jackpotFeverMultState = this.spec.jackpotFever.multByRate[i] as number;
+        return;
+      }
+    }
+    fail('jackpot rate is not in rates');
+  }
+
+  /** 大当たりフィーバー倍率（大当たり中でなければ 1）。 */
+  getJackpotFeverMult(): number {
+    return this.jackpotFeverMultState;
+  }
+
+  /** 累計獲得メダル。 */
+  getMedalsEarned(): number {
+    return this.medalsEarnedState;
   }
 
   /** ブースト残量ms。 */
@@ -565,7 +610,7 @@ export class IdleEconomy implements EconomyPort {
     return false;
   }
 
-  /** Grant適用（燃料は上限・溢れ→ブースト、メダル加算、連日更新）。 */
+  /** Grant適用（燃料は上限・溢れ→ブースト、メダル加算（累計獲得も）、連日更新）。 */
   onGrant(
     fuelMs: number,
     medals: number,
@@ -583,6 +628,7 @@ export class IdleEconomy implements EconomyPort {
     if (streakDay !== undefined) {
       this.applyStreakDay(streakDay);
     }
+    this.medalsEarnedState = this.medalsEarnedState + medals;
     const cap = this.tankCapMs();
     const boostCap = this.boostCapMs();
     let fuel = curFuelMs;
@@ -854,13 +900,19 @@ export class IdleEconomy implements EconomyPort {
     this.boostOnState = on;
   }
 
-  /** 閉店（条件・常連P計算・リセット範囲。玉はstart_ballsに戻す）。 */
+  /** 閉店（条件・常連P＝min(玉由来, 行動由来)−既得・リセット範囲。玉はstart_ballsに戻す）。 */
   onClose(curBalls: number): { ok: true; balls: number; gain: number } | { ok: false; reason: string } {
     asFinite(curBalls, 'curBalls');
     if (this.runTotalState < this.spec.close.requiredRunTotal) {
       return { ok: false, reason: 'not-ready' };
     }
-    const gain = closeGain(this.totalTotalState, this.spec.close.divisor, this.regularState);
+    const gain = closeGain(
+      this.totalTotalState,
+      this.spec.close.divisor,
+      this.regularState,
+      this.medalsEarnedState,
+      this.spec.close.medalsPerPoint,
+    );
     this.regularState = this.regularState + gain;
     this.lvState = [0, 0, 0, 0, 0, 0, 0, 0];
     this.awakenedState = [0, 0, 0, 0, 0, 0, 0, 0];

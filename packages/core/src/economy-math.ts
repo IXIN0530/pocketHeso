@@ -194,11 +194,10 @@ export function awakenMedalCost(medalBase: number, medalGrowth: number, awakened
   return c;
 }
 
-/** 閉店の獲得常連P = floor(cbrt(total/divisor)) − owned（負なら0）。 */
-export function closeGain(total: Amount, divisor: number, owned: number): number {
+/** 玉由来の常連P = floor(cbrt(total/divisor))。 */
+export function ballPoints(total: Amount, divisor: number): number {
   asNonNegativeFinite(total, 'total');
   asPositiveFinite(divisor, 'divisor');
-  asNonNegativeInt(owned, 'owned');
   const x = total / divisor;
   // cbrt40 は立方数で 1ulp 小さく返ることがあるため、整数の3乗で floor を補正する
   let f = Math.floor(cbrt40(x));
@@ -207,7 +206,26 @@ export function closeGain(total: Amount, divisor: number, owned: number): number
   } else if (f * f * f > x) {
     f = f - 1;
   }
-  const gain = f - owned;
+  return f;
+}
+
+/** 閉店の獲得常連P = min(玉由来, floor(medalsEarned/medalsPerPoint)) − owned（負なら0, D-049）。 */
+export function closeGain(
+  total: Amount,
+  divisor: number,
+  owned: number,
+  medalsEarned: number,
+  medalsPerPoint: number,
+): number {
+  asNonNegativeInt(owned, 'owned');
+  asNonNegativeInt(medalsEarned, 'medalsEarned');
+  if (Math.floor(medalsPerPoint) !== medalsPerPoint || medalsPerPoint < 1) {
+    throw new Error('invalid economy-math: medalsPerPoint must be a positive int');
+  }
+  const byBalls = ballPoints(total, divisor);
+  const byMedals = Math.floor(medalsEarned / medalsPerPoint);
+  const cap = byBalls < byMedals ? byBalls : byMedals;
+  const gain = cap - owned;
   return gain < 0 ? 0 : gain;
 }
 

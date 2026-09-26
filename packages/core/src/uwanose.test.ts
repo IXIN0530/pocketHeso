@@ -53,7 +53,6 @@ function bonusSpecFixture(): MachineSpec {
     round: { count: 10, payout_per_ball: 15, ms_per_round: 25000 },
     heso_payout: 3,
     hold_max: 4,
-    medal: { per_jackpot: 1, per_kakuhen: 2 },
     spin_patterns: 'patterns.json',
     hold_colors: [
       { color: 'blue', w_hit: 10, w_miss: 900 },
@@ -90,7 +89,6 @@ test('bonus_roundsの検証（省略時0・合計60以内・重複はbonus込み
     round: { count: 10, payout_per_ball: 15, ms_per_round: 25000 },
     heso_payout: 3,
     hold_max: 4,
-    medal: { per_jackpot: 1, per_kakuhen: 2 },
     spin_patterns: 'patterns.json',
     hold_colors: [
       { color: 'blue', w_hit: 10, w_miss: 900 },
@@ -158,7 +156,7 @@ test('uwanoseが「開始+rounds×ms_per_round」に出て出玉が合計ラウ�
   expect(m.uwanoseAt).toBeNull();
   const endAt = hitAt + 30 * 25000;
   const ended = m.finishJackpot(endAt, 1);
-  expect(ended[0]).toEqual({ k: 'jackpotEnded', entry: 10, at: endAt, payout: 30 * 10 * 15, medals: 2 });
+  expect(ended[0]).toEqual({ k: 'jackpotEnded', entry: 10, at: endAt, payout: 30 * 10 * 15 });
   expect(ended[1]).toEqual({ k: 'modeChanged', to: 'lt', at: endAt, stRemaining: 2 });
   expect(() => m.emitUwanose(endAt)).toThrow();
   const noBonusM = new SpinMachine(spec, patterns);
@@ -244,7 +242,6 @@ test('決定論契約1・2が上乗せを含む区間（大当たり中・LT中�
     round: { count: 10, payout_per_ball: 15, ms_per_round: 1000 },
     heso_payout: 3,
     hold_max: 4,
-    medal: { per_jackpot: 1, per_kakuhen: 2 },
     spin_patterns: 'patterns.json',
     hold_colors: [
       { color: 'blue', w_hit: 10, w_miss: 900 },
@@ -344,7 +341,6 @@ test('Engineのuwanose順序と投影chain（bonus機種でprojectにchainが載
     round: { count: 10, payout_per_ball: 15, ms_per_round: 1000 },
     heso_payout: 3,
     hold_max: 4,
-    medal: { per_jackpot: 1, per_kakuhen: 2 },
     spin_patterns: 'patterns.json',
     hold_colors: [
       { color: 'blue', w_hit: 10, w_miss: 900 },

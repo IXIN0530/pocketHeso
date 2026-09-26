@@ -21,7 +21,7 @@ test('既定の経済定義が spec/23 の数値（P3-T4 調整 D-048 を含む�
   expect(spec.yakumono[2]).toMatchObject({ id: 'croon', periodS: 6, yield: 78, basePrice: 1100 });
   expect(spec.yakumono[7]).toMatchObject({ id: 'shima', periodS: 16, yield: 845000, basePrice: 330000000 });
   expect(spec.milestones).toEqual({ thresholds: [25, 50, 100], step: 50, stepFrom: 150 });
-  expect(spec.awaken).toEqual({ minLv: 100, mult: 10, medalBase: 150, medalGrowth: 2 });
+  expect(spec.awaken).toEqual({ minLv: 100, mult: 10, medalBase: 5, medalGrowth: 2 });
   expect(spec.factors).toEqual({ fg: 1.0, idleBase: 0.5, closed: 0.005, boostMult: 2.0 });
   expect(spec.notice.feverMult).toBe(7);
   expect(spec.notice.feverMs).toBe(77000);
@@ -31,6 +31,9 @@ test('既定の経済定義が spec/23 の数値（P3-T4 調整 D-048 を含む�
   expect(spec.close.requiredRunTotal).toBe(10000000000);
   expect(spec.close.divisor).toBe(10000000000);
   expect(spec.close.startBalls).toBe(100);
+  expect(spec.close.medalsPerPoint).toBe(7);
+  expect(spec.close.regularMult).toBe(1);
+  expect(spec.jackpotFever.multByRate).toEqual([3, 4, 5, 7, 10, 15, 20]);
   expect(spec.upgrades.nailValues).toEqual([0, 0.0006, 0.0012, 0.0018, 0.0024, 0.003]);
   expect(spec.claims).toEqual({ streakPerDay: 0.05, streakMaxDays: 20 });
 });
@@ -102,6 +105,10 @@ test('強化配列・マイルストーン・idle_base の整合を検証する'
     (j) => { up(j, 'rate_unlock')['medal_costs'] = [2, 5, 20, 50, 200, -500]; },
     (j) => { ms(j)['thresholds'] = [25, 100, 50]; },
     (j) => { ms(j)['step_from'] = 100; },
+    (j) => { (j['jackpot_fever'] as Record<string, unknown>)['mult_by_rate'] = [3, 4, 5, 7, 10, 15]; },
+    (j) => { (j['jackpot_fever'] as Record<string, unknown>)['mult_by_rate'] = [3, 4, 4, 7, 10, 15, 20]; },
+    (j) => { (j['close'] as Record<string, unknown>)['medals_per_point'] = 0; },
+    (j) => { (j['close'] as Record<string, unknown>)['regular_mult'] = 0; },
   ];
   cases.forEach((mutate, i) => {
     const j = clone(defaultJson());

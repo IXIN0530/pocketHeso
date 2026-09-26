@@ -340,7 +340,8 @@ export function runEcon(
   let closes = 0;
   let awakens = 0;
   let medalsActivity = 0;
-  let medalsPachinko = 0;
+  // 大当たりでメダルは出ない（D-049）。列の見直しは P3-T6
+  const medalsPachinko = 0;
   let fuelGrantedMs = 0;
   let croonDay: number | null = null;
   let firstAwakenDay: number | null = null;
@@ -428,9 +429,7 @@ export function runEcon(
     const evs: EngineSimEvent[] = eng.advance(next);
     for (let i = 0; i < evs.length; i = i + 1) {
       const e = evs[i] as EngineSimEvent;
-      if (e.k === 'jackpotEnded') {
-        medalsPachinko = medalsPachinko + e.medals;
-      } else if (e.k === 'granted') {
+      if (e.k === 'granted') {
         medalsActivity = medalsActivity + e.medals;
         fuelGrantedMs = fuelGrantedMs + e.fuelMs;
       } else if (e.k === 'rejected' && e.action !== 'noticeTap') {

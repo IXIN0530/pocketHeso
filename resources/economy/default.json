@@ -13,7 +13,7 @@
     { "id": "shima", "name": "島設備", "period_s": 16, "yield": 845000, "base_price": 330000000 }
   ],
   "milestones": { "thresholds": [25, 50, 100], "step": 50, "step_from": 150 },
-  "awaken": { "min_lv": 100, "mult": 10, "medal_base": 150, "medal_growth": 2 },
+  "awaken": { "min_lv": 100, "mult": 10, "medal_base": 5, "medal_growth": 2 },
   "factors": { "fg": 1.0, "idle_base": 0.5, "closed": 0.005, "boost_mult": 2.0 },
   "upgrades": {
     "idle_efficiency": { "values": [0.5, 0.6, 0.7, 0.8, 0.9, 1.0], "costs": [1000, 10000, 100000, 1000000, 10000000] },
@@ -38,6 +38,7 @@
     "bonus_1_in": 10,
     "bonus_weight": 5
   },
-  "close": { "required_run_total": 10000000000, "divisor": 10000000000, "start_balls": 100 },
+  "close": { "required_run_total": 10000000000, "divisor": 10000000000, "medals_per_point": 7, "regular_mult": 1.0, "start_balls": 100 },
+  "jackpot_fever": { "mult_by_rate": [3, 4, 5, 7, 10, 15, 20] },
   "claims": { "streak_per_day": 0.05, "streak_max_days": 20 }
 }

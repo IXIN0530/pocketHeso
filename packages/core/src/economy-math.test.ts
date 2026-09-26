@@ -5,6 +5,7 @@ import {
   buildGrowthTable,
   buildPow115Table,
   cbrt40,
+  ballPoints,
   closeGain,
   effectivePeriodS,
   growthPow,
@@ -133,15 +134,34 @@ test('覚醒・閉店・連日の純粋計算', () => {
   expect(awakenMedalCost(5, 2, 1)).toBe(10);
   expect(awakenMedalCost(5, 2, 2)).toBe(20);
   expect(awakenMedalCost(5, 2, 3)).toBe(40);
-  expect(closeGain(1000000000, 1000000000, 0)).toBe(1);
-  expect(closeGain(8000000000, 1000000000, 0)).toBe(2);
-  expect(closeGain(7900000000, 1000000000, 0)).toBe(1);
-  expect(closeGain(8000000000, 1000000000, 2)).toBe(0);
-  expect(closeGain(0, 1000000000, 0)).toBe(0);
+  expect(closeGain(1000000000, 1000000000, 0, 1000, 7)).toBe(1);
+  expect(closeGain(8000000000, 1000000000, 0, 1000, 7)).toBe(2);
+  expect(closeGain(7900000000, 1000000000, 0, 1000, 7)).toBe(1);
+  expect(closeGain(8000000000, 1000000000, 2, 1000, 7)).toBe(0);
+  expect(closeGain(0, 1000000000, 0, 1000, 7)).toBe(0);
   expect(streakMult(0, 0.05, 20)).toBe(1);
   expect(streakMult(10, 0.05, 20)).toBe(1.5);
   expect(streakMult(20, 0.05, 20)).toBe(2);
   expect(streakMult(30, 0.05, 20)).toBe(2);
+});
+
+test('閉店の常連Pは玉由来と行動由来の小さい方から既得を引く（D-049）', () => {
+  const e27 = 27 * 1000000000;
+  // 行動0なら玉をいくら貯めても0
+  expect(closeGain(e27 * 1000, 1000000000, 0, 0, 7)).toBe(0);
+  expect(closeGain(e27 * 1000, 1000000000, 0, 6, 7)).toBe(0);
+  // 行動が上限（玉由来3・行動由来1）
+  expect(closeGain(e27, 1000000000, 0, 7, 7)).toBe(1);
+  expect(closeGain(e27, 1000000000, 0, 13, 7)).toBe(1);
+  expect(closeGain(e27, 1000000000, 0, 14, 7)).toBe(2);
+  // 玉が上限（玉由来3・行動由来10）
+  expect(closeGain(e27, 1000000000, 0, 70, 7)).toBe(3);
+  expect(closeGain(e27 - 1, 1000000000, 0, 70, 7)).toBe(2);
+  // 既得を超えない
+  expect(closeGain(e27, 1000000000, 2, 70, 7)).toBe(1);
+  expect(closeGain(e27, 1000000000, 5, 70, 7)).toBe(0);
+  expect(() => closeGain(e27, 1000000000, 0, 1.5, 7)).toThrow();
+  expect(() => closeGain(e27, 1000000000, 0, 7, 0)).toThrow();
 });
 
 test('閉店の常連Pは立方数の境界で floor がずれない', () => {
@@ -153,11 +173,11 @@ test('閉店の常連Pは立方数の境界で floor がずれない', () => {
   ns.push(4999, 10000, 65536, 99999, 123456, 200000);
   for (const n of ns) {
     const c = n * n * n;
-    expect(closeGain(c, 1, 0)).toBe(n);
-    expect(closeGain(c - 1, 1, 0)).toBe(n - 1);
+    expect(ballPoints(c, 1)).toBe(n);
+    expect(ballPoints(c - 1, 1)).toBe(n - 1);
   }
   // 実際の divisor(1e9) での境界
-  expect(closeGain(106 * 106 * 106 * 1000000000, 1000000000, 0)).toBe(106);
+  expect(ballPoints(106 * 106 * 106 * 1000000000, 1000000000)).toBe(106);
 });
 
 test('ECONOMY リソースの既定値で価格が再現できる', () => {

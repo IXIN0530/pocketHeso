@@ -2,7 +2,7 @@
 import type { JackpotBranch, JackpotKind, MachineSpec, PatternTable } from './machine.ts';
 import { defaultNextForKind } from './machine.ts';
 import type { HoldEntry, LotteryMode } from './lottery.ts';
-import { jackpotMedals, jackpotPayoutBalls } from './lottery.ts';
+import { jackpotPayoutBalls } from './lottery.ts';
 
 /** モードの残り回転数（normal は 0。jitan/st/lt は各 `spins`）。 */
 function spinsForMode(spec: MachineSpec, mode: LotteryMode): number {
@@ -41,7 +41,7 @@ export type SpinEvent =
   | { k: 'spinResolved'; entry: number; at: SimTime; hit: boolean }
   | { k: 'jackpotStarted'; entry: number; at: SimTime; kind: JackpotKind; rounds: number; bonusRounds?: number | undefined }
   | { k: 'uwanose'; entry: number; at: SimTime; addRounds: number; totalRounds: number }
-  | { k: 'jackpotEnded'; entry: number; at: SimTime; payout: number; medals: number }
+  | { k: 'jackpotEnded'; entry: number; at: SimTime; payout: number }
   | { k: 'modeChanged'; to: LotteryMode; at: SimTime; stRemaining: number };
 
 /** 変動中の内容（スナップショット用）。 */
@@ -52,6 +52,8 @@ export interface ActiveSpin {
   readonly patternIndex: number;
   readonly startedAt: SimTime;
   readonly endsAt: SimTime;
+  /** 打ったレート（1 は省略, D-050）。 */
+  readonly rate?: number | undefined;
 }
 
 /** 大当たり中の内容（スナップショット用。uwanoseAtは未放出の上乗せ通知時刻。なし・放出済みはnull）。 */
@@ -62,6 +64,8 @@ export interface ActiveJackpot {
   readonly endsAt: SimTime;
   readonly bonusRounds: number;
   readonly uwanoseAt: SimTime | null;
+  /** 打ったレート（1 は省略, D-050）。 */
+  readonly rate?: number | undefined;
 }
 
 /** 状態の複写（`restore` で復元）。 */
@@ -235,6 +239,14 @@ export class SpinMachine {
     return this.jackpotState === null ? null : this.jackpotState.endsAt;
   }
 
+  /** 大当たり中の打ったレート（大当たり中でなければ `null`）。 */
+  get jackpotRate(): number | null {
+    if (this.jackpotState === null) {
+      return null;
+    }
+    return this.jackpotState.rate === undefined ? 1 : this.jackpotState.rate;
+  }
+
   /** 上乗せ通知予定時刻（未放出の `uwanose` があればその時刻。なければ `null`）。 */
   get uwanoseAt(): SimTime | null {
     if (this.jackpotState === null) {
@@ -272,6 +284,9 @@ export class SpinMachine {
     if (!entry.isHit && entry.branchIndex !== null) {
       throw new Error('invalid spin: miss entry must have null branchIndex');
     }
+    if (entry.rate !== undefined) {
+      assertRate(entry.rate);
+    }
     const baseMs = spinDurationMs(this.patterns, entry.patternIndex, holdCount);
     const durationMs = durationScale === 1 ? baseMs : Math.floor(baseMs * durationScale);
     if (durationMs < 1) {
@@ -288,6 +303,7 @@ export class SpinMachine {
       patternIndex: entry.patternIndex,
       startedAt: at,
       endsAt,
+      ...(entry.rate === undefined || entry.rate === 1 ? {} : { rate: entry.rate }),
     };
     this.nowMsState = at;
     return [{ k: 'spinStarted', entry: entry.serial, at, pattern: row.id, endsAt }];
@@ -339,6 +355,7 @@ export class SpinMachine {
         endsAt: jackpotEndsAt,
         bonusRounds: bonus,
         uwanoseAt: pendingUwanose,
+        ...(active.rate === undefined ? {} : { rate: active.rate }),
       };
       this.activeState = null;
       this.nowMsState = at;
@@ -404,8 +421,7 @@ export class SpinMachine {
       throw new Error('invalid spin: branchIndex out of range');
     }
     const payout = jackpotPayoutBalls(this.spec, jackpot.branchIndex, rate);
-    const medals = jackpotMedals(this.spec, jackpot.branchIndex);
-    const ended: SpinEvent = { k: 'jackpotEnded', entry: jackpot.serial, at, payout, medals };
+    const ended: SpinEvent = { k: 'jackpotEnded', entry: jackpot.serial, at, payout };
     const nextMode: LotteryMode = b.next === undefined ? defaultNextForKind(b.kind) : b.next;
     const nextSt = spinsForMode(this.spec, nextMode);
     const wasRush = isRushMode(this.currentMode);
@@ -460,6 +476,7 @@ export class SpinMachine {
         endsAt: j.endsAt,
         bonusRounds: bonus,
         uwanoseAt: pending,
+        ...(j.rate === undefined ? {} : { rate: assertRate(j.rate) }),
       };
     }
     const s = snap as SpinSnapshot & { chain?: number; chainBalls?: number };

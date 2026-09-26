@@ -84,7 +84,7 @@ test('保留4満タン→順次消化→当たり→ST→ST抜けが期待イベ
   expect(m.jackpotEndsAt).toBe(332000);
 
   run(m.finishJackpot(332000, 1));
-  expect(all[7]).toEqual({ k: 'jackpotEnded', entry: 2, at: 332000, payout: 1500, medals: 2 });
+  expect(all[7]).toEqual({ k: 'jackpotEnded', entry: 2, at: 332000, payout: 1500 });
   expect(all[8]).toEqual({ k: 'modeChanged', to: 'st', at: 332000, stRemaining: 100 });
   expect(m.mode).toBe('st');
   expect(m.stRemaining).toBe(100);
@@ -136,7 +136,7 @@ test('保留4満タン→順次消化→当たり→ST→ST抜けが期待イベ
   expect(kinds(all).slice(-3)).toEqual(['spinStarted', 'spinResolved', 'modeChanged']);
 });
 
-test('ST中の当たりは振分けで継続（確変）・終了（通常）しメダルを付与', () => {
+test('ST中の当たりは振分けで継続（確変）・終了（通常）する（大当たりでメダルは出ない, D-049）', () => {
   const { spec, patterns } = loadMachine();
   const shortIdx = patternIndexOf(patterns, 'normal_short');
   const kakuteiIdx = patternIndexOf(patterns, 'kakutei');
@@ -157,7 +157,7 @@ test('ST中の当たりは振分けで継続（確変）・終了（通常）し
   ]);
   const ended = inSt.finishJackpot(311000, 1);
   expect(ended).toEqual([
-    { k: 'jackpotEnded', entry: 50, at: 311000, payout: 1500, medals: 2 },
+    { k: 'jackpotEnded', entry: 50, at: 311000, payout: 1500 },
     { k: 'modeChanged', to: 'st', at: 311000, stRemaining: 100 },
   ]);
   expect(inSt.mode).toBe('st');
@@ -169,7 +169,7 @@ test('ST中の当たりは振分けで継続（確変）・終了（通常）し
   inSt2.resolveSpin(65000);
   const ended2 = inSt2.finishJackpot(165000, 1);
   expect(ended2).toEqual([
-    { k: 'jackpotEnded', entry: 51, at: 165000, payout: 600, medals: 1 },
+    { k: 'jackpotEnded', entry: 51, at: 165000, payout: 600 },
     { k: 'modeChanged', to: 'normal', at: 165000, stRemaining: 0 },
   ]);
   expect(inSt2.mode).toBe('normal');
@@ -188,7 +188,7 @@ test('ST中の当たりは振分けで継続（確変）・終了（通常）し
   inNormal.startSpin(hitTsujoNormal, 5000, 0);
   inNormal.resolveSpin(65000);
   const ended3 = inNormal.finishJackpot(165000, 4);
-  expect(ended3).toEqual([{ k: 'jackpotEnded', entry: 61, at: 165000, payout: 2400, medals: 1 }]);
+  expect(ended3).toEqual([{ k: 'jackpotEnded', entry: 61, at: 165000, payout: 2400 }]);
   expect(inNormal.mode).toBe('normal');
 });
 

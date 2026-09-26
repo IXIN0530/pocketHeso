@@ -31,7 +31,6 @@ function testSpecFixture(): MachineSpec {
     round: { count: 10, payout_per_ball: 15, ms_per_round: 25000 },
     heso_payout: 3,
     hold_max: 4,
-    medal: { per_jackpot: 1, per_kakuhen: 2 },
     spin_patterns: 'patterns.json',
     hold_colors: [
       { color: 'blue', w_hit: 10, w_miss: 900 },
@@ -95,7 +94,6 @@ test('spins/st_spins両対応・next/weight既定・不正の拒否', () => {
     round: { count: 10, payout_per_ball: 15, ms_per_round: 25000 },
     heso_payout: 3,
     hold_max: 4,
-    medal: { per_jackpot: 1, per_kakuhen: 2 },
     spin_patterns: 'patterns.json',
     hold_colors: [
       { color: 'blue', w_hit: 10, w_miss: 900 },
@@ -166,7 +164,7 @@ test('手書きシナリオ: 通常→通常当たり→時短→引き戻し→
   expect(all[2]).toEqual({ k: 'jackpotStarted', entry: 0, at: cur, kind: 'tsujo', rounds: 3 });
   cur = cur + 3 * 25000;
   run(m.finishJackpot(cur, 1));
-  expect(all[3]).toEqual({ k: 'jackpotEnded', entry: 0, at: cur, payout: 450, medals: 1 });
+  expect(all[3]).toEqual({ k: 'jackpotEnded', entry: 0, at: cur, payout: 450 });
   expect(all[4]).toEqual({ k: 'modeChanged', to: 'jitan', at: cur, stRemaining: 2 });
   expect(m.mode).toBe('jitan');
   expect(m.stRemaining).toBe(2);
@@ -185,7 +183,7 @@ test('手書きシナリオ: 通常→通常当たり→時短→引き戻し→
   expect(all[all.length - 1]).toEqual({ k: 'jackpotStarted', entry: 2, at: hitAt, kind: 'kakuhen', rounds: 3 });
   cur = hitAt + 3 * 25000;
   run(m.finishJackpot(cur, 1));
-  expect(all[all.length - 2]).toEqual({ k: 'jackpotEnded', entry: 2, at: cur, payout: 450, medals: 2 });
+  expect(all[all.length - 2]).toEqual({ k: 'jackpotEnded', entry: 2, at: cur, payout: 450 });
   expect(all[all.length - 1]).toEqual({ k: 'modeChanged', to: 'st', at: cur, stRemaining: 3 });
   expect(m.mode).toBe('st');
 
@@ -200,7 +198,7 @@ test('手書きシナリオ: 通常→通常当たり→時短→引き戻し→
   expect(all[all.length - 1]).toEqual({ k: 'jackpotStarted', entry: 4, at: ltAt, kind: 'kakuhen', rounds: 10 });
   cur = ltAt + 10 * 25000;
   run(m.finishJackpot(cur, 1));
-  expect(all[all.length - 2]).toEqual({ k: 'jackpotEnded', entry: 4, at: cur, payout: 1500, medals: 2 });
+  expect(all[all.length - 2]).toEqual({ k: 'jackpotEnded', entry: 4, at: cur, payout: 1500 });
   expect(all[all.length - 1]).toEqual({ k: 'modeChanged', to: 'lt', at: cur, stRemaining: 2 });
   expect(m.mode).toBe('lt');
 

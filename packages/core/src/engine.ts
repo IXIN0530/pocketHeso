@@ -77,7 +77,7 @@ export type SimEvent =
   | { readonly k: 'spinResolved'; readonly entry: number; readonly at: SimTime; readonly hit: boolean }
   | { readonly k: 'jackpotStarted'; readonly entry: number; readonly at: SimTime; readonly kind: JackpotKind; readonly rounds: number; readonly bonusRounds?: number | undefined }
   | { readonly k: 'uwanose'; readonly entry: number; readonly at: SimTime; readonly addRounds: number; readonly totalRounds: number }
-  | { readonly k: 'jackpotEnded'; readonly entry: number; readonly at: SimTime; readonly payout: number; readonly medals: number }
+  | { readonly k: 'jackpotEnded'; readonly entry: number; readonly at: SimTime; readonly payout: number }
   | { readonly k: 'modeChanged'; readonly to: LotteryMode; readonly at: SimTime; readonly stRemaining: number }
   | { readonly k: 'noticeSpawned'; readonly id: number; readonly at: SimTime; readonly effect: NoticeEffect }
   | { readonly k: 'noticeExpired'; readonly id: number; readonly at: SimTime; readonly effect: NoticeEffect }
@@ -1138,6 +1138,20 @@ export class Engine {
     }
   }
 
+  /** 経済tickを持つか（Stubは燃料を消費しないためオートの燃料判定をしない）。 */
+  private hasEconomyTick(): boolean {
+    const hook = this.econHook('onTick');
+    return hook !== undefined && typeof hook === 'function';
+  }
+
+  /** 大当たりフィーバーの開始（打ったレート）・終了（null）を経済に伝える。 */
+  private setJackpotFever(rate: number | null): void {
+    const hook = this.econHook('onJackpotFever') as ((rate: number | null) => void) | undefined;
+    if (hook !== undefined && typeof hook === 'function') {
+      (hook.bind(this.economy))(rate);
+    }
+  }
+
   /** 外部獲得（ヘソ・大当たり）を経済の累計に足す。 */
   private noteEconomyGain(amount: number): void {
     if (!(amount > 0)) {
@@ -1149,7 +1163,7 @@ export class Engine {
     }
   }
 
-  /** 同時刻の発射（600ms倍数のみ。前面shoot優先・autoはshare間引き・止め打ちで満タン停止・釘でout→start1）。 */
+  /** 同時刻の発射（600ms倍数のみ。前面shoot優先・autoはshare間引き・燃料0/止め打ち満タンで停止・釘でout→start1・1発rate玉）。 */
   private applyFiringAt(at: SimTime, out: SimEvent[]): void {
     const rem = at - Math.floor(at / FIRE_INTERVAL_MS) * FIRE_INTERVAL_MS;
     if (rem !== 0) {
@@ -1162,6 +1176,9 @@ export class Engine {
       if (this.isTomeuchiEnabled() && this.queue.isFull()) {
         return;
       }
+      if (this.fuelMsState <= 0 && this.hasEconomyTick()) {
+        return;
+      }
       const n = Math.floor(at / FIRE_INTERVAL_MS);
       if (Math.floor(n * this.autoShareState) !== Math.floor((n - 1) * this.autoShareState)) {
         rate = this.autoRateState;
@@ -1172,7 +1189,7 @@ export class Engine {
     }
     const ball = this.nextBallState;
     this.nextBallState = ball + 1;
-    this.ballsState = this.ballsState - 1;
+    this.ballsState = this.ballsState - rate;
     this.totalsState = {
       spins: this.totalsState.spins,
       jackpots: this.totalsState.jackpots,
@@ -1259,6 +1276,7 @@ export class Engine {
                 fired: this.totalsState.fired,
                 payoutBalls: this.totalsState.payoutBalls,
               };
+              this.setJackpotFever(this.spins.jackpotRate);
             }
             out.push(e);
           }
@@ -1278,7 +1296,7 @@ export class Engine {
       }
       const endsAt = this.spins.jackpotEndsAt as SimTime | null;
       if (endsAt !== null && endsAt === at) {
-        const evs = this.spins.finishJackpot(at, 1);
+        const evs = this.spins.finishJackpot(at, this.spins.jackpotRate as number);
         for (let i = 0; i < evs.length; i = i + 1) {
           const e = evs[i] as (typeof evs)[number] | undefined;
           if (e === undefined) {
@@ -1289,7 +1307,7 @@ export class Engine {
           } else {
             if (e.k === 'jackpotEnded') {
               this.ballsState = this.ballsState + e.payout;
-              this.medalsState = this.medalsState + e.medals;
+              this.setJackpotFever(null);
               this.totalsState = {
                 spins: this.totalsState.spins,
                 jackpots: this.totalsState.jackpots,
