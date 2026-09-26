@@ -9,6 +9,7 @@ import { clock, dbNameFor } from '../stores/clock.ts';
 import { act, resetGame, useEngine } from '../stores/engine.ts';
 import { setPrefs, usePrefs } from '../stores/prefs.ts';
 import { SPIKE_NAMES } from '../spikes/spike-names.ts';
+import { LogPanel } from './log-panel.tsx';
 import { SavePanel } from './save-panel.tsx';
 import styles from './activity.module.css';
 
@@ -22,7 +23,7 @@ export const AUTO_SHARES: readonly (readonly [number, string])[] = [
 
 const report = (e: unknown) => useEngine.setState({ error: e instanceof Error ? e.message : String(e) });
 
-/** 設定画面（spec/40）: オート打ち・ブースト・演出・セーブ・リセット・アプリの情報。 */
+/** 設定画面（spec/40）: オート打ち・ブースト・演出・セーブ・リセット・計測ログのコピー・アプリの情報。 */
 export function SettingsScreen() {
   const p = useEngine((s) => s.projection);
   const prefs = usePrefs();
@@ -144,6 +145,7 @@ export function SettingsScreen() {
           )}
         </div>
       </section>
+      <LogPanel />
       <section className={styles.card}>
         <h2>アプリ</h2>
         <dl className={styles.facts}>

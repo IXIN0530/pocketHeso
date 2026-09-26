@@ -2,6 +2,7 @@ import { expect, test } from 'vitest';
 import { debugRecord } from './debug-screen.tsx';
 import { groupByDay } from './records-screen.tsx';
 import { upgradeEffect } from './shop-screen.tsx';
+import { dumpClaim } from '../stores/engine.ts';
 
 test('記録は日別にまとめ、新しい日から並べる（Debug の付与は名前を変える）', () => {
   const at = new Date(2026, 8, 25, 10).getTime();
@@ -17,4 +18,11 @@ test('記録は日別にまとめ、新しい日から並べる（Debug の付�
 test('強化の効果は「今 → 次」、最大なら今だけ', () => {
   expect(upgradeEffect({ id: 'tank', stage: 0, stages: 4, currency: 'balls', cost: 5000, value: 12, next: 18 })).toBe('上限 12時間 → 上限 18時間');
   expect(upgradeEffect({ id: 'rate', stage: 6, stages: 6, currency: 'medals', cost: null, value: 1000, next: null })).toBe('1000パチまで');
+});
+
+test('計測ログの台帳は日・種類・量・燃料・メダルだけ（claimId・登録地点は含めない）', () => {
+  const r = { ...debugRecord(5, 60000, 1), claimId: 'checkin:s1', kind: 'checkin' as const, source: 'checkin' as const, amount: 30, placeBonus: 'p1' };
+  const d = dumpClaim(r);
+  expect(d).toEqual({ at: 5, day: r.day, source: 'checkin', kind: 'checkin', amount: 30, trust: 1, fuelMs: 60000, medals: 1 });
+  expect(JSON.stringify(d)).not.toMatch(/s1|p1/);
 });

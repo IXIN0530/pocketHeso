@@ -6,7 +6,7 @@ import type { ActionInput, BootResult, EngineView, Shot } from '../engine/engine
 import { wrap, type Port, type Remote } from '../engine/rpc.ts';
 import type { EngineApi } from '../engine.worker.ts';
 import { deleteDB } from 'idb';
-import { DB_NAME } from '../platform/storage.ts';
+import { DB_NAME, loadLedger, openStorage } from '../platform/storage.ts';
 import { clock, dbNameFor } from './clock.ts';
 
 export interface EngineState {
@@ -160,6 +160,23 @@ export async function importSave(text: string): Promise<void> {
 
 export function debugInfo() {
   return need().debugInfo();
+}
+
+/** 台帳の1行をログ解析用に縮めたもの（claimId・登録地点の ID は含めない）。 */
+export function dumpClaim(r: ClaimRecord) {
+  return { at: r.receivedAt, day: r.day, source: r.source, kind: r.kind, amount: r.amount, trust: r.trust, fuelMs: r.grant.fuelMs, medals: r.grant.medals };
+}
+
+/** 状態ダンプ（Projection・Engine の状態と計測ログ・台帳）。Debug と設定の「計測ログ・記録をコピー」（P7-T2 のログ解析用）。 */
+export async function stateDump(): Promise<string> {
+  const engine = await debugInfo();
+  const db = await openStorage(dbNameFor(clock.scale));
+  try {
+    const ledger = (await loadLedger(db)).map(dumpClaim);
+    return JSON.stringify({ dumpedAt: clock.now(), projection: useEngine.getState().projection, engine, ledger }, null, 1);
+  } finally {
+    db.close();
+  }
 }
 
 export function resetMetrics() {

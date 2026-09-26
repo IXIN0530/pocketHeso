@@ -6,7 +6,7 @@ import { haptics, pack, planFor, playCue, sound } from '../fx/fx-host.ts';
 import { writeClipboard } from '../platform/clipboard.ts';
 import { formatFuel, localDay } from '../stores/activity.ts';
 import { DEBUG_SCALES, clock } from '../stores/clock.ts';
-import { debugInfo, receiveClaims, showLastAway, useEngine, verifyAtlas } from '../stores/engine.ts';
+import { debugInfo, receiveClaims, showLastAway, stateDump, useEngine, verifyAtlas } from '../stores/engine.ts';
 import { PREVIEWS, PREVIEW_SERIAL_BASE, requestPreview } from '../stores/preview.ts';
 import { DEBUG_CLAIM_PREFIX } from './records-screen.tsx';
 import { MetricsPanel } from './metrics-panel.tsx';
@@ -94,9 +94,8 @@ export default function DebugScreen() {
 
   const takeDump = () =>
     run(async () => {
-      const i = await debugInfo();
-      setInfo(i);
-      const text = JSON.stringify({ projection: useEngine.getState().projection, engine: i }, null, 1);
+      setInfo(await debugInfo());
+      const text = await stateDump();
       setDump(text);
       setMessage((await writeClipboard(text)) ? '状態をコピーしました' : null);
     });
