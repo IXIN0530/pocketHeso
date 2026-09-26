@@ -5,7 +5,9 @@ import {
   Engine,
   IdleEconomy,
   awakenMedalCost,
+  ballPoints,
   buildGrowthTable,
+  closeGain,
   growthPow,
   parseEconomyText,
   type EconomySpec,
@@ -214,7 +216,13 @@ export interface EconDayRow {
   readonly balls: number;
   readonly perSecFg: number;
   readonly runTotal: number;
+  /** 全期間累計玉（tick＋払出。玉由来Pの元）。 */
+  readonly totalTotal: number;
   readonly regular: number;
+  /** 玉由来P = floor(cbrt(total/divisor))。 */
+  readonly ballPts: number;
+  /** 行動由来P = floor(累計獲得メダル/medals_per_point)。 */
+  readonly medalPts: number;
   readonly closes: number;
   readonly awakens: number;
   /** 解放済みの最上位役物（Lv≥1 の最大 index。なければ '-'）。 */
@@ -225,7 +233,17 @@ export interface EconDayRow {
   readonly jackpots: number;
   readonly fired: number;
   readonly payout: number;
+  /** 役物生産のうち大当たりフィーバー抜きの素点（累計）。 */
+  readonly yakumono: number;
+  /** 大当たりフィーバーによる上乗せ分（累計。gain×(mult-1)/multの近似）。 */
+  readonly fever: number;
   readonly fuelMin: number;
+}
+
+/** 閉店1回分の記録（日は1始まり・gainは獲得常連P）。 */
+export interface EconCloseEntry {
+  readonly day: number;
+  readonly gain: number;
 }
 
 /** 試算結果（到達日は 1 始まり。未到達は null）。 */
@@ -240,6 +258,12 @@ export interface EconResult {
   readonly firstCloseDay: number | null;
   readonly medalsActivity: number;
   readonly medalsPachinko: number;
+  /** 閉店ごとの獲得（獲得≥1のみ。貪欲戦略は0獲得で閉店しない）。 */
+  readonly closeHistory: readonly EconCloseEntry[];
+  /** 累計の玉内訳（役物素点/フィーバー上乗せ/出玉）。 */
+  readonly yakumono: number;
+  readonly fever: number;
+  readonly payout: number;
 }
 
 /** 買える候補（安い順に買う単純戦略用）。 */
@@ -332,6 +356,7 @@ export function runEcon(
   const inputs = buildEconInputs(profile, days);
   const end = days * DAY_MS;
   const rows: EconDayRow[] = [];
+  const closeHistory: EconCloseEntry[] = [];
   let idx = 0;
   let t = 0;
   let fg = false;
@@ -340,9 +365,11 @@ export function runEcon(
   let closes = 0;
   let awakens = 0;
   let medalsActivity = 0;
-  // 大当たりでメダルは出ない（D-049）。列の見直しは P3-T6
+  // 大当たりでメダルは出ない（D-049）。
   const medalsPachinko = 0;
   let fuelGrantedMs = 0;
+  let yakumonoBase = 0;
+  let feverExtra = 0;
   let croonDay: number | null = null;
   let firstAwakenDay: number | null = null;
   let firstCloseDay: number | null = null;
@@ -368,11 +395,15 @@ export function runEcon(
       eng.appendAction({ t, k: 'noticeTap', noticeId: p.notice.id });
     }
     if (s.runTotal >= spec.close.requiredRunTotal) {
-      eng.appendAction({ t, k: 'close' });
-      closes = closes + 1;
-      firstCloseDay = firstCloseDay ?? dayOf(t);
-      balls = spec.close.startBalls;
-      s = { ...s, lv: [0, 0, 0, 0, 0, 0, 0, 0], awakened: [0, 0, 0, 0, 0, 0, 0, 0], idleStage: 0, tankStage: 0, nailStage: 0, shortenStage: 0, holdStage: 0, autoOwned: false, tomeuchiOwned: false, runTotal: 0 };
+      const gain = closeGain(s.totalTotal, spec.close.divisor, s.regular, s.medalsEarned, spec.close.medalsPerPoint);
+      if (gain >= 1) {
+        eng.appendAction({ t, k: 'close' });
+        closes = closes + 1;
+        firstCloseDay = firstCloseDay ?? dayOf(t);
+        closeHistory.push({ day: dayOf(t), gain });
+        balls = spec.close.startBalls;
+        s = { ...s, lv: [0, 0, 0, 0, 0, 0, 0, 0], awakened: [0, 0, 0, 0, 0, 0, 0, 0], idleStage: 0, tankStage: 0, nailStage: 0, shortenStage: 0, holdStage: 0, autoOwned: false, tomeuchiOwned: false, runTotal: 0 };
+      }
     }
     for (let i = 0; i < ECONOMY_YAKUMONO_IDS.length; i = i + 1) {
       const cost = awakenMedalCost(spec.awaken.medalBase, spec.awaken.medalGrowth, s.awakened[i] as number);
@@ -426,7 +457,24 @@ export function runEcon(
     const nextInput = idx < inputs.length ? (inputs[idx] as EconInput).t : end;
     next = next < nextInput ? next : nextInput;
     next = next < dayEnd ? next : dayEnd;
+    const total0 = econ.getTotalTotal();
+    const payout0 = eng.project().totals.payoutBalls;
+    const fever0 = econ.getJackpotFeverMult();
     const evs: EngineSimEvent[] = eng.advance(next);
+    const total1 = econ.getTotalTotal();
+    const payout1 = eng.project().totals.payoutBalls;
+    const fever1 = econ.getJackpotFeverMult();
+    const tick = total1 - total0 - (payout1 - payout0);
+    if (tick > 0) {
+      const mult = fever0 > 1 ? fever0 : fever1;
+      if (mult > 1) {
+        const extra = tick * (mult - 1) / mult;
+        feverExtra = feverExtra + extra;
+        yakumonoBase = yakumonoBase + (tick - extra);
+      } else {
+        yakumonoBase = yakumonoBase + tick;
+      }
+    }
     for (let i = 0; i < evs.length; i = i + 1) {
       const e = evs[i] as EngineSimEvent;
       if (e.k === 'granted') {
@@ -445,7 +493,10 @@ export function runEcon(
         balls: pe.balls,
         perSecFg: econ.getPerSec(true, 1),
         runTotal: se.runTotal,
+        totalTotal: se.totalTotal,
         regular: se.regular,
+        ballPts: ballPoints(se.totalTotal, spec.close.divisor),
+        medalPts: Math.floor(se.medalsEarned / spec.close.medalsPerPoint),
         closes,
         awakens,
         top: topYakumono(se),
@@ -455,11 +506,14 @@ export function runEcon(
         jackpots: pe.totals.jackpots,
         fired: pe.totals.fired,
         payout: pe.totals.payoutBalls,
+        yakumono: yakumonoBase,
+        fever: feverExtra,
         fuelMin: fuelGrantedMs / MIN_MS,
       });
     }
   }
-  return { profile: profile.id, machine, seed, days, rows, croonDay, firstAwakenDay, firstCloseDay, medalsActivity, medalsPachinko };
+  const lastPayout = rows.length > 0 ? (rows[rows.length - 1] as EconDayRow).payout : 0;
+  return { profile: profile.id, machine, seed, days, rows, croonDay, firstAwakenDay, firstCloseDay, medalsActivity, medalsPachinko, closeHistory, yakumono: yakumonoBase, fever: feverExtra, payout: lastPayout };
 }
 
 /** パチンコ期待値（1発あたり払い戻し）。背面オート share=1・レート1で hours 時間回す。 */
@@ -479,7 +533,8 @@ export function measurePachinkoEv(
     ? { nailStage: u.nailCosts.length, shortenStage: u.shortenCosts.length, holdStage: u.holdPlusCosts.length, tomeuchiOwned: true }
     : {};
   econ.restore({ ...econ.snapshot(), ...stages, autoOwned: true });
-  const eng = new Engine({ seed, spec: mspec, patterns, atlas: buffer, initialBalls: 1e12, economy: econ }, [], [
+  const fuelMs = hours * 3600000;
+  const eng = new Engine({ seed, spec: mspec, patterns, atlas: buffer, initialBalls: 1e12, initialFuelMs: fuelMs, economy: econ }, [], [
     { t: 0, k: 'presence', fg: false },
     { t: 0, k: 'auto', share: 1, rate: 1 },
   ]);
@@ -503,33 +558,79 @@ function fmtNum(v: number): string {
 export function formatEcon(r: EconResult, ev: { init: number; full: number } | null): string {
   const lines: string[] = [];
   lines.push(`econ: profile=${r.profile} days=${r.days} machine=${r.machine} seed=${r.seed}`);
-  lines.push('day | balls | perSec(fg) | runTotal | regP | close | awaken | top | medals | med act/pachi | jackpots | fuel(h,cum)');
+  lines.push('day | balls | perSec(fg) | runTotal | total | regP(ball/med) | close | awaken | top | medals | yaku/fever/payout | fever% | jackpots | fuel(h,cum)');
   for (let i = 0; i < r.rows.length; i = i + 1) {
     const w = r.rows[i] as EconDayRow;
+    const total = w.yakumono + w.fever + w.payout;
+    const share = total > 0 ? (w.fever / total) * 100 : 0;
     lines.push(
-      `${w.day} | ${fmtNum(w.balls)} | ${fmtNum(w.perSecFg)} | ${fmtNum(w.runTotal)} | ${w.regular} | ${w.closes} | ${w.awakens} | ${w.top} | ${w.medals} | ${w.medalsActivity}/${w.medalsPachinko} | ${w.jackpots} | ${(w.fuelMin / 60).toFixed(1)}`,
+      `${w.day} | ${fmtNum(w.balls)} | ${fmtNum(w.perSecFg)} | ${fmtNum(w.runTotal)} | ${fmtNum(w.totalTotal)} | ${w.regular}(${w.ballPts}/${w.medalPts}) | ${w.closes} | ${w.awakens} | ${w.top} | ${w.medals} | ${fmtNum(w.yakumono)}/${fmtNum(w.fever)}/${fmtNum(w.payout)} | ${share.toFixed(1)} | ${w.jackpots} | ${(w.fuelMin / 60).toFixed(1)}`,
     );
   }
-  const totalMedals = r.medalsActivity + r.medalsPachinko;
-  const share = totalMedals > 0 ? r.medalsPachinko / totalMedals : 0;
   lines.push(`milestones: croon day ${r.croonDay ?? '-'} / first awaken day ${r.firstAwakenDay ?? '-'} / first close day ${r.firstCloseDay ?? '-'}`);
-  lines.push(`medals: activity ${r.medalsActivity} / pachinko ${r.medalsPachinko} (pachinko share ${(share * 100).toFixed(1)}%)`);
+  lines.push(`medals: activity ${r.medalsActivity} / pachinko ${r.medalsPachinko} (pachinko always 0, D-049)`);
+  const closeStr = r.closeHistory.length > 0 ? r.closeHistory.map((c) => `day${c.day}+${c.gain}`).join(', ') : '-';
+  lines.push(`closes: ${closeStr}`);
+  const grandTotal = r.yakumono + r.fever + r.payout;
+  const grandShare = grandTotal > 0 ? (r.fever / grandTotal) * 100 : 0;
+  lines.push(`balls: yakumono ${fmtNum(r.yakumono)} / fever ${fmtNum(r.fever)} / payout ${fmtNum(r.payout)} (fever ${grandShare.toFixed(1)}%)`);
+  const row7 = r.rows.length >= 7 ? (r.rows[6] as EconDayRow) : null;
+  if (row7 !== null) {
+    const t7 = row7.yakumono + row7.fever + row7.payout;
+    const s7 = t7 > 0 ? (row7.fever / t7) * 100 : 0;
+    lines.push(`balls day1-7: fever share ${s7.toFixed(1)}% (target 20-40%)`);
+  }
   lines.push('targets (spec/23):');
   if (r.profile === 'standard') {
     const ok1 = r.croonDay === 1;
-    const ok2 = r.firstAwakenDay !== null && r.firstAwakenDay >= 2 && r.firstAwakenDay <= 4;
+    const ok2 = r.firstAwakenDay !== null && r.firstAwakenDay >= 3 && r.firstAwakenDay <= 4;
     const ok3 = r.firstCloseDay !== null && r.firstCloseDay >= 6 && r.firstCloseDay <= 8;
     const ng3 = r.firstCloseDay === null && r.days < 8 ? 'NG (run --days >= 8)' : 'NG';
-    lines.push(`  croon on day 1: ${ok1 ? 'OK' : 'NG'} / first awaken ~day 3 (2-4): ${ok2 ? 'OK' : 'NG'} / first close ~day 7 (6-8): ${ok3 ? 'OK' : ng3}`);
+    const firstGain = r.closeHistory.length > 0 ? (r.closeHistory[0] as { gain: number }).gain : 0;
+    const okGain = firstGain === 1;
+    lines.push(`  croon on day 1: ${ok1 ? 'OK' : 'NG'} / first awaken ~day 3 (3-4): ${ok2 ? 'OK' : 'NG'} / first close ~day 7 (6-8): ${ok3 ? 'OK' : ng3} / first gain +1: ${okGain ? 'OK' : 'NG'}`);
+    if (row7 !== null) {
+      const t7 = row7.yakumono + row7.fever + row7.payout;
+      const s7 = t7 > 0 ? row7.fever / t7 : 0;
+      lines.push(`  fever share day1-7 20-40%: ${(s7 >= 0.2 && s7 <= 0.4 ? 'OK' : 'NG')} (${(s7 * 100).toFixed(1)}%)`);
+    }
+    if (r.days >= 28) {
+      const closes28 = r.closeHistory.filter((c) => c.day <= 28).length;
+      lines.push(`  closes in 28d ~(weekly x4): ${closes28 >= 3 && closes28 <= 5 ? 'OK' : 'NG'} (${closes28})`);
+      const weekTop: number[] = [-1, -1, -1, -1];
+      const weekPer: number[] = [0, 0, 0, 0];
+      for (let i = 0; i < r.rows.length && i < 28; i = i + 1) {
+        const w = r.rows[i] as EconDayRow;
+        const wk = Math.floor(i / 7);
+        const topIdx = (ECONOMY_YAKUMONO_IDS as readonly string[]).indexOf(w.top);
+        if (topIdx > (weekTop[wk] as number)) {
+          weekTop[wk] = topIdx;
+        }
+        if (w.perSecFg > (weekPer[wk] as number)) {
+          weekPer[wk] = w.perSecFg;
+        }
+      }
+      let topUp = true;
+      let perUp = true;
+      for (let k = 1; k < 4; k = k + 1) {
+        if (!((weekTop[k] as number) >= (weekTop[k - 1] as number))) {
+          topUp = false;
+        }
+        if (!((weekPer[k] as number) > (weekPer[k - 1] as number))) {
+          perUp = false;
+        }
+      }
+      lines.push(`  weekly top non-decreasing: ${topUp ? 'OK' : 'NG'} (${weekTop.join('/')}) / weekly perSec increasing: ${perUp ? 'OK' : 'NG'}`);
+    }
   } else if (r.profile === 'none') {
     const ok = r.firstCloseDay === null ? r.days >= 60 : r.firstCloseDay > 60;
     lines.push(`  first close after day 60: ${ok ? 'OK' : r.firstCloseDay === null ? 'NG (run --days >= 61)' : 'NG'}`);
   } else {
-    lines.push('  (no target for this profile)');
+    lines.push(`  heavy regular ${r.rows.length > 0 ? (r.rows[r.rows.length - 1] as EconDayRow).regular : 0} (should exceed standard; compare manually)`);
   }
-  lines.push(`  pachinko medal share >= 50%: ${share >= 0.5 ? 'OK' : 'NG'}`);
   if (ev !== null) {
-    const okInit = ev.init >= 0.8 && ev.init <= 0.9;
+    const lo = r.machine.startsWith('lt-') ? 0.7 : 0.8;
+    const okInit = ev.init >= lo && ev.init <= 0.9;
     const okFull = ev.full <= 1.02;
     lines.push(
       `  pachinko EV init ${ev.init.toFixed(3)} (≈0.85: ${okInit ? 'OK' : 'NG'}) / all upgrades ${ev.full.toFixed(3)} (<=1.02: ${okFull ? 'OK' : 'NG'})`,

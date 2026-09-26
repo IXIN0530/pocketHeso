@@ -106,7 +106,7 @@ test('大当たりフィーバーは jackpotStarted〜Ended の間だけ掛か�
         inJackpot = false;
       }
     }
-    expect(econ.getJackpotFeverMult()).toBe(inJackpot ? 3 : 1);
+    expect(econ.getJackpotFeverMult()).toBe(inJackpot ? 4 : 1);
     if (inJackpot) {
       checkedIn = checkedIn + 1;
     } else {
@@ -165,7 +165,7 @@ test('レート4: 1発4玉・出玉×4・大当たりフィーバー×4（D-050�
       }
     }
     if (inJackpot) {
-      expect(econ.getJackpotFeverMult()).toBe(4);
+      expect(econ.getJackpotFeverMult()).toBe(5);
       sawFever = true;
     }
   }
@@ -207,7 +207,7 @@ test('決定論契約1/2: 大当たりフィーバー込みで不揃い刻み・
   const { spec, patterns } = loadMachine();
   const econD = loadEconomy();
   const d = Engine.restore(c.snapshot(), { seed: 11, spec, patterns, atlas: ATLAS, economy: econD });
-  expect(econD.getJackpotFeverMult()).toBe(3);
+  expect(econD.getJackpotFeverMult()).toBe(4);
   const tail = d.advance(until);
   expect([...head, ...tail]).toEqual(once);
   expect(d.snapshot()).toEqual(a.snapshot());

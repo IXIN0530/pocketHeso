@@ -29,11 +29,11 @@ test('既定の経済定義が spec/23 の数値（P3-T4 調整 D-048 を含む�
   expect(spec.notice.rushCapS).toBe(900);
   expect(spec.notice.bonus1In).toBe(10);
   expect(spec.close.requiredRunTotal).toBe(10000000000);
-  expect(spec.close.divisor).toBe(10000000000);
+  expect(spec.close.divisor).toBe(12000000000);
   expect(spec.close.startBalls).toBe(100);
   expect(spec.close.medalsPerPoint).toBe(7);
   expect(spec.close.regularMult).toBe(1);
-  expect(spec.jackpotFever.multByRate).toEqual([3, 4, 5, 7, 10, 15, 20]);
+  expect(spec.jackpotFever.multByRate).toEqual([4, 5, 6, 8, 11, 16, 21]);
   expect(spec.upgrades.nailValues).toEqual([0, 0.0006, 0.0012, 0.0018, 0.0024, 0.003]);
   expect(spec.claims).toEqual({ streakPerDay: 0.05, streakMaxDays: 20 });
 });
@@ -105,8 +105,8 @@ test('強化配列・マイルストーン・idle_base の整合を検証する'
     (j) => { up(j, 'rate_unlock')['medal_costs'] = [2, 5, 20, 50, 200, -500]; },
     (j) => { ms(j)['thresholds'] = [25, 100, 50]; },
     (j) => { ms(j)['step_from'] = 100; },
-    (j) => { (j['jackpot_fever'] as Record<string, unknown>)['mult_by_rate'] = [3, 4, 5, 7, 10, 15]; },
-    (j) => { (j['jackpot_fever'] as Record<string, unknown>)['mult_by_rate'] = [3, 4, 4, 7, 10, 15, 20]; },
+    (j) => { (j['jackpot_fever'] as Record<string, unknown>)['mult_by_rate'] = [4, 5, 6, 8, 11, 16]; },
+    (j) => { (j['jackpot_fever'] as Record<string, unknown>)['mult_by_rate'] = [4, 5, 5, 8, 11, 16, 21]; },
     (j) => { (j['close'] as Record<string, unknown>)['medals_per_point'] = 0; },
     (j) => { (j['close'] as Record<string, unknown>)['regular_mult'] = 0; },
   ];

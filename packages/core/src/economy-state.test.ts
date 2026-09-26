@@ -244,17 +244,17 @@ test('大当たりフィーバーはレート別倍率・予告フィーバー�
   econ.onBuy('windmill', 1, 1000, 0);
   const base = econ.getPerSec(true, 1000);
   econ.onJackpotFever(1);
-  expect(econ.getJackpotFeverMult()).toBe(3);
-  expect(econ.getPerSec(true, 1000)).toBe(base * 3);
-  econ.onNoticeFever();
-  expect(econ.getPerSec(true, 1000)).toBe(base * 7 * 3);
-  econ.onJackpotFever(4);
   expect(econ.getJackpotFeverMult()).toBe(4);
+  expect(econ.getPerSec(true, 1000)).toBe(base * 4);
+  econ.onNoticeFever();
+  expect(econ.getPerSec(true, 1000)).toBe(base * 7 * 4);
+  econ.onJackpotFever(4);
+  expect(econ.getJackpotFeverMult()).toBe(5);
   const copy = econ.fork();
-  expect(copy.getJackpotFeverMult()).toBe(4);
+  expect(copy.getJackpotFeverMult()).toBe(5);
   econ.onJackpotFever(null);
   expect(econ.getJackpotFeverMult()).toBe(1);
-  expect(copy.getJackpotFeverMult()).toBe(4);
+  expect(copy.getJackpotFeverMult()).toBe(5);
   expect(() => econ.onJackpotFever(2)).toThrow();
   // 旧版 snapshot（v2）は累計獲得メダル0・フィーバーなしで読む
   const v2: Record<string, unknown> = { ...(copy.snapshot() as unknown as Record<string, unknown>), v: 2 };

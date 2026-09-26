@@ -38,7 +38,7 @@
     "bonus_1_in": 10,
     "bonus_weight": 5
   },
-  "close": { "required_run_total": 10000000000, "divisor": 10000000000, "medals_per_point": 7, "regular_mult": 1.0, "start_balls": 100 },
-  "jackpot_fever": { "mult_by_rate": [3, 4, 5, 7, 10, 15, 20] },
+  "close": { "required_run_total": 10000000000, "divisor": 12000000000, "medals_per_point": 7, "regular_mult": 1.0, "start_balls": 100 },
+  "jackpot_fever": { "mult_by_rate": [4, 5, 6, 8, 11, 16, 21] },
   "claims": { "streak_per_day": 0.05, "streak_max_days": 20 }
 }
