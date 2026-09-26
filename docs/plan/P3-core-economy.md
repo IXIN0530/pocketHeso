@@ -29,3 +29,23 @@ Do: `pnpm sim econ --profile standard|none|heavy --days 30`: 行動プロファ�
 Grant と Action を自動生成（「買えるものを安い順に買う」単純戦略）→ 日別の玉・常連P・メダル内訳（行動/パチンコ）を出力。
 Accept:
 - [ ] spec/23 のバランス目標3点を満たす。満たさない場合は数値を調整し DECISIONS に記録
+
+### P3-T5 通貨分離・行動由来の転生・大当たりフィーバー（D-049, D-050）
+Owner: Claude Code | Read: spec/23-core-economy, spec/21-core-lottery（出玉節）, spec/22-core-engine（SimEvent 節）
+Do: 大当たりメダル廃止（機種 JSON の `medal`・`jackpotEnded.medals` を削除）、累計獲得メダル（Grant のみ加算・snapshot、旧版は 0 で読む）、
+燃料0でオート停止、常連P の min 式と `close.medals_per_point`、常連倍率 `1+1.0P`、覚醒 `5×2^n`、
+大当たりフィーバー（`jackpot_fever.mult_by_rate`）、1発のコスト = rate 玉。数値調整は T6 で行い、ここでは仮値でよい。
+Accept:
+- [ ] 大当たりでメダルが増えず、累計獲得メダルは Grant でだけ増え、覚醒・レート解放で消費しても減らない
+- [ ] 燃料0でオートが発射しない／Grant で燃料が入ると再開／手動発射は燃料0でも打てる
+- [ ] 常連P: 行動0なら獲得0・玉不足なら玉側が上限・既得を超えない・生産 ×(1+P) の境界テスト
+- [ ] 大当たりフィーバーが jackpotStarted〜Ended の間だけ掛かり、レート別倍率・予告フィーバーとの掛け算になる
+- [ ] 決定論契約 1〜4（1回 advance vs 不揃い刻み・snapshot）を通し、golden を更新して理由を STATUS に残す
+
+### P3-T6 経済の再試算
+Owner: Claude Code | Read: spec/23-core-economy（バランス目標節）
+Do: `pnpm sim econ` に常連P（玉由来/行動由来）・閉店ごとの獲得・玉の内訳（役物/大当たりフィーバー/出玉）の列を追加し、
+目標を新バランス目標に差し替え（メダル≥50% 判定は削除）。`--days` 84（12週）まで回し、default.json を調整。
+Accept:
+- [ ] spec/23 のバランス目標を標準・none・heavy × seed1〜3 × 3機種で満たす。調整値と長期（12週）の伸びの所見を DECISIONS に記録
+

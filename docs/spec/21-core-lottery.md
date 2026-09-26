@@ -14,7 +14,6 @@
   "round": {"count": 10, "payout_per_ball": 15, "ms_per_round": 25000},
   "heso_payout": 3,
   "hold_max": 4,
-  "medal": {"per_jackpot": 1, "per_kakuhen": 2},
   "spin_patterns": "patterns.json",
   "hold_colors": [{"color": "blue", "w_hit": 10, "w_miss": 900},
                   {"color": "green","w_hit": 20, "w_miss": 70},
@@ -39,7 +38,7 @@
    取得時に当否・振分け・変動パターン・保留色を**全部確定**（先読み・予約通知の根拠）。
    当否は取得時のモードで判定（D-017）。
 2. **消化**: 変動していなければ先頭保留を取り出し `spinStarted`。変動時間はパターンで決定。
-3. **停止**: `spinResolved`。当たりなら `jackpotStarted` → ラウンドは時間経過で消化 → `jackpotEnded(payout, medals)`。
+3. **停止**: `spinResolved`。当たりなら `jackpotStarted` → ラウンドは時間経過で消化 → `jackpotEnded(payout)`。
 4. **モード**: kakuhen 当選後 → `st`（100回転）。ST 中の当たりは再度振分け。ST 消化で `normal`。
 - 保留4＋変動時間が**時間あたりの抽選回数の上限**になる（玉をいくら入れても抽選は頭打ち）。これが経済の安全弁。
 
@@ -61,7 +60,7 @@
 - `nextU32()`、`nextUnit()`（[0,1)、`u32 / 2^32`）、`pick(weights)`（整数重み）。
 
 ## 出玉
-- 大当たり出玉 = `rounds × count × payout_per_ball × rate`。メダル = `per_jackpot`（確変なら `per_kakuhen`）。
+- 大当たり出玉 = `rounds × count × payout_per_ball × rate`。大当たりでメダルは出ない（D-049）。大当たり中の生産フィーバーは spec/23。
 - 期待値の目安（初期・レート1）: 1玉あたりの払い戻し ≈ 0.85。強化で 1 付近まで（spec/23 の上限）。
 
 ## モード拡張: 時短・LT・上乗せ（D-037。実装は P2-T7〜T9）

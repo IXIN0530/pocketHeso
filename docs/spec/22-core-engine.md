@@ -30,7 +30,7 @@ type SimEvent =
   | { k: 'spinStarted'; entry: number; at: SimTime; pattern: PatternId; endsAt: SimTime }
   | { k: 'spinResolved'; entry: number; at: SimTime; hit: boolean }
   | { k: 'jackpotStarted'; entry: number; at: SimTime; kind: JackpotKind; rounds: number }
-  | { k: 'jackpotEnded'; entry: number; at: SimTime; payout: number; medals: number }
+  | { k: 'jackpotEnded'; entry: number; at: SimTime; payout: number }
   | { k: 'modeChanged'; to: Mode; at: SimTime; stRemaining: number }
   | { k: 'noticeSpawned' | 'noticeExpired'; id: number; at: SimTime; effect: NoticeEffect }
   | { k: 'granted'; claimId: string; at: SimTime; fuelMs: number; medals: number }
