@@ -9,7 +9,7 @@ Accept:
 - [ ] 同じ seed で同じキュー列（テスト）/ 4回/秒を指定しても 3回/秒に抑えられるテスト
 
 ### P6-T2 演出シーン
-Owner: Muse Spark | Read: spec/43-presentation-effects, spec/21-core-lottery（変動パターン節）, spec/50-app-rendering
+Owner: Claude Code | Read: spec/43-presentation-effects, spec/21-core-lottery（変動パターン節）, spec/50-app-rendering
 Do: 液晶エリアの演出: 通常リーチ / SP / 激アツ（疑似連・群予告）/ 確定。図形・テキスト・パーティクルのみ。尺はパターンの `ms` に一致。
 予告（赤保留・キリン柄）の見た目。
 Accept:

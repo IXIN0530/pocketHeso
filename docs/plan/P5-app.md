@@ -5,8 +5,8 @@
 Owner: 人間（進行）＋両エージェント | Read: ref/graphics-bakeoff
 Do: ref/graphics-bakeoff の手順で、同じ課題（`?spike=bakeoff`）を `bakeoff/opus` と `bakeoff/muse` で作らせ、実機で伏せて見比べる。
 Accept:
-- [ ] 両ブランチのプレビュー URL が実機で開け、評価表が埋まっている（STATUS Notes に要約）
-- [ ] P5-T2・P5-T3・P6-T2 の Owner を決め、DECISIONS に1行、tooling.md の分担表を更新
+- [x] 両ブランチのプレビュー URL が実機で開け、評価表が埋まっている（STATUS Notes に要約。人間判断で簡略化, D-060）
+- [x] P5-T2・P5-T3・P6-T2 の Owner を決め、DECISIONS に1行、tooling.md の分担表を更新
 
 ### P5-T1 Engine Worker と保存
 Owner: Claude Code | Read: spec/10-architecture（保存節）, spec/40-app-ui（状態管理節）, spec/41-pwa-platform（保存節）
@@ -17,14 +17,14 @@ Accept:
 - [x] snapshot を壊しても再計算で起動できるテスト
 
 ### P5-T2 盤面描画
-Owner: Muse Spark | Read: spec/50-app-rendering, spec/20-core-physics（盤面 JSON 節）
+Owner: Claude Code | Read: spec/50-app-rendering, spec/20-core-physics（盤面 JSON 節）
 Do: `<BoardCanvas>`（Three.js, spec/50）、盤面板のテクスチャ焼き込みと釘の InstancedMesh、役物の回転表示、玉の軌跡再生（途中から再生を含む）。
-P0-T6 の `spikes/three-board.ts` の質感設定を流用してよい。
+P5-T0 の `spikes/bakeoff-*.ts`（dev にマージ済み, D-060）を土台にしてよい。P0-T6 の `spikes/three-board.ts` の質感設定も流用してよい。
 Accept:
 - [ ] ヘソに入った玉の描画終点がヘソセンサー内（軌跡末尾の自動テスト）/ Debug の x60 で破綻しない
 
 ### P5-T3 ホール・液晶・HUD
-Owner: Muse Spark | Read: spec/40-app-ui（画面節）, spec/21-core-lottery（流れ節）
+Owner: Claude Code | Read: spec/40-app-ui（画面節）, spec/21-core-lottery（流れ節）
 Do: 簡易図柄変動（3列）、保留（色＋形）、HUD、打つトグルとレート選択、予告の表示とタップ。演出は P6 で差し替える最小版。
 Accept:
 - [ ] 保留が増減し、変動と連動して正しく消化される
