@@ -35,6 +35,7 @@ type ClaimRecord = { claimId: string; receivedAt: SimTime; source: Source; kind:
 ## 連続日数（streak）
 - その日の `health` か `checkin` で「歩数 ≥ 5,000 または 運動 ≥ 20分」を満たした日を達成日とする（self は数えない）。
 - 途切れても **休養日パス**（週1回、自動適用）で1日は維持。休むのも健康のうち。
+  パスは台帳に `rest` 記録（燃料0・streakDay 付き）として穴の翌日の達成時に入り、その日も1日と数える（週は月曜始まり, D-055）。
 - `streakMult = 1 + 0.05 × min(連続日数, 20)`（spec/23）。Grant に `streakDay` を載せ、Engine が集計する。
 
 ## 不正の扱い（1人用）

@@ -40,5 +40,14 @@
   },
   "close": { "required_run_total": 10000000000, "divisor": 12000000000, "medals_per_point": 7, "regular_mult": 1.0, "start_balls": 100 },
   "jackpot_fever": { "mult_by_rate": [4.5, 5, 6, 8, 11, 16, 21] },
-  "claims": { "streak_per_day": 0.05, "streak_max_days": 20 }
+  "claims": {
+    "streak_per_day": 0.05,
+    "streak_max_days": 20,
+    "claim_days": 3,
+    "steps": { "fuel_min_per_1000": 10, "tiers": [{ "to": 10000, "mult": 1 }, { "to": 15000, "mult": 0.5 }], "medal_at": 8000 },
+    "checkin": { "fuel_min_per_min": 2, "tiers": [{ "to": 60, "mult": 1 }, { "to": 120, "mult": 0.5 }], "medal_min_minutes": 20, "medal_max_per_day": 2 },
+    "self": { "fuel_min_per_item": 10, "max_per_day": 5 },
+    "trust": { "health": 1.0, "checkin": 1.0, "checkin-own": 0.8, "self": 0.3 },
+    "streak": { "min_steps": 5000, "min_minutes": 20 }
+  }
 }

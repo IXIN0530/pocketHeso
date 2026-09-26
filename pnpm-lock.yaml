@@ -90,6 +90,10 @@ importers:
       '@ph/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.2
+        version: 26.6.2
 
   packages/core:
     devDependencies:
