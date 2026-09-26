@@ -98,7 +98,15 @@ export type { ActiveJackpot, ActiveSpin, SimTime, SpinEvent, SpinSnapshot } from
 export { SpinMachine, jackpotBaseDurationMs, jackpotDurationMs, spinDurationMs } from './spin.ts';
 export type { EconomyPort } from './economy.ts';
 export { StubEconomy } from './economy.ts';
-export type { IdleEconomySnapshot, IdleYakumonoView } from './economy-state.ts';
+export type {
+  IdleEconomySnapshot,
+  IdleYakumonoView,
+  ShopCloseView,
+  ShopUpgradeId,
+  ShopUpgradeView,
+  ShopView,
+  ShopYakumonoView,
+} from './economy-state.ts';
 export { ECONOMY_BUY_TARGETS, IdleEconomy } from './economy-state.ts';
 export type { Amount } from './economy-math.ts';
 export {
@@ -140,6 +148,7 @@ export type {
   ActiveNotice,
   AwaySummary,
   AwayTrackerSnapshot,
+  CloseRecord,
   EngineConfig,
   EngineSnapshot,
   Grant,

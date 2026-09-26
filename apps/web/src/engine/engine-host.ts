@@ -1,7 +1,20 @@
 // Engine Worker の中身（Worker 外でもテストできるよう DB と Atlas を受け取る）。spec/10 保存・spec/40 状態管理。
 // 真実は seed + 機種 + 台帳 + ActionLog。スナップショットはキャッシュで、壊れていれば捨てて再計算する。
 import type { ClaimRecord } from '@ph/claims';
-import { Engine, atlasKeyForBall, type Action, type AwaySummary, type EngineSimEvent, type HallProjection } from '@ph/core';
+import {
+  BallSimulator,
+  Engine,
+  atlasKeyForBall,
+  decodeAtlasHeader,
+  parseBoard,
+  parseLaunchDirs,
+  verifyAtlas,
+  type Action,
+  type AtlasVerifyResult,
+  type AwaySummary,
+  type EngineSimEvent,
+  type HallProjection,
+} from '@ph/core';
 import { decodeSave, dumpSave, encodeSave, replaceWithSave } from '../platform/save-file.ts';
 import {
   appendAction,
@@ -49,6 +62,15 @@ export interface EngineView {
 
 export interface TickResult extends EngineView {
   readonly events: readonly EngineSimEvent[];
+}
+
+/** Debug 画面の状態ダンプ（入力列は件数だけ）。 */
+export interface DebugInfo {
+  readonly meta: GameMeta;
+  readonly nowMs: number;
+  readonly grants: number;
+  readonly actions: number;
+  readonly snapshot: unknown;
 }
 
 export interface BootResult extends EngineView {
@@ -210,6 +232,18 @@ export class EngineHost {
       }
       return () => (stamped.length > 0 ? appendClaims(this.db, stamped) : Promise.resolve());
     });
+  }
+
+  /** Debug: seed・入力の件数・スナップショット（台帳と ActionLog の中身は除く）。 */
+  debugInfo(): DebugInfo {
+    const { grants, actions, ...rest } = this.engine.snapshot();
+    return { meta: this.meta, nowMs: this.engine.nowMs, grants: grants.length, actions: actions.length, snapshot: rest };
+  }
+
+  /** Debug: Atlas の先頭を物理で再計算して照合する（盤面は board の JSON。数秒かかる）。 */
+  verifyAtlas(boardJson: unknown, dirsJson: unknown): AtlasVerifyResult {
+    const sim = new BallSimulator(parseBoard(boardJson), parseLaunchDirs(dirsJson));
+    return verifyAtlas(this.atlas, decodeAtlasHeader(this.atlas).boardHash, (p) => sim.run(p));
   }
 
   /** セーブを書き出し、書き出した時刻を設定に残す（週1回のバックアップ案内, spec/41）。 */

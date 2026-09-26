@@ -5,6 +5,11 @@
 export const DEBUG_SCALES = [1, 60, 3600] as const;
 export const DEBUG_DB_NAME = 'pocketheso-debug';
 
+/** 時間倍率に対応する DB 名（1 は本番の既定 DB = undefined）。 */
+export function dbNameFor(scale: number): string | undefined {
+  return scale === 1 ? undefined : DEBUG_DB_NAME;
+}
+
 export interface Clock {
   /** 1 以外なら Debug の時計（別 DB）。 */
   readonly scale: number;

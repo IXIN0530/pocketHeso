@@ -330,3 +330,93 @@ test('決定論: 1回vs1秒刻み・snapshot/restoreが経済込みで一致', (
   });
   expect(resumed.advance(until)).toEqual(tailThrough);
 });
+
+test('強化画面の表示は onBuy・onAwaken・onClose の価格と条件に一致する（P5-T4）', () => {
+  const econ = loadEconomy();
+  const s0 = econ.getShopView();
+  const w0 = s0.yakumono[0]!;
+  expect(w0.locked).toBe(false);
+  expect(s0.yakumono[1]!.locked).toBe(true);
+  expect(w0.perSec).toBe(0);
+  // ×10 の表示価格ちょうどで買え、1玉足りなければ買えない
+  const p10 = w0.prices[1]!;
+  expect(econ.onBuy('windmill', 10, p10 - 1, 0).ok).toBe(false);
+  const bought = econ.onBuy('windmill', 10, p10, 0);
+  expect(bought.ok && bought.balls).toBe(0);
+  const s1 = econ.getShopView();
+  expect(s1.yakumono[0]!.lv).toBe(10);
+  expect(s1.yakumono[1]!.locked).toBe(false);
+  expect(relErr(s1.yakumono[0]!.perSec, (1 * 10) / 2)).toBeLessThan(1e-12);
+  expect(s1.yakumono[0]!.awakenReady).toBe(false);
+  expect(s1.yakumono[0]!.awakenCost).toBe(5);
+  // 強化: 段・次の価格・効果、最大で cost=null
+  const idle = s1.upgrades.find((u) => u.id === 'idle')!;
+  expect(idle).toEqual({ id: 'idle', stage: 0, stages: 5, currency: 'balls', cost: 1000, value: 0.5, next: 0.6 });
+  expect(econ.onBuy('auto', 1, 50000, 0).ok).toBe(true);
+  const auto = econ.getShopView().upgrades.find((u) => u.id === 'auto')!;
+  expect(auto.cost).toBeNull();
+  expect(auto.next).toBeNull();
+  expect(auto.value).toBe(1);
+  const rate = econ.getShopView().upgrades.find((u) => u.id === 'rate')!;
+  expect(rate.currency).toBe('medals');
+  expect(rate.value).toBe(1);
+  expect(rate.next).toBe(4);
+  // 閉店: 行動なしは玉由来があっても獲得0
+  econ.noteGain(8000000000);
+  const c0 = econ.getShopView().close;
+  expect(c0.ready).toBe(true);
+  expect(c0.byBalls).toBe(2);
+  expect(c0.byMedals).toBe(0);
+  expect(c0.gain).toBe(0);
+  econ.onGrant(0, 14, undefined, 0, 0);
+  const c1 = econ.getShopView().close;
+  expect(c1.gain).toBe(2);
+  const closed = econ.onClose(0);
+  expect(closed.ok && closed.gain).toBe(c1.gain);
+  expect(econ.getShopView().regular).toBe(2);
+});
+
+test('Projection に強化画面の表示とオート打ちの状態が載る', () => {
+  const { spec, patterns } = loadMachine();
+  const eng = new Engine(
+    { seed: 3, spec, patterns, atlas: loadAtlas(), initialBalls: 1000, initialMedals: 0, economy: loadEconomy() },
+    [],
+    [{ t: 0, k: 'buy', target: 'windmill', count: 1 }],
+  );
+  eng.advance(1000);
+  const p = eng.project();
+  expect(p.shop?.yakumono[0]?.lv).toBe(1);
+  expect(p.auto).toEqual({ share: 0, rate: 1 });
+});
+
+test('統計: 初当たりは RUSH 外の大当たり・最大連チャンは snapshot に残る（P5-T4）', () => {
+  const spec = parseMachineText(readFileSync('../../resources/machines/rush-middle-01.json', 'utf8'));
+  const patterns = parsePatternsText(readFileSync('../../resources/machines/patterns.json', 'utf8'));
+  const eng = new Engine(
+    { seed: 7, spec, patterns, atlas: loadAtlas(), initialBalls: 10000000, initialMedals: 0 },
+    [],
+    [{ t: 0, k: 'shoot', on: true, rate: 1 }],
+  );
+  eng.advance(6 * H);
+  const t = eng.project().totals;
+  expect(t.jackpots).toBeGreaterThan(0);
+  expect(t.firstHits).toBeGreaterThan(0);
+  expect(t.firstHits).toBeLessThanOrEqual(t.jackpots);
+  expect(t.maxChain).toBeGreaterThanOrEqual(0);
+  const again = Engine.restore(eng.snapshot(), { seed: 7, spec, patterns, atlas: loadAtlas(), initialBalls: 10000000, initialMedals: 0 });
+  expect(again.project().totals).toEqual(t);
+});
+
+test('閉店の記録は Projection と snapshot に残る（P5-T4）', () => {
+  const { spec, patterns } = loadMachine();
+  const econ = loadEconomy();
+  // 今回の累計玉を閉店条件まで先に積んでおく
+  econ.noteGain(1000000000);
+  const cfg = { seed: 5, spec, patterns, atlas: loadAtlas(), initialBalls: 100, initialMedals: 0 };
+  const eng = new Engine({ ...cfg, economy: econ }, [{ claimId: 'm', at: 0, fuelMs: 0, medals: 7 }], [{ t: 1000, k: 'close' }]);
+  const evs = eng.advance(2000);
+  expect(evs.filter((e) => e.k === 'closed').length).toBe(1);
+  const closes = eng.project().closes;
+  expect(closes).toEqual([{ at: 1000, runTotal: 1000000000, gain: 1 }]);
+  expect(Engine.restore(eng.snapshot(), { ...cfg, economy: loadEconomy() }).project().closes).toEqual(closes);
+});

@@ -5,7 +5,9 @@ import { create } from 'zustand';
 import type { ActionInput, BootResult, EngineView, Shot } from '../engine/engine-host.ts';
 import { wrap, type Port, type Remote } from '../engine/rpc.ts';
 import type { EngineApi } from '../engine.worker.ts';
-import { DEBUG_DB_NAME, clock } from './clock.ts';
+import { deleteDB } from 'idb';
+import { DB_NAME } from '../platform/storage.ts';
+import { clock, dbNameFor } from './clock.ts';
 
 export interface EngineState {
   readonly status: 'idle' | 'booting' | 'ready' | 'error';
@@ -28,6 +30,7 @@ export const useEngine = create<EngineState>(() => ({
 }));
 
 let remote: Remote<EngineApi> | null = null;
+let worker: Worker | null = null;
 let timer: ReturnType<typeof setInterval> | undefined;
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -110,11 +113,11 @@ export async function startEngine(): Promise<void> {
   if (remote !== null) {
     return;
   }
-  const worker = new Worker(new URL('../engine.worker.ts', import.meta.url), { type: 'module' });
+  worker = new Worker(new URL('../engine.worker.ts', import.meta.url), { type: 'module' });
   remote = wrap<EngineApi>(worker as unknown as Port);
   useEngine.setState({ status: 'booting' });
   try {
-    const boot = await remote.boot(clock.now(), clock.scale === 1 ? undefined : DEBUG_DB_NAME);
+    const boot = await remote.boot(clock.now(), dbNameFor(clock.scale));
     clock.catchUp(boot.projection.at);
     show(boot);
     useEngine.setState({ status: 'ready', away: boot.away, restoredFrom: boot.restoredFrom });
@@ -147,6 +150,24 @@ export async function importSave(text: string): Promise<void> {
   const boot = await need().importSave(text, clock.now());
   show(boot);
   useEngine.setState({ away: boot.away, restoredFrom: boot.restoredFrom });
+}
+
+export function debugInfo() {
+  return need().debugInfo();
+}
+
+export function verifyAtlas() {
+  return need().verifyAtlas();
+}
+
+/** 全データを消して起動し直す（Engine を止めてから DB を消す。Debug の時間倍率なら Debug の DB だけ）。 */
+export async function resetGame(): Promise<void> {
+  clearInterval(timer);
+  worker?.terminate();
+  worker = null;
+  remote = null;
+  await deleteDB(dbNameFor(clock.scale) ?? DB_NAME);
+  location.reload();
 }
 
 export function dismissAway(): void {

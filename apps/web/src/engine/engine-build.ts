@@ -4,7 +4,8 @@ import { Engine, type Action, type EngineSnapshot } from '@ph/core';
 import { getSnapshot, loadActions, loadLedger, type Db, type GameMeta } from '../platform/storage.ts';
 import { engineConfig } from './game-config.ts';
 
-export const SNAPSHOT_VERSION = 1;
+/** 2 = P5-T4（統計に初当たり・最大連チャン）。 */
+export const SNAPSHOT_VERSION = 2;
 
 export type RestoredFrom = 'snapshot' | 'recompute';
 

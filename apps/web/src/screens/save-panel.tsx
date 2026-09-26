@@ -3,7 +3,7 @@ import { writeClipboard } from '../platform/clipboard.ts';
 import { exportSave, importSave } from '../stores/engine.ts';
 import styles from './activity.module.css';
 
-/** セーブの書き出し/読み込み（spec/41）。P5-T4 で設定画面へ移す。 */
+/** セーブの書き出し/読み込み（spec/41。設定画面）。 */
 export function SavePanel({ lastExportAt, onImported }: { lastExportAt: number | undefined; onImported: () => Promise<void> }) {
   const [exported, setExported] = useState<string | null>(null);
   const [text, setText] = useState('');

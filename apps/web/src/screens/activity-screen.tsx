@@ -22,10 +22,10 @@ import {
   summarize,
   type ClaimPlan,
 } from '../stores/activity.ts';
+import { clock, dbNameFor } from '../stores/clock.ts';
 import { receiveClaims, useEngine } from '../stores/engine.ts';
 import { CheckinPanel } from './checkin-panel.tsx';
 import { ConfirmModal } from './confirm-modal.tsx';
-import { SavePanel } from './save-panel.tsx';
 import { ShortcutPanel } from './shortcut-panel.tsx';
 import styles from './activity.module.css';
 
@@ -35,7 +35,7 @@ interface Pending {
   readonly closesSession: boolean;
 }
 
-/** 行動画面（P4 の最小 UI）: 運動を受け取る・チェックイン・自己申告と、燃料の残り。 */
+/** 行動画面（spec/40）: 運動を受け取る・チェックイン・自己申告と、燃料の残り。連携の鍵と登録地点もここで作る。 */
 export function ActivityScreen() {
   const projection = useEngine((s) => s.projection);
   const [db, setDb] = useState<Db | null>(null);
@@ -56,11 +56,15 @@ export function ActivityScreen() {
 
   useEffect(() => {
     let alive = true;
-    openStorage()
+    let opened: Db | null = null;
+    openStorage(dbNameFor(clock.scale))
       .then(async (d) => {
+        opened = d;
         await reload(d);
         if (alive) {
           setDb(d);
+        } else {
+          d.close();
         }
         void requestPersist();
       })
@@ -71,6 +75,7 @@ export function ActivityScreen() {
     document.addEventListener('visibilitychange', tick);
     return () => {
       alive = false;
+      opened?.close();
       clearInterval(timer);
       document.removeEventListener('visibilitychange', tick);
     };
@@ -178,7 +183,6 @@ export function ActivityScreen() {
           </button>
         </div>
       </section>
-      <SavePanel lastExportAt={settings.lastExportAt} onImported={() => reload(db)} />
       {pending && <ConfirmModal plan={pending.plan} onConfirm={confirm} onCancel={() => setPending(null)} />}
     </div>
   );

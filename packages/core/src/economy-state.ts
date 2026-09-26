@@ -4,6 +4,7 @@ import { ECONOMY_YAKUMONO_IDS } from './economy-config.ts';
 import type { EconomyPort } from './economy.ts';
 import {
   awakenMedalCost,
+  ballPoints,
   buildGrowthTable,
   closeGain,
   effectivePeriodS,
@@ -45,6 +46,53 @@ export interface IdleYakumonoView {
   readonly lv: number;
   readonly awakened: number;
   readonly nextPrice: number;
+}
+
+/** 強化画面の役物1行（毎秒は状態係数なしの素の値。prices は bulkSizes 込みの [×1, ×10, ×100]、買えない数は null）。 */
+export interface ShopYakumonoView {
+  readonly id: string;
+  readonly lv: number;
+  readonly awakened: number;
+  readonly locked: boolean;
+  readonly perSec: number;
+  readonly prices: readonly (number | null)[];
+  readonly awakenCost: number;
+  readonly awakenReady: boolean;
+}
+
+/** 強化の id（buy の target と同じ）。 */
+export type ShopUpgradeId = 'idle' | 'tank' | 'nail' | 'shorten' | 'hold' | 'auto' | 'tomeuchi' | 'rate';
+
+/** 強化画面の強化1行（value は今の効果、next は次段の効果。cost が null なら最大）。 */
+export interface ShopUpgradeView {
+  readonly id: ShopUpgradeId;
+  readonly stage: number;
+  readonly stages: number;
+  readonly currency: 'balls' | 'medals';
+  readonly cost: number | null;
+  readonly value: number;
+  readonly next: number | null;
+}
+
+/** 閉店の見込み（gain は今閉店した時の獲得。byBalls/byMedals は min を取る前の両方）。 */
+export interface ShopCloseView {
+  readonly runTotal: number;
+  readonly required: number;
+  readonly ready: boolean;
+  readonly gain: number;
+  readonly byBalls: number;
+  readonly byMedals: number;
+}
+
+/** 強化画面が見る経済の状態（Projection の shop）。 */
+export interface ShopView {
+  readonly yakumono: readonly ShopYakumonoView[];
+  readonly upgrades: readonly ShopUpgradeView[];
+  readonly close: ShopCloseView;
+  readonly regular: number;
+  readonly streakDays: number;
+  readonly medalsEarned: number;
+  readonly boostOn: boolean;
 }
 
 /** buy の対象（役物8種＋強化8種）。 */
@@ -740,6 +788,87 @@ export class IdleEconomy implements EconomyPort {
     }
     this.runTotalState = this.runTotalState + amount;
     this.totalTotalState = this.totalTotalState + amount;
+  }
+
+  /** 強化画面の表示（役物の毎秒・まとめ買い価格・覚醒、強化の段と次の価格、閉店の見込み）。 */
+  getShopView(): ShopView {
+    const sizes = [1];
+    for (let i = 0; i < this.spec.bulkSizes.length; i = i + 1) {
+      sizes.push(this.spec.bulkSizes[i] as number);
+    }
+    const yakumono: ShopYakumonoView[] = [];
+    for (let i = 0; i < 8; i = i + 1) {
+      const def = this.spec.yakumono[i] as { id: string; periodS: number; yield: number; basePrice: number };
+      const lv = this.lvState[i] as number;
+      const awakened = this.awakenedState[i] as number;
+      const prices: (number | null)[] = [];
+      for (let k = 0; k < sizes.length; k = k + 1) {
+        const n = sizes[k] as number;
+        prices.push(lv + n - 1 < this.priceTable.length ? yakumonoBulkPrice(def.basePrice, lv, n, this.priceTable) : null);
+      }
+      const period = lv > 0 ? this.effectivePeriodSFor(def.id, lv) : 0;
+      yakumono.push({
+        id: def.id,
+        lv,
+        awakened,
+        locked: i > 0 && (this.lvState[i - 1] as number) < 1,
+        perSec: period > 0 ? (def.yield * lv * this.yakumonoMult(i)) / period : 0,
+        prices,
+        awakenCost: awakenMedalCost(this.spec.awaken.medalBase, this.spec.awaken.medalGrowth, awakened),
+        awakenReady: lv >= this.spec.awaken.minLv,
+      });
+    }
+    const u = this.spec.upgrades;
+    const staged = (
+      id: ShopUpgradeId,
+      stage: number,
+      costs: readonly number[],
+      values: readonly number[],
+      currency: 'balls' | 'medals',
+    ): ShopUpgradeView => ({
+      id,
+      stage,
+      stages: costs.length,
+      currency,
+      cost: stage < costs.length ? (costs[stage] as number) : null,
+      value: values[stage] as number,
+      next: stage < costs.length ? (values[stage + 1] as number) : null,
+    });
+    const shortenValues: number[] = [1];
+    for (let i = 0; i < u.shortenCosts.length; i = i + 1) {
+      shortenValues.push((shortenValues[i] as number) * u.shortenFactor);
+    }
+    const holdValues: number[] = [];
+    for (let i = 0; i <= u.holdPlusCosts.length; i = i + 1) {
+      holdValues.push(i);
+    }
+    const upgrades: ShopUpgradeView[] = [
+      staged('idle', this.idleStageState, u.idleCosts, u.idleValues, 'balls'),
+      staged('tank', this.tankStageState, u.tankCosts, u.tankHours, 'balls'),
+      staged('nail', this.nailStageState, u.nailCosts, u.nailValues, 'balls'),
+      staged('shorten', this.shortenStageState, u.shortenCosts, shortenValues, 'balls'),
+      staged('hold', this.holdStageState, u.holdPlusCosts, holdValues, 'balls'),
+      staged('auto', this.autoOwnedState ? 1 : 0, [u.autoCost], [0, 1], 'balls'),
+      staged('tomeuchi', this.tomeuchiOwnedState ? 1 : 0, [u.tomeuchiCost], [0, 1], 'balls'),
+      staged('rate', this.rateStageState, u.rateMedalCosts, u.rates, 'medals'),
+    ];
+    const c = this.spec.close;
+    return {
+      yakumono,
+      upgrades,
+      close: {
+        runTotal: this.runTotalState,
+        required: c.requiredRunTotal,
+        ready: this.runTotalState >= c.requiredRunTotal,
+        gain: closeGain(this.totalTotalState, c.divisor, this.regularState, this.medalsEarnedState, c.medalsPerPoint),
+        byBalls: ballPoints(this.totalTotalState, c.divisor),
+        byMedals: Math.floor(this.medalsEarnedState / c.medalsPerPoint),
+      },
+      regular: this.regularState,
+      streakDays: this.streakDaysState,
+      medalsEarned: this.medalsEarnedState,
+      boostOn: this.boostOnState,
+    };
   }
 
   /** 役物index（-1は該当なし）。 */

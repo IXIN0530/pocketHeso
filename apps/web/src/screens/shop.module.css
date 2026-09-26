@@ -1,0 +1,197 @@
+.screen {
+  display: grid;
+  gap: 12px;
+}
+
+.note {
+  margin: 0;
+  color: #a8acc8;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.wallet {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 0;
+  padding: 10px 8px;
+  border-radius: 12px;
+  background: #1c2145;
+  text-align: center;
+}
+
+.wallet dt {
+  color: #a8acc8;
+  font-size: 11px;
+}
+
+.wallet dd {
+  margin: 2px 0 0;
+  color: #e8b840;
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #1c2145;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.card p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bulk {
+  display: flex;
+  gap: 4px;
+}
+
+.bulk button {
+  min-width: 52px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: #2c325e;
+  color: #f2f2f7;
+  font-size: 14px;
+}
+
+.bulk .picked {
+  background: #8a5cff;
+  font-weight: 700;
+}
+
+.list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #121630;
+}
+
+.locked {
+  opacity: 0.55;
+}
+
+.info {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.info small {
+  color: #a8acc8;
+  font-weight: 400;
+}
+
+.info b small {
+  font-size: 13px;
+}
+
+.info .awake {
+  color: #ff9ad0;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+}
+
+.buy,
+.awakenBtn,
+.sub,
+.danger {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.buy {
+  min-width: 96px;
+  background: #e8b840;
+  color: #121630;
+  font-weight: 700;
+}
+
+.awakenBtn {
+  background: #8a5cff;
+  color: #fff;
+}
+
+.sub {
+  background: #3a3f6a;
+  color: #f2f2f7;
+}
+
+.danger {
+  background: #ff5e7a;
+  color: #fff;
+  font-weight: 700;
+  font-size: 16px;
+  padding: 0 16px;
+}
+
+.buy:disabled,
+.awakenBtn:disabled,
+.danger:disabled,
+.sub:disabled {
+  opacity: 0.4;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.meter {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #121630;
+}
+
+.meter span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #8a5cff, #e8b840);
+}
+
+.warn {
+  color: #ffb74d;
+}

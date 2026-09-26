@@ -1,0 +1,20 @@
+import { expect, test } from 'vitest';
+import { debugRecord } from './debug-screen.tsx';
+import { groupByDay } from './records-screen.tsx';
+import { upgradeEffect } from './shop-screen.tsx';
+
+test('記録は日別にまとめ、新しい日から並べる（Debug の付与は名前を変える）', () => {
+  const at = new Date(2026, 8, 25, 10).getTime();
+  const a = debugRecord(at, 3600000, 0);
+  const b = { ...debugRecord(at + 86400000, 0, 2), claimId: 'self:2026-09-26:1' };
+  const days = groupByDay([a, b]);
+  expect(days.map((d) => d.day)).toEqual(['2026-09-26', '2026-09-25']);
+  expect(days[1]).toMatchObject({ fuelMs: 3600000, medals: 0, lines: ['Debug の付与'] });
+  expect(days[0]?.medals).toBe(2);
+  expect(groupByDay([a, b], 1).length).toBe(1);
+});
+
+test('強化の効果は「今 → 次」、最大なら今だけ', () => {
+  expect(upgradeEffect({ id: 'tank', stage: 0, stages: 4, currency: 'balls', cost: 5000, value: 12, next: 18 })).toBe('上限 12時間 → 上限 18時間');
+  expect(upgradeEffect({ id: 'rate', stage: 6, stages: 6, currency: 'medals', cost: null, value: 1000, next: null })).toBe('1000パチまで');
+});

@@ -40,6 +40,14 @@ const api = {
   receive: (records: readonly ClaimRecord[], closesSession: boolean, now: number) => need().receive(records, closesSession, now),
   exportSave: (now: number) => need().exportSave(now),
   importSave: (text: string, now: number) => need().importSave(text, now),
+  debugInfo: () => need().debugInfo(),
+  async verifyAtlas() {
+    const [board, dirs] = await Promise.all([
+      import('../../../resources/boards/default.json'),
+      import('../../../resources/boards/launch_dirs.json'),
+    ]);
+    return need().verifyAtlas(board.default, dirs.default);
+  },
 };
 
 export type EngineApi = typeof api;

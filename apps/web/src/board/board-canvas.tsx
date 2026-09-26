@@ -5,6 +5,7 @@ import dirsJson from '../../../../resources/boards/launch_dirs.json';
 import patternsJson from '../../../../resources/machines/patterns.json';
 import { clock } from '../stores/clock.ts';
 import { onShots, onView, useEngine } from '../stores/engine.ts';
+import { usePrefs } from '../stores/prefs.ts';
 import { BoardScene, type DrawInfo } from './board-scene.ts';
 import type { FrameStats } from './frame-stats.ts';
 import styles from './board.module.css';
@@ -16,10 +17,12 @@ const patternHot = (id: string) => hotByPattern.get(id) ?? 0;
 
 /**
  * 盤面（spec/50）。Three のシーンは命令的に保持し、Engine の玉・役物・液晶のイベントは購読で渡す（毎フレームの React 再レンダーなし）。
- * `?debug=1` の時だけ fps・draw call・時間倍率を重ねる。
+ * `?debug=1` の時だけ fps・draw call・時間倍率を重ねる。active=false（別タブ表示中）の間は描画を止める。
  */
-export function BoardCanvas() {
+export function BoardCanvas({ active = true }: { active?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const sceneRef = useRef<BoardScene | null>(null);
+  const activeRef = useRef(active);
   const [stats, setStats] = useState<(FrameStats & DrawInfo) | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +36,9 @@ export function BoardCanvas() {
       setError(errText(e));
       return;
     }
+    sceneRef.current = scene;
+    scene.setBloom(usePrefs.getState().bloom);
+    const offPrefs = usePrefs.subscribe((p) => scene.setBloom(p.bloom));
     const offShots = onShots((shots) => scene.addShots(shots));
     const offView = onView((p, events) => scene.pushView(p, events));
     const showYaku = (p: ReturnType<typeof useEngine.getState>['projection']) => {
@@ -43,7 +49,8 @@ export function BoardCanvas() {
       if (s.projection !== prev.projection) showYaku(s.projection);
     });
     // 背面・非表示の間は描画ループを止める（spec/50）。
-    const onVis = () => scene.setRunning(document.visibilityState === 'visible');
+    const onVis = () => scene.setRunning(activeRef.current && document.visibilityState === 'visible');
+    onVis();
     document.addEventListener('visibilitychange', onVis);
     const timer = showStats
       ? window.setInterval(() => {
@@ -57,9 +64,16 @@ export function BoardCanvas() {
       offShots();
       offView();
       offYaku();
+      offPrefs();
+      sceneRef.current = null;
       scene.destroy();
     };
   }, []);
+
+  useEffect(() => {
+    activeRef.current = active;
+    sceneRef.current?.setRunning(active && document.visibilityState === 'visible');
+  }, [active]);
 
   return (
     <div className={styles.frame}>

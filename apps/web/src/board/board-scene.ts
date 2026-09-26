@@ -132,6 +132,7 @@ export class BoardScene {
   private last = 0;
   private elapsed = 0;
   private winMs = -1;
+  private bloomOn = true;
   private hesoFlash = 0;
   private homeDist = 1400;
   private readonly homeY = (CAB.top + CAB.bottom) / 2;
@@ -259,6 +260,11 @@ export class BoardScene {
     this.winMs = 0;
   }
 
+  /** 当たり演出のブルーム（設定の「光のにじみ」。OFF なら composer を通さない）。 */
+  setBloom(on: boolean): void {
+    this.bloomOn = on;
+  }
+
   setRunning(running: boolean): void {
     this.last = 0;
     this.renderer.setAnimationLoop(running ? (t) => this.frame(t) : null);
@@ -353,7 +359,7 @@ export class BoardScene {
     }
 
     // ブルームは当たり演出の3秒だけ（常時は重いので使わない, spec/50）。
-    if (winning) this.composer.render();
+    if (winning && this.bloomOn) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
   }
 

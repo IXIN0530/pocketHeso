@@ -1,19 +1,15 @@
 .main {
   min-height: 100dvh;
-  padding: calc(env(safe-area-inset-top) + 16px) 16px 16px;
+  box-sizing: border-box;
+  padding: calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 76px);
   background: #121630;
   color: #f2f2f7;
   font-family: -apple-system, system-ui, sans-serif;
 }
 
-.status {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 8px 16px;
-}
-
 .update {
-  margin-top: 24px;
+  width: 100%;
+  margin-bottom: 12px;
   padding: 12px 16px;
   border: 0;
   border-radius: 12px;
@@ -22,12 +18,32 @@
   font-size: 16px;
 }
 
-.spikes {
-  margin-top: 32px;
-  padding-left: 20px;
-  line-height: 2;
+/* 下部タブ（片手の親指で届く位置, spec/40）。 */
+.tabs {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  padding: 6px 8px calc(env(safe-area-inset-bottom) + 6px);
+  background: rgb(18 22 48 / 94%);
+  border-top: 1px solid #2c325e;
+  backdrop-filter: blur(12px);
 }
 
-.spikes a {
+.tabs button {
+  flex: 1;
+  min-height: 48px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: #a8acc8;
+  font-size: 14px;
+}
+
+.tabs .picked {
+  background: #2c325e;
   color: #e8b840;
+  font-weight: 700;
 }

@@ -2,12 +2,12 @@ import { Suspense, lazy, useState } from 'react';
 import type { HallProjection, NoticeEffect } from '@ph/core';
 import { formatFuel } from '../stores/activity.ts';
 import { act, useEngine } from '../stores/engine.ts';
+import { formatNum } from '../stores/format.ts';
 import styles from './hall.module.css';
 
 // Three.js 一式は盤面と一緒に別チャンクで読む（最初の表示を待たせない）。
 const BoardCanvas = lazy(() => import('../board/board-canvas.tsx'));
 
-const num = (n: number) => Math.floor(n).toLocaleString('ja-JP');
 
 /** 抽選モードの表示（spec/21 モード拡張）。 */
 export function modeLabel(p: Pick<HallProjection, 'mode' | 'stRemaining'>): string {
@@ -34,9 +34,9 @@ const report = (e: unknown) => useEngine.setState({ error: e instanceof Error ? 
 
 /**
  * ホール（spec/40 メイン画面の最小版）: 盤面＋液晶（保留・変動は盤面の中）、HUD、打つトグルとレート選択、予告。
- * 演出は P6 で差し替える。
+ * 演出は P6 で差し替える。active=false（別タブ表示中）は盤面の描画を止める。
  */
-export function HallScreen() {
+export function HallScreen({ active = true }: { active?: boolean }) {
   const projection = useEngine((s) => s.projection);
   const [busy, setBusy] = useState(false);
   const [tapped, setTapped] = useState(-1);
@@ -55,7 +55,7 @@ export function HallScreen() {
     <section className={styles.hall}>
       <div className={styles.board}>
         <Suspense>
-          <BoardCanvas />
+          <BoardCanvas active={active} />
         </Suspense>
         {notice && (
           <button
@@ -77,11 +77,11 @@ export function HallScreen() {
           <dl className={styles.hud}>
             <div>
               <dt>持ち玉</dt>
-              <dd>{num(p.balls)}</dd>
+              <dd>{formatNum(p.balls)}</dd>
             </div>
             <div>
               <dt>メダル</dt>
-              <dd>{num(p.medals)}</dd>
+              <dd>{formatNum(p.medals)}</dd>
             </div>
             <div>
               <dt>燃料</dt>
@@ -89,13 +89,13 @@ export function HallScreen() {
             </div>
             <div>
               <dt>生産/秒</dt>
-              <dd>{p.perSec.toLocaleString('ja-JP', { maximumFractionDigits: 1 })}</dd>
+              <dd>{formatNum(p.perSec, 1)}</dd>
             </div>
           </dl>
           <p className={styles.state}>
             <span>{modeLabel(p)}</span>
-            <span>回転 {num(p.totals.spins)}</span>
-            <span>大当たり {num(p.totals.jackpots)}</span>
+            <span>回転 {formatNum(p.totals.spins)}</span>
+            <span>大当たり {formatNum(p.totals.jackpots)}</span>
             {p.jackpot && (
               <span className={styles.hot}>
                 大当たり中 {p.jackpot.rounds}R{p.chain > 1 ? `・${p.chain}連` : ''}

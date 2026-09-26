@@ -7,6 +7,7 @@ import { SpinMachine, type SpinSnapshot } from './spin.ts';
 import type { SimTime } from './spin.ts';
 import { ATLAS_ENTRY_BYTES, ATLAS_HEADER_BYTES, ATLAS_TOTAL_BYTES, atlasKeyForBall, decodeAtlasHeader } from './atlas.ts';
 import type { EconomyPort } from './economy.ts';
+import type { ShopView } from './economy-state.ts';
 import { StubEconomy } from './economy.ts';
 import { RNGStream } from './rng.ts';
 
@@ -116,6 +117,17 @@ export interface Totals {
   readonly jackpots: number;
   readonly fired: number;
   readonly payoutBalls: number;
+  /** RUSH（st/lt）以外からの大当たり。 */
+  readonly firstHits: number;
+  /** RUSH 中の連チャンの最大（spins.chain の最大）。 */
+  readonly maxChain: number;
+}
+
+/** 閉店の記録（今回の累計玉と獲得した常連P）。 */
+export interface CloseRecord {
+  readonly at: SimTime;
+  readonly runTotal: number;
+  readonly gain: number;
 }
 
 /** Engine状態の複写（restoreで復元。入力列・予告・留守集計ごと含む）。 */
@@ -143,6 +155,8 @@ export interface EngineSnapshot {
   readonly noticeInFgMs: number;
   readonly activeNotice: ActiveNotice | null;
   readonly away: AwayTrackerSnapshot;
+  /** 閉店の記録（古い複写には無い）。 */
+  readonly closes?: readonly CloseRecord[] | undefined;
 }
 
 /** 留守集計の複写（awayFromがnullなら留守中でない）。 */
@@ -204,10 +218,16 @@ export interface HallProjection {
   readonly nextHot?: HotHint | undefined;
   readonly feverMs: number;
   readonly totals: Totals;
+  /** 閉店の記録（古い順）。 */
+  readonly closes: readonly CloseRecord[];
   readonly chain: number;
   readonly chainBalls: number;
   /** 前面の「打つ」（on と選択中のレート。UI のトグル表示用）。 */
   readonly shoot: { readonly on: boolean; readonly rate: number };
+  /** オート打ち（生産の share を rate で打つ。share 0 は止めている）。 */
+  readonly auto: { readonly share: number; readonly rate: number };
+  /** 強化画面の表示（経済が IdleEconomy の時だけ）。 */
+  readonly shop?: ShopView | undefined;
   /** 解放済みのレート（昇順。経済なしは [1]）。 */
   readonly rates: readonly number[];
 }
@@ -335,9 +355,11 @@ export function projectSnapshot(
     nextHot,
     feverMs: 0,
     totals: { ...snap.totals },
+    closes: snap.closes === undefined ? [] : snap.closes.slice(),
     chain: spinSnap.chain === undefined ? 0 : spinSnap.chain,
     chainBalls: spinSnap.chainBalls === undefined ? 0 : spinSnap.chainBalls,
     shoot: { on: snap.shootOn, rate: snap.shootRate },
+    auto: { share: snap.autoShare, rate: snap.autoRate },
     rates: [1],
   };
 }
@@ -391,6 +413,7 @@ export class Engine {
   private medalsState: number;
   private fuelMsState: number;
   private totalsState: Totals;
+  private closesState: CloseRecord[] = [];
   private shootOnState: boolean;
   private shootRateState: number;
   private autoShareState: number;
@@ -450,7 +473,7 @@ export class Engine {
     this.ballsState = initialBalls;
     this.medalsState = initialMedals;
     this.fuelMsState = initialFuelMs;
-    this.totalsState = { spins: 0, jackpots: 0, fired: 0, payoutBalls: 0 };
+    this.totalsState = { spins: 0, jackpots: 0, fired: 0, payoutBalls: 0, firstHits: 0, maxChain: 0 };
     this.shootOnState = false;
     this.shootRateState = 1;
     this.autoShareState = 0;
@@ -930,9 +953,12 @@ export class Engine {
         if (hook === undefined || typeof hook !== 'function') {
           out.push({ k: 'rejected', at, action: a.k, reason: 'not-implemented' });
         } else {
+          const runHook = this.econHook('getRunTotal') as (() => number) | undefined;
+          const runTotal = runHook !== undefined && typeof runHook === 'function' ? (runHook.bind(this.economy))() : 0;
           const r = (hook.bind(this.economy))(this.ballsState);
           if (r.ok) {
             this.ballsState = r.balls;
+            this.closesState.push({ at, runTotal, gain: r.gain });
             out.push({ k: 'closed', at, regularPoints: r.gain });
             this.syncHoldMax();
             this.clearNailQCache();
@@ -1080,6 +1106,7 @@ export class Engine {
           );
           this.ballsState = this.ballsState + entry.hesoPayoutBalls;
           this.totalsState = {
+            ...this.totalsState,
             spins: this.totalsState.spins,
             jackpots: this.totalsState.jackpots,
             fired: this.totalsState.fired,
@@ -1218,6 +1245,7 @@ export class Engine {
       this.awayConsumedState = this.awayConsumedState + rate;
     }
     this.totalsState = {
+      ...this.totalsState,
       spins: this.totalsState.spins,
       jackpots: this.totalsState.jackpots,
       fired: this.totalsState.fired + 1,
@@ -1266,6 +1294,7 @@ export class Engine {
       const entry = drawHold(this.spec, this.patterns, this.seed, mode, h.ball, h.rate);
       this.ballsState = this.ballsState + entry.hesoPayoutBalls;
       this.totalsState = {
+        ...this.totalsState,
         spins: this.totalsState.spins,
         jackpots: this.totalsState.jackpots,
         fired: this.totalsState.fired,
@@ -1287,6 +1316,7 @@ export class Engine {
     if (this.spins.isSpinning) {
       const endsAt = this.spins.activeEndsAt as SimTime | null;
       if (endsAt !== null && endsAt === at) {
+        const fromRush = this.spins.mode === 'st' || this.spins.mode === 'lt';
         const evs = this.spins.resolveSpin(at);
         for (let i = 0; i < evs.length; i = i + 1) {
           const e = evs[i] as (typeof evs)[number] | undefined;
@@ -1298,10 +1328,12 @@ export class Engine {
           } else {
             if (e.k === 'jackpotStarted') {
               this.totalsState = {
+                ...this.totalsState,
                 spins: this.totalsState.spins,
                 jackpots: this.totalsState.jackpots + 1,
                 fired: this.totalsState.fired,
                 payoutBalls: this.totalsState.payoutBalls,
+                firstHits: this.totalsState.firstHits + (fromRush ? 0 : 1),
               };
               this.setJackpotFever(this.spins.jackpotRate);
             }
@@ -1336,10 +1368,12 @@ export class Engine {
               this.ballsState = this.ballsState + e.payout;
               this.setJackpotFever(null);
               this.totalsState = {
+                ...this.totalsState,
                 spins: this.totalsState.spins,
                 jackpots: this.totalsState.jackpots,
                 fired: this.totalsState.fired,
                 payoutBalls: this.totalsState.payoutBalls + e.payout,
+                maxChain: this.spins.chain > this.totalsState.maxChain ? this.spins.chain : this.totalsState.maxChain,
               };
               this.noteEconomyGain(e.payout);
               this.noteAwayJackpot();
@@ -1362,6 +1396,7 @@ export class Engine {
           out.push(e);
         }
         this.totalsState = {
+          ...this.totalsState,
           spins: this.totalsState.spins + 1,
           jackpots: this.totalsState.jackpots,
           fired: this.totalsState.fired,
@@ -1408,6 +1443,7 @@ export class Engine {
       medals: this.medalsState,
       fuelMs: this.fuelMsState,
       totals: { ...this.totalsState },
+      closes: this.closesState.slice(),
       shootOn: this.shootOnState,
       shootRate: this.shootRateState,
       autoShare: this.autoShareState,
@@ -1507,7 +1543,13 @@ export class Engine {
     eng.ballsState = snap.balls;
     eng.medalsState = snap.medals;
     eng.fuelMsState = snap.fuelMs;
-    eng.totalsState = { ...snap.totals };
+    const oldTotals = snap.totals as Partial<Totals>;
+    eng.closesState = snap.closes === undefined ? [] : snap.closes.slice();
+    eng.totalsState = {
+      ...snap.totals,
+      firstHits: oldTotals.firstHits === undefined ? 0 : oldTotals.firstHits,
+      maxChain: oldTotals.maxChain === undefined ? 0 : oldTotals.maxChain,
+    };
     eng.shootOnState = snap.shootOn;
     eng.shootRateState = snap.shootRate;
     eng.autoShareState = snap.autoShare;
@@ -1607,6 +1649,8 @@ export class Engine {
       | (() => Array<{ id: string; lv: number; awakened: number; nextPrice: number }>)
       | undefined;
     const feverHook = this.econHook('getFeverMs') as (() => number) | undefined;
+    const shopHook = this.econHook('getShopView') as (() => ShopView) | undefined;
+    const shop = shopHook !== undefined && typeof shopHook === 'function' ? (shopHook.bind(this.economy))() : undefined;
     if (
       perSecHook === undefined ||
       boostHook === undefined ||
@@ -1618,7 +1662,7 @@ export class Engine {
       const feverMs = feverHook !== undefined && typeof feverHook === 'function'
         ? (feverHook.bind(this.economy))() as number
         : 0;
-      return { ...base, feverMs };
+      return { ...base, feverMs, shop };
     }
     const perSec = (perSecHook.bind(this.economy))(this.fgState, this.fuelMsState);
     const boostMs = (boostHook.bind(this.economy))();
@@ -1633,7 +1677,7 @@ export class Engine {
       const x = periodS > 0 ? this.nowMsState / 1000 / periodS : 0;
       yakumono.push({ id: v.id, lv: v.lv, awakened: v.awakened, nextPrice: v.nextPrice, phase: x - Math.floor(x), periodS: periodS > 0 ? periodS : undefined });
     }
-    return { ...base, perSec, boostMs, yakumono, feverMs };
+    return { ...base, perSec, boostMs, yakumono, feverMs, shop };
   }
 
   /** 役物の実効周期秒（Lv0・経済なしは0）。 */
