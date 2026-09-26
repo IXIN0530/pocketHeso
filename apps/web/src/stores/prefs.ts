@@ -4,7 +4,7 @@ import { create } from 'zustand';
 export interface Prefs {
   /** 当たり演出の光のにじみ（ブルーム）。OFF で描画が軽くなる（spec/50）。 */
   readonly bloom: boolean;
-  /** 音量 0〜100（音は P6）。 */
+  /** 音量 0〜100（SoundBus の master。0 でアプリ内ミュート, spec/43）。 */
   readonly volume: number;
 }
 

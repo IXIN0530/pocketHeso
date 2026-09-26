@@ -38,8 +38,10 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { FlashLayer } from '@ph/fx';
 import { BALL_RADIUS_MM, type Board, type BoardYakumono, type EngineSimEvent, type HallProjection, type Vec2 } from '@ph/core';
 import type { Shot } from '../engine/engine-host.ts';
+import { playCue, setFlashTarget } from '../fx/fx-host.ts';
 import { LCD_RECT, bakeBoard, bakeGlare, bakeHall, bakeSoftDot, bakeSymbolAtlas } from './art.ts';
 import { BallTracks, DISPLAY_LAG_MS, MAX_BALLS, PREROLL_MS } from './ball-tracks.ts';
 import { CAB, Cabinet, bakeCabinetEnv, ledTube } from './cabinet.ts';
@@ -120,6 +122,8 @@ export class BoardScene {
   private readonly yaku: Yaku[] = [];
   private readonly cabinet = new Cabinet();
   private readonly rainbow: Mesh<PlaneGeometry, ShaderMaterial>;
+  /** 全画面フラッシュとブルームの期間（CueSheet から, spec/43）。 */
+  private readonly flashLayer: FlashLayer;
   private readonly hesoMat: MeshStandardMaterial;
   private readonly lcdLight: PointLight;
   private readonly hesoLight: PointLight;
@@ -206,6 +210,7 @@ export class BoardScene {
     this.rainbow.renderOrder = 999;
     this.rainbow.visible = false;
     this.scene.add(this.rainbow);
+    this.flashLayer = new FlashLayer();
 
     const rt = new WebGLRenderTarget(1, 1, { samples: 4, type: HalfFloatType });
     this.composer = new EffectComposer(this.renderer, rt);
@@ -267,6 +272,7 @@ export class BoardScene {
 
   setRunning(running: boolean): void {
     this.last = 0;
+    setFlashTarget(this.flashLayer, running);
     this.renderer.setAnimationLoop(running ? (t) => this.frame(t) : null);
   }
 
@@ -278,6 +284,7 @@ export class BoardScene {
 
   destroy(): void {
     this.setRunning(false);
+    this.flashLayer.dispose();
     this.resizeObs.disconnect();
     this.composer.dispose();
     this.scene.traverse((o) => {
@@ -341,7 +348,11 @@ export class BoardScene {
     const jackpot = lcdState.jackpot?.entry ?? -1;
     if (jackpot !== this.lastJackpot) {
       this.lastJackpot = jackpot;
-      if (jackpot >= 0) this.win();
+      if (jackpot >= 0) {
+        this.win();
+        // TODO(P6-T2): seed を Engine から受け取る（今の jackpot シートは分岐なし）。
+        playCue('jackpot', 0, jackpot);
+      }
     }
     this.hesoFlash = Math.max(0, this.hesoFlash - dt / 500);
     this.updateBalls();
@@ -354,13 +365,21 @@ export class BoardScene {
     if (winning) {
       const u = this.rainbow.material.uniforms;
       u.uTime!.value = sec;
-      u.uAmt!.value = winLevel * (0.5 + 0.5 * Math.abs(Math.sin(this.winMs * 0.011)));
-      u.uWhite!.value = white;
+      // 明滅は 3回/秒未満（約2.4回/秒）、reduced-motion では明滅させない（spec/43）。
+      const pulse = this.flashLayer.reducedMotion ? 1 : 0.5 + 0.5 * Math.abs(Math.sin(this.winMs * 0.0075));
+      u.uAmt!.value = winLevel * pulse;
+      // 全画面の白は FlashLayer（jackpot キュー）が 3回/秒・輝度の制限付きで出す。
+      u.uWhite!.value = 0;
     }
 
-    // ブルームは当たり演出の3秒だけ（常時は重いので使わない, spec/50）。
-    if (winning && this.bloomOn) this.composer.render();
-    else this.renderer.render(this.scene, this.camera);
+    // ブルームは bloom キューの期間だけ（常時は重いので使わない, spec/50）。
+    const clockNow = performance.now();
+    const bloom = this.bloomOn ? this.flashLayer.bloomStrength(clockNow) : 0;
+    if (bloom > 0) {
+      this.bloom.strength = bloom;
+      this.composer.render();
+    } else this.renderer.render(this.scene, this.camera);
+    this.flashLayer.render(this.renderer, clockNow);
   }
 
   private updateBalls(): void {

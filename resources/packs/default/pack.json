@@ -1,0 +1,60 @@
+{
+  "name": "default",
+  "theme": { "primary": "#ff3d7f", "accent": "#ffd23f" },
+  "sounds": {
+    "pachi": { "synth": { "wave": "square", "hz": [1800, 1200], "ms": 40, "gain": 0.25 } },
+    "reach": { "synth": { "wave": "square", "hz": [660, 990], "ms": 320, "gain": 0.3 } },
+    "gun": { "synth": { "wave": "sawtooth", "hz": [220, 880], "ms": 600, "gain": 0.3 } },
+    "kyuin": { "synth": { "wave": "sawtooth", "hz": [400, 2400], "ms": 700, "gain": 0.35 } },
+    "fanfare": { "synth": { "wave": "triangle", "hz": [523, 1047], "ms": 900, "gain": 0.45 } }
+  },
+  "sheets": [
+    {
+      "pattern": "reach_n",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "reach" }
+      ]
+    },
+    {
+      "pattern": "sp_reach",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "reach" },
+        { "at": 38000, "kind": "flash", "style": "white", "ms": 300, "min_intensity": 2 },
+        { "at": 38000, "kind": "haptic", "pattern": [60] }
+      ],
+      "branches": [
+        {
+          "name": "gun",
+          "options": [
+            { "weight": 3, "cues": [] },
+            { "weight": 1, "cues": [
+              { "at": 1500, "kind": "sound", "bus": "se", "asset": "gun" },
+              { "at": 1500, "kind": "shake", "ms": 600, "amp": 0.4, "min_intensity": 2 }
+            ] }
+          ]
+        }
+      ]
+    },
+    {
+      "pattern": "jackpot",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "kyuin" },
+        { "at": 0, "kind": "flash", "style": "white", "ms": 260 },
+        { "at": 0, "kind": "haptic", "pattern": [80, 40, 120] },
+        { "at": 0, "kind": "bloom", "ms": 3000, "strength": 0.7, "min_intensity": 2 },
+        { "at": 700, "kind": "sound", "bus": "voice", "asset": "fanfare" }
+      ]
+    },
+    {
+      "pattern": "test",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "pachi" },
+        { "at": 300, "kind": "sound", "bus": "se", "asset": "reach" },
+        { "at": 1000, "kind": "sound", "bus": "se", "asset": "kyuin" },
+        { "at": 1000, "kind": "haptic", "pattern": [80, 40, 120] },
+        { "at": 1000, "kind": "flash", "style": "white", "ms": 250 },
+        { "at": 1800, "kind": "sound", "bus": "voice", "asset": "fanfare" }
+      ]
+    }
+  ]
+}

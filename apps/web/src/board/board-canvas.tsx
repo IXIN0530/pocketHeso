@@ -3,6 +3,7 @@ import { parseBoard, parseLaunchDirs } from '@ph/core';
 import boardJson from '../../../../resources/boards/default.json';
 import dirsJson from '../../../../resources/boards/launch_dirs.json';
 import patternsJson from '../../../../resources/machines/patterns.json';
+import { installAudioUnlock } from '../fx/fx-host.ts';
 import { clock } from '../stores/clock.ts';
 import { onShots, onView, useEngine } from '../stores/engine.ts';
 import { usePrefs } from '../stores/prefs.ts';
@@ -37,6 +38,7 @@ export function BoardCanvas({ active = true }: { active?: boolean }) {
       return;
     }
     sceneRef.current = scene;
+    const offAudio = installAudioUnlock();
     scene.setBloom(usePrefs.getState().bloom);
     const offPrefs = usePrefs.subscribe((p) => scene.setBloom(p.bloom));
     const offShots = onShots((shots) => scene.addShots(shots));
@@ -65,6 +67,7 @@ export function BoardCanvas({ active = true }: { active?: boolean }) {
       offView();
       offYaku();
       offPrefs();
+      offAudio();
       sceneRef.current = null;
       scene.destroy();
     };

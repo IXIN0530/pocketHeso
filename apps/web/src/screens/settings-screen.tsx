@@ -133,7 +133,7 @@ export function SettingsScreen() {
           音量 {prefs.volume}
           <input className={styles.input} type="range" min={0} max={100} step={10} value={prefs.volume} onChange={(e) => setPrefs({ volume: Number(e.target.value) })} />
         </label>
-        <p className={styles.note}>音は今後の更新で付きます。</p>
+        <p className={styles.note}>最初に画面をタップした後から鳴ります。消音スイッチが入っていると鳴らないことがあります。</p>
       </section>
       <section className={styles.card}>
         <h2>連携と登録地点</h2>

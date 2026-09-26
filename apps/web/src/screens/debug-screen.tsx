@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ClaimRecord } from '@ph/claims';
 import type { AtlasVerifyResult } from '@ph/core';
 import type { DebugInfo } from '../engine/engine-host.ts';
+import { haptics, playCue, sound } from '../fx/fx-host.ts';
 import { writeClipboard } from '../platform/clipboard.ts';
 import { formatFuel, localDay } from '../stores/activity.ts';
 import { DEBUG_SCALES, clock } from '../stores/clock.ts';
@@ -33,7 +34,7 @@ export function debugRecord(at: number, fuelMs: number, medals: number): ClaimRe
 
 const scaleHref = (x: number) => `/?debug=1${x === 1 ? '' : `&x=${x}`}`;
 
-/** Debug 画面（`?debug=1` のみ, spec/40）: seed・時間倍率・Grant 注入・Atlas 照合・状態ダンプ。演出プレビューは P6。 */
+/** Debug 画面（`?debug=1` のみ, spec/40）: seed・時間倍率・Grant 注入・Atlas 照合・状態ダンプ。演出テスト（音・振動）。演出プレビューは P6-T2。 */
 export default function DebugScreen() {
   const { projection, restoredFrom } = useEngine();
   const [info, setInfo] = useState<DebugInfo | null>(null);
@@ -104,6 +105,26 @@ export default function DebugScreen() {
         ) : (
           <p className={styles.note}>本番のセーブを守るため、x60・x3600 の時だけ使えます。</p>
         )}
+      </section>
+      <section className={styles.card}>
+        <h2>演出テスト</h2>
+        <p className={styles.note}>
+          既定パックの test キュー（音4つ・振動・白フラッシュ）。フラッシュはホールの盤面にだけ出ます。振動{' '}
+          {haptics.supported ? 'あり' : 'なし（iOS は非対応）'}。
+        </p>
+        <div className={styles.row}>
+          <button
+            className={styles.sub}
+            onClick={() => {
+              // iOS はタップの中で解錠する必要がある（playCue より先）。
+              sound.unlock();
+              playCue('test', 0, 0);
+              setMessage(sound.ready ? '再生しました' : '音を準備中です。もう一度押してください');
+            }}
+          >
+            キュー再生
+          </button>
+        </div>
       </section>
       <section className={styles.card}>
         <h2>Engine</h2>

@@ -6,7 +6,7 @@ Owner: Claude Code | Read: spec/43-presentation-effects
 Do: CueSheet 型（shared）、`CuePlayer`（途中から再生）、`SoundBus`（Web Audio・解錠）、`FlashLayer`（3回/秒クランプ・reduced-motion）、
 `Haptics`、`resources/packs/default/pack.json`（最小キュー）。
 Accept:
-- [ ] 同じ seed で同じキュー列（テスト）/ 4回/秒を指定しても 3回/秒に抑えられるテスト
+- [x] 同じ seed で同じキュー列（テスト）/ 4回/秒を指定しても 3回/秒に抑えられるテスト
 
 ### P6-T2 演出シーン
 Owner: Claude Code | Read: spec/43-presentation-effects, spec/21-core-lottery（変動パターン節）, spec/50-app-rendering
