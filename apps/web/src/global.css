@@ -2,4 +2,60 @@ html,
 body {
   margin: 0;
   background: #121630;
+  -webkit-text-size-adjust: 100%;
+  /* 端でのバウンドと引っぱって再読み込みを止める（アプリの画面として振る舞う）。 */
+  overscroll-behavior: none;
+}
+
+/* iOS アプリの操作感（ダブルタップ拡大・タップの灰色・長押しのメニューと文字選択を出さない）。 */
+body {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+input,
+textarea,
+select,
+[contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  /* 押した瞬間に縮み、離すとばねのように戻る。transform を使う部品（予告）と重ならないよう scale で書く。 */
+  transition:
+    scale 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
+    filter 0.2s ease-out;
+}
+
+button:active:not(:disabled) {
+  scale: 0.96;
+  filter: brightness(0.85);
+  transition-duration: 0.06s;
+}
+
+/* iOS のスイッチ（Safari 17.4+ の `switch` 属性）。色だけアプリに合わせる。 */
+input[switch] {
+  accent-color: #34c759;
+  flex: none;
+}
+
+/* タブの切り替え（View Transitions）: 中身だけ短くクロスフェードし、タブバーは動かさない。 */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.16s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button {
+    transition: none;
+  }
+  button:active:not(:disabled) {
+    scale: none;
+  }
 }

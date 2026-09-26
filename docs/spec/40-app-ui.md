@@ -12,6 +12,11 @@
 | 受け取り確認（モーダル） | `planGrants` の結果（増える燃料・メダル・連続日数）→「受け取る」 |
 | Debug（`?debug=1` のみ） | seed、時間倍率 x1/x60/x3600、Grant 注入、Atlas 照合結果、演出プレビュー、状態ダンプ |
 
+## 操作感（iOS 風, D-070）
+- 下部タブは浮いたすりガラス（アイコン＋文字）。ホール以外は大きな見出し。モーダルは下から出るシート（下へ引く・背景タップで閉じる）。
+- 選択肢は `components/segmented`、ON/OFF は `components/switch`（`<input switch>`）、購入は `components/hold-button`（長押しで連続）。
+- 触覚は `platform/haptic.ts` の `tick()`（iOS はスイッチの触覚を借りる。設定で OFF）。`prefers-reduced-motion` では縮み・滑り・数え上げを止める。
+
 ## 状態管理
 - Engine は Web Worker で実行（`apps/web/src/engine.worker.ts`）。UI とは Comlink 風の薄い RPC。
 - UI は Zustand ストアに最新の `HallProjection` を持ち、前面時は 1Hz で更新。盤面アニメーションは Three 側が補間。

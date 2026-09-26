@@ -1,4 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
+import { flushSync } from 'react-dom';
+import { TabBar } from '../components/tab-bar.tsx';
 import { setupServiceWorker } from '../platform/pwa.ts';
 import { ActivityScreen } from '../screens/activity-screen.tsx';
 import { AwayModal } from '../screens/away-modal.tsx';
@@ -26,9 +28,31 @@ const TABS: readonly (readonly [Tab, string])[] = [
   ...(showDebug ? [['debug', 'Debug'] as const] : []),
 ];
 
-/** 画面の枠（spec/40）: 下部タブ。ホールは盤面を作り直さないよう常に置き、他のタブの間は描画だけ止める。 */
+const reducedMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+
+/**
+ * 画面の枠（spec/40）: 下部タブ。ホールは盤面を作り直さないよう常に置き、他のタブの間は描画だけ止める。
+ * ホール以外は iOS の大きな見出しを付ける。タブの切り替えは View Transitions で短くクロスフェードする。
+ */
 export function App() {
   const [tab, setTab] = useState<Tab>('hall');
+
+  // 今のタブをもう一度押すと先頭へ戻る（iOS と同じ）。
+  const changeTab = (next: Tab) => {
+    if (next === tab) {
+      window.scrollTo({ top: 0, behavior: reducedMotion?.matches ? 'auto' : 'smooth' });
+      return;
+    }
+    const swap = () => {
+      setTab(next);
+      window.scrollTo(0, 0);
+    };
+    if (typeof document.startViewTransition !== 'function' || reducedMotion?.matches) {
+      swap();
+      return;
+    }
+    document.startViewTransition(() => flushSync(swap));
+  };
   const [applyUpdate, setApplyUpdate] = useState<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
@@ -56,6 +80,7 @@ export function App() {
           更新があります — 再読み込み
         </button>
       )}
+      {tab !== 'hall' && <h1 className={styles.title}>{TABS.find(([id]) => id === tab)?.[1]}</h1>}
       <div hidden={tab !== 'hall'}>
         <HallScreen active={tab === 'hall'} />
       </div>
@@ -68,13 +93,7 @@ export function App() {
           <DebugScreen />
         </Suspense>
       )}
-      <nav className={styles.tabs} role="tablist">
-        {TABS.map(([id, label]) => (
-          <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? styles.picked : ''} onClick={() => setTab(id)}>
-            {label}
-          </button>
-        ))}
-      </nav>
+      <TabBar tabs={TABS} value={tab} onChange={changeTab} />
       <AwayModal />
     </main>
   );

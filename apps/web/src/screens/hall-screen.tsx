@@ -1,5 +1,8 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
 import type { HallProjection, NoticeEffect } from '@ph/core';
+import { CountUp } from '../components/count-up.tsx';
+import { Segmented } from '../components/segmented.tsx';
+import { tick } from '../platform/haptic.ts';
 import { formatFuel } from '../stores/activity.ts';
 import { act, useEngine } from '../stores/engine.ts';
 import { formatNum, formatTime } from '../stores/format.ts';
@@ -30,6 +33,8 @@ export const NOTICE_TEXT: Record<NoticeEffect, { title: string; body: string }> 
   rush: { title: 'ラッシュ予告', body: 'タップで出玉' },
   bonus: { title: 'ボーナス予告', body: 'タップで特別変動' },
 };
+
+const fmtRate = (n: number) => formatNum(n, 1);
 
 const report = (e: unknown) => useEngine.setState({ error: e instanceof Error ? e.message : String(e) });
 
@@ -79,6 +84,7 @@ export function HallScreen({ active = true }: { active?: boolean }) {
           <button
             className={`${styles.notice} ${styles[notice.effect]}`}
             onClick={() => {
+              tick();
               setTapped(notice.id);
               send({ k: 'noticeTap', noticeId: notice.id });
             }}
@@ -98,7 +104,9 @@ export function HallScreen({ active = true }: { active?: boolean }) {
           <dl className={styles.hud}>
             <div>
               <dt>持ち玉</dt>
-              <dd>{formatNum(p.balls)}</dd>
+              <dd>
+                <CountUp value={p.balls} format={formatNum} />
+              </dd>
             </div>
             <div>
               <dt>メダル</dt>
@@ -110,7 +118,9 @@ export function HallScreen({ active = true }: { active?: boolean }) {
             </div>
             <div>
               <dt>生産/秒</dt>
-              <dd>{formatNum(p.perSec, 1)}</dd>
+              <dd>
+                <CountUp value={p.perSec} format={fmtRate} />
+              </dd>
             </div>
           </dl>
           <p className={styles.state}>
@@ -128,25 +138,20 @@ export function HallScreen({ active = true }: { active?: boolean }) {
               className={`${styles.shoot} ${p.shoot.on ? styles.on : ''}`}
               aria-pressed={p.shoot.on}
               disabled={busy}
-              onClick={() => send({ k: 'shoot', on: !p.shoot.on, rate: p.shoot.rate })}
+              onClick={() => {
+                tick();
+                send({ k: 'shoot', on: !p.shoot.on, rate: p.shoot.rate });
+              }}
             >
               {p.shoot.on ? '打っています — 止める' : '打つ'}
             </button>
             {p.rates.length > 1 && (
-              <div className={styles.rates} role="radiogroup" aria-label="レート">
-                {p.rates.map((r) => (
-                  <button
-                    key={r}
-                    role="radio"
-                    aria-checked={r === p.shoot.rate}
-                    className={r === p.shoot.rate ? styles.picked : ''}
-                    disabled={busy}
-                    onClick={() => send({ k: 'shoot', on: p.shoot.on, rate: r })}
-                  >
-                    {r}パチ
-                  </button>
-                ))}
-              </div>
+              <Segmented
+                label="レート"
+                options={p.rates.map((r) => [r, `${r}パチ`] as const)}
+                value={p.shoot.rate}
+                onChange={(r) => send({ k: 'shoot', on: p.shoot.on, rate: r })}
+              />
             )}
           </div>
         </>

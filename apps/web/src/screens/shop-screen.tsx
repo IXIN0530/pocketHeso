@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import type { ShopUpgradeId, ShopUpgradeView, ShopView } from '@ph/core';
 import economyJson from '../../../../resources/economy/default.json';
+import { CountUp } from '../components/count-up.tsx';
+import { HoldButton } from '../components/hold-button.tsx';
+import { Segmented } from '../components/segmented.tsx';
 import { act, useEngine } from '../stores/engine.ts';
 import { formatNum } from '../stores/format.ts';
 import styles from './shop.module.css';
 
 const NAMES: Readonly<Record<string, string>> = Object.fromEntries(economyJson.yakumono.map((y) => [y.id, y.name]));
 const BULK = [1, ...economyJson.bulk_sizes] as const;
+const BULK_OPTIONS = BULK.map((n, i) => [i, `×${n}`] as const);
 
 const pct = (q: number) => `${(q * 100).toFixed(2)}%`;
 
@@ -30,7 +34,9 @@ export function upgradeEffect(u: ShopUpgradeView): string {
 
 const report = (e: unknown) => useEngine.setState({ error: e instanceof Error ? e.message : String(e) });
 
-/** 強化画面（spec/40）: 役物（まとめ買い・覚醒）、強化、閉店。 */
+const fmtRate = (n: number) => formatNum(n, 1);
+
+/** 強化画面（spec/40）: 役物（まとめ買い・覚醒）、強化、閉店。購入ボタンは長押しで続けて買う。 */
 export function ShopScreen() {
   const p = useEngine((s) => s.projection);
   const [bulk, setBulk] = useState(0);
@@ -48,6 +54,8 @@ export function ShopScreen() {
       .catch(report)
       .finally(() => setBusy(false));
   };
+  // 購入は HoldButton が1つずつ順に送る（長押しの連続でボタンを無効にしない）。
+  const buy = (input: Parameters<typeof act>[0]) => act(input).catch(report);
 
   const c = shop.close;
   return (
@@ -55,7 +63,9 @@ export function ShopScreen() {
       <dl className={styles.wallet}>
         <div>
           <dt>持ち玉</dt>
-          <dd>{formatNum(p.balls)}</dd>
+          <dd>
+            <CountUp value={p.balls} format={formatNum} />
+          </dd>
         </div>
         <div>
           <dt>メダル</dt>
@@ -63,7 +73,9 @@ export function ShopScreen() {
         </div>
         <div>
           <dt>生産/秒</dt>
-          <dd>{formatNum(p.perSec, 1)}</dd>
+          <dd>
+            <CountUp value={p.perSec} format={fmtRate} />
+          </dd>
         </div>
         <div>
           <dt>常連P</dt>
@@ -74,13 +86,7 @@ export function ShopScreen() {
       <section className={styles.card}>
         <div className={styles.head}>
           <h2>役物</h2>
-          <div className={styles.bulk} role="radiogroup" aria-label="まとめ買い">
-            {BULK.map((n, i) => (
-              <button key={n} role="radio" aria-checked={bulk === i} className={bulk === i ? styles.picked : ''} onClick={() => setBulk(i)}>
-                ×{n}
-              </button>
-            ))}
-          </div>
+          <Segmented label="まとめ買い" options={BULK_OPTIONS} value={bulk} onChange={setBulk} />
         </div>
         <ul className={styles.list}>
           {shop.yakumono.map((y) => {
@@ -104,19 +110,19 @@ export function ShopScreen() {
                       覚醒 メダル{y.awakenCost}
                     </button>
                   )}
-                  <button
+                  <HoldButton
                     className={styles.buy}
                     disabled={busy || y.locked || price === null || p.balls < price}
-                    onClick={() => send({ k: 'buy', target: y.id, count: BULK[bulk] ?? 1 })}
+                    onFire={() => buy({ k: 'buy', target: y.id, count: BULK[bulk] ?? 1 })}
                   >
                     ×{BULK[bulk]} {price === null ? '—' : formatNum(price)}
-                  </button>
+                  </HoldButton>
                 </div>
               </li>
             );
           })}
         </ul>
-        <p className={styles.note}>覚醒は Lv{economyJson.awaken.min_lv} から。Lv が 0 に戻り、その役物の生産が ×{economyJson.awaken.mult} になります（メダルを使います）。</p>
+        <p className={styles.note}>購入ボタンは長押しで続けて買えます。覚醒は Lv{economyJson.awaken.min_lv} から。Lv が 0 に戻り、その役物の生産が ×{economyJson.awaken.mult} になります（メダルを使います）。</p>
       </section>
 
       <section className={styles.card}>
@@ -136,13 +142,13 @@ export function ShopScreen() {
                   <small>{upgradeEffect(u)}</small>
                 </div>
                 <div className={styles.actions}>
-                  <button
+                  <HoldButton
                     className={styles.buy}
                     disabled={busy || u.cost === null || have < u.cost}
-                    onClick={() => send({ k: 'buy', target: u.id, count: 1 })}
+                    onFire={() => buy({ k: 'buy', target: u.id, count: 1 })}
                   >
                     {u.cost === null ? '最大' : u.currency === 'medals' ? `メダル${formatNum(u.cost)}` : formatNum(u.cost)}
-                  </button>
+                  </HoldButton>
                 </div>
               </li>
             );

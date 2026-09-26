@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CORE_VERSION } from '@ph/core';
+import { Segmented } from '../components/segmented.tsx';
+import { Switch } from '../components/switch.tsx';
 import { isStandalone } from '../platform/pwa.ts';
 import { loadSettings, openStorage, type Db } from '../platform/storage.ts';
 import { formatFuel } from '../stores/activity.ts';
@@ -74,35 +76,14 @@ export function SettingsScreen() {
               <p className={styles.note}>
                 打たない間も自動で打ちます（燃料が切れると止まります{tomeuchi ? '。保留が満タンの間は止め打ち' : ''}）。
               </p>
-              <div className={styles.row} role="radiogroup" aria-label="オート打ちの割合">
-                {AUTO_SHARES.map(([share, label]) => (
-                  <button
-                    key={share}
-                    role="radio"
-                    aria-checked={p.auto.share === share}
-                    className={p.auto.share === share ? styles.button : styles.sub}
-                    disabled={busy}
-                    onClick={() => send({ k: 'auto', share, rate: p.auto.rate })}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <Segmented label="オート打ちの割合" options={AUTO_SHARES} value={p.auto.share} onChange={(share) => send({ k: 'auto', share, rate: p.auto.rate })} />
               {p.rates.length > 1 && (
-                <div className={styles.row} role="radiogroup" aria-label="オート打ちのレート">
-                  {p.rates.map((r) => (
-                    <button
-                      key={r}
-                      role="radio"
-                      aria-checked={p.auto.rate === r}
-                      className={p.auto.rate === r ? styles.button : styles.sub}
-                      disabled={busy}
-                      onClick={() => send({ k: 'auto', share: p.auto.share, rate: r })}
-                    >
-                      {r}パチ
-                    </button>
-                  ))}
-                </div>
+                <Segmented
+                  label="オート打ちのレート"
+                  options={p.rates.map((r) => [r, `${r}パチ`] as const)}
+                  value={p.auto.rate}
+                  onChange={(rate) => send({ k: 'auto', share: p.auto.share, rate })}
+                />
               )}
             </>
           ) : (
@@ -116,19 +97,19 @@ export function SettingsScreen() {
           <p className={styles.note}>
             燃料タンクから溢れた分がブーストになり、前面にいる間の生産が ×2 になります（残り {formatFuel(p.boostMs)}）。
           </p>
-          <div className={styles.row}>
-            <button className={p.shop.boostOn ? styles.button : styles.sub} disabled={busy} onClick={() => send({ k: 'boost', on: !p.shop!.boostOn })}>
-              {p.shop.boostOn ? '使う（ON）' : '使わない（OFF）'}
-            </button>
-          </div>
+          <Switch checked={p.shop.boostOn} disabled={busy} onChange={(on) => send({ k: 'boost', on })}>
+            ブーストを使う
+          </Switch>
         </section>
       )}
       <section className={styles.card}>
-        <h2>演出</h2>
-        <label className={styles.check}>
-          <input type="checkbox" checked={prefs.bloom} onChange={(e) => setPrefs({ bloom: e.target.checked })} />
+        <h2>演出と操作</h2>
+        <Switch checked={prefs.bloom} onChange={(bloom) => setPrefs({ bloom })}>
           当たりの光のにじみ（OFF で軽くなります）
-        </label>
+        </Switch>
+        <Switch checked={prefs.haptics} onChange={(haptics) => setPrefs({ haptics })}>
+          操作の触覚（ボタン・タブ・長押しの購入）
+        </Switch>
         <label>
           音量 {prefs.volume}
           <input className={styles.input} type="range" min={0} max={100} step={10} value={prefs.volume} onChange={(e) => setPrefs({ volume: Number(e.target.value) })} />

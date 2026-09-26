@@ -1,0 +1,19 @@
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+}
+
+.text {
+  flex: 1;
+  line-height: 1.4;
+}
+
+/* `switch` 属性に対応しない環境（Safari 以外）でも押しやすい大きさにする。 */
+.row input {
+  min-width: 22px;
+  min-height: 22px;
+  margin: 0;
+}

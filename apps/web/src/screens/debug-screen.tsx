@@ -9,6 +9,9 @@ import { DEBUG_SCALES, clock } from '../stores/clock.ts';
 import { debugInfo, receiveClaims, showLastAway, useEngine, verifyAtlas } from '../stores/engine.ts';
 import { PREVIEWS, PREVIEW_SERIAL_BASE, requestPreview } from '../stores/preview.ts';
 import { DEBUG_CLAIM_PREFIX } from './records-screen.tsx';
+import { Switch } from '../components/switch.tsx';
+import { tick } from '../platform/haptic.ts';
+import { usePrefs } from '../stores/prefs.ts';
 import styles from './activity.module.css';
 
 const H = 3600000;
@@ -145,6 +148,15 @@ export default function DebugScreen() {
           <button className={styles.sub} onClick={() => setMessage(audioStatus())}>
             音の状態
           </button>
+          <button
+            className={styles.sub}
+            onClick={() => {
+              tick();
+              setMessage(usePrefs.getState().haptics ? '操作の触覚を1回出しました（iOS 18+ のスイッチの触覚）' : '設定で操作の触覚が OFF です');
+            }}
+          >
+            操作の触覚
+          </button>
           <button className={styles.sub} onClick={() => setMessage(showLastAway() ? null : 'この起動ではまだ留守中サマリーがありません')}>
             留守サマリーを再表示
           </button>
@@ -155,10 +167,9 @@ export default function DebugScreen() {
         <p className={styles.note}>
           ホールの液晶で1変動を実時間で流します（Engine の抽選には触れません）。押すたびに通し番号が進み、群予告・疑似連などの分岐が変わります。
         </p>
-        <label className={styles.row}>
-          <input type="checkbox" checked={previewHit} onChange={(e) => setPreviewHit(e.target.checked)} />
+        <Switch checked={previewHit} onChange={setPreviewHit}>
           当たりで止める（確定は常に当たり）
-        </label>
+        </Switch>
         <div className={styles.row}>
           {PREVIEWS.map((p) => (
             <button

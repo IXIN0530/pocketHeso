@@ -1,3 +1,4 @@
+import { Sheet } from '../components/sheet.tsx';
 import { sound } from '../fx/fx-host.ts';
 import { dismissAway, useEngine } from '../stores/engine.ts';
 import { formatNum, formatSpan, formatTime } from '../stores/format.ts';
@@ -16,44 +17,42 @@ export function AwayModal() {
   }
   const replay = replayRequest(away);
   return (
-    <div className={styles.backdrop} role="dialog" aria-modal="true" aria-labelledby="away-title">
-      <div className={styles.modal}>
-        <h2 id="away-title">留守のあいだ（{formatSpan(away.to - away.from)}）</h2>
-        <p className={styles.total}>+{formatNum(away.gainedBalls)}玉</p>
-        <dl className={styles.facts}>
-          <dt>大当たり</dt>
-          <dd>{away.jackpots}回</dd>
-          {away.maxChain > 1 && (
-            <>
-              <dt>最大連チャン</dt>
-              <dd>
-                {away.maxChain}連（{formatNum(away.maxChainBalls)}玉）
-              </dd>
-            </>
-          )}
-          <dt>燃料</dt>
-          <dd>{away.fuelEmptyAt !== null ? `${formatTime(away.fuelEmptyAt, away.to)} に切れました` : fuelMs > 0 ? '最後まで持ちました' : '切れたままでした'}</dd>
-        </dl>
-        {(away.fuelEmptyAt !== null || fuelMs === 0) && <p className={styles.note}>燃料が切れると生産はごくわずかになります。行動タブで運動を受け取ると補給できます。</p>}
-        <div className={styles.row}>
-          {replay && (
-            <button
-              className={styles.button}
-              onClick={() => {
-                // iOS はタップの中で音を解錠する必要がある。
-                sound.unlock();
-                requestPreview(replay);
-                dismissAway();
-              }}
-            >
-              最も熱い当たりを見る（{formatTime(replay.replayAt ?? away.to, away.to)}）
-            </button>
-          )}
-          <button className={replay ? styles.sub : styles.button} onClick={dismissAway}>
-            閉じる
+    <Sheet onDismiss={dismissAway} labelledBy="away-title">
+      <h2 id="away-title">留守のあいだ（{formatSpan(away.to - away.from)}）</h2>
+      <p className={styles.total}>+{formatNum(away.gainedBalls)}玉</p>
+      <dl className={styles.facts}>
+        <dt>大当たり</dt>
+        <dd>{away.jackpots}回</dd>
+        {away.maxChain > 1 && (
+          <>
+            <dt>最大連チャン</dt>
+            <dd>
+              {away.maxChain}連（{formatNum(away.maxChainBalls)}玉）
+            </dd>
+          </>
+        )}
+        <dt>燃料</dt>
+        <dd>{away.fuelEmptyAt !== null ? `${formatTime(away.fuelEmptyAt, away.to)} に切れました` : fuelMs > 0 ? '最後まで持ちました' : '切れたままでした'}</dd>
+      </dl>
+      {(away.fuelEmptyAt !== null || fuelMs === 0) && <p className={styles.note}>燃料が切れると生産はごくわずかになります。行動タブで運動を受け取ると補給できます。</p>}
+      <div className={styles.row}>
+        {replay && (
+          <button
+            className={styles.button}
+            onClick={() => {
+              // iOS はタップの中で音を解錠する必要がある。
+              sound.unlock();
+              requestPreview(replay);
+              dismissAway();
+            }}
+          >
+            最も熱い当たりを見る（{formatTime(replay.replayAt ?? away.to, away.to)}）
           </button>
-        </div>
+        )}
+        <button className={replay ? styles.sub : styles.button} onClick={dismissAway}>
+          閉じる
+        </button>
       </div>
-    </div>
+    </Sheet>
   );
 }

@@ -181,27 +181,6 @@
   box-shadow: inset 0 0 0 2px #e8b840;
 }
 
-.shoot:disabled,
-.rates button:disabled {
+.shoot:disabled {
   opacity: 0.6;
-}
-
-.rates {
-  display: flex;
-  gap: 4px;
-}
-
-.rates button {
-  min-width: 52px;
-  min-height: 44px;
-  border: 0;
-  border-radius: 10px;
-  background: #2c325e;
-  color: #f2f2f7;
-  font-size: 14px;
-}
-
-.rates .picked {
-  background: #8a5cff;
-  font-weight: 700;
 }

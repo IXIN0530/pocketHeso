@@ -7,6 +7,9 @@ import './global.css';
 const spike = new URLSearchParams(window.location.search).get('spike');
 const SpikeRoot = lazy(() => import('./spikes/spike-root.tsx'));
 
+// iOS Safari は touchstart の受け手が無いと :active（押した時の縮み）を出さない。
+document.addEventListener('touchstart', () => {}, { passive: true });
+
 const root = document.getElementById('root');
 if (!root) throw new Error('#root not found');
 createRoot(root).render(
