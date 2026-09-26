@@ -3,7 +3,7 @@
 
 - Current phase: P7 → `docs/plan/P7-soak-tune.md`
 - Last done: P7-T1 ローカル計測ログ（`metrics` store・Debug の「計測ログ」, D-071）。その前に [UI] iOS 風の操作感を実機確認OK（9/27）
-- Next: P7-T2 1週間の実運用（人間が遊び、Debug の計測ログと記録を Claude Code が解析）
+- Next: P7-T2 1週間の実運用（人間が遊び、Debug の計測ログと記録を Claude Code が解析）。保留色の作り直しは P7-T4 として計画済み（後日）
 - Owner hint: 人間 + Claude Code（ログ解析）
 
 ## Blockers
