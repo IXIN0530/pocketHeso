@@ -4,7 +4,8 @@ import type { CheckinSession, ClaimRecord, OwnPlace } from '@ph/claims';
 import type { Action } from '@ph/core';
 
 export const DB_NAME = 'pocketheso';
-export const DB_VERSION = 1;
+/** 1 = P4（台帳・ActionLog など）、2 = P7-T1（metrics）。 */
+export const DB_VERSION = 2;
 /** 保存データのスキーマ版数（meta に書く）。1 = P4（台帳のみ）、2 = P5（seed・開始時刻・機種つき）。 */
 export const SAVE_SCHEMA = 2;
 /** 既定機種（人間の決定待ち。新規セーブにだけ使い、既存セーブは meta の機種を使い続ける）。 */
@@ -44,6 +45,7 @@ interface Schema extends DBSchema {
   snapshot: { key: string; value: unknown };
   places: { key: string; value: OwnPlace };
   settings: { key: string; value: unknown };
+  metrics: { key: string; value: unknown };
 }
 
 export type Db = IDBPDatabase<Schema>;
@@ -62,6 +64,9 @@ export async function openStorage(name: string = DB_NAME): Promise<Db> {
         d.createObjectStore('snapshot');
         d.createObjectStore('places', { keyPath: 'placeId' });
         d.createObjectStore('settings');
+      }
+      if (oldVersion < 2) {
+        d.createObjectStore('metrics');
       }
     },
     blocking(_cur, _next, event) {
@@ -204,6 +209,16 @@ export async function closeSessionWithClaims(db: Db, records: readonly ClaimReco
 export async function requestPersist(): Promise<boolean | null> {
   try {
     return (await navigator.storage?.persist?.()) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** IndexedDB の使用量（usageDetails は Chrome のみ。無ければオリジン全体の usage）。非対応なら null。 */
+export async function storageUsage(): Promise<number | null> {
+  try {
+    const e = (await navigator.storage?.estimate?.()) as (StorageEstimate & { usageDetails?: { indexedDB?: number } }) | undefined;
+    return e?.usageDetails?.indexedDB ?? e?.usage ?? null;
   } catch {
     return null;
   }

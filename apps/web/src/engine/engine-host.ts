@@ -24,12 +24,14 @@ import {
   migrateMeta,
   putSetting,
   putSnapshot,
+  storageUsage,
   type Db,
   type GameMeta,
 } from '../platform/storage.ts';
 import { localDay } from '../stores/activity.ts';
 import { SNAPSHOT_VERSION, buildEngine, ledgerOrder, type RestoredFrom, type SnapshotRecord } from './engine-build.ts';
 import { engineConfig } from './game-config.ts';
+import { addAdvance, addBoot, addReceive, clearMetrics, emptyMetrics, loadMetrics, putMetrics, type Metrics } from './metrics.ts';
 
 /** 端末時計がこれ以上戻っていたら巻き戻しとみなして止める（それ未満の揺れは Engine の時刻に揃える）。 */
 export const CLOCK_SKEW_MS = 2000;
@@ -73,7 +75,14 @@ export interface DebugInfo {
   readonly grants: number;
   readonly actions: number;
   readonly snapshot: unknown;
+  /** ローカル計測ログ（P7-T1）。 */
+  readonly metrics: Metrics;
+  /** 今の IndexedDB の使用量（非対応なら null）。 */
+  readonly dbBytes: number | null;
 }
+
+/** 計測に使う時計（ms, 単調増加）。 */
+const perf = (): number => performance.now();
 
 export interface BootResult extends EngineView {
   readonly restoredFrom: RestoredFrom;
@@ -86,6 +95,8 @@ export class EngineHost {
   private fg: boolean;
   private lastSavedAt = 0;
   private lastSavedDay = '';
+  /** 前回書いてから advance の集計が進んだ。 */
+  private advanceDirty = false;
 
   private constructor(
     private readonly db: Db,
@@ -93,36 +104,95 @@ export class EngineHost {
     private readonly newSeed: () => number,
     private meta: GameMeta,
     built: { engine: Engine; fg: boolean },
+    private metrics: Metrics,
   ) {
     this.engine = built.engine;
     this.fg = built.fg;
   }
 
-  /** 起動: meta の移行 → スナップショット復元（だめなら再計算）→ now まで追いつき → 前面に戻す。 */
-  static async open(db: Db, atlas: ArrayBuffer, now: number, newSeed: () => number): Promise<{ host: EngineHost; boot: BootResult }> {
+  /**
+   * 起動: meta の移行 → スナップショット復元（だめなら再計算）→ now まで追いつき → 前面に戻す。
+   * startedAt は Worker の boot を始めた performance.now()（DB を開く・Atlas 読み込みも起動時間に含める）。
+   */
+  static async open(
+    db: Db,
+    atlas: ArrayBuffer,
+    now: number,
+    newSeed: () => number,
+    startedAt: number = perf(),
+  ): Promise<{ host: EngineHost; boot: BootResult }> {
+    const loadStart = perf();
     const meta = await ensureGameMeta(db, now, newSeed());
-    const built = await buildEngine(db, meta, atlas);
-    const host = new EngineHost(db, atlas, newSeed, meta, built);
-    return { host, boot: await host.afterBuild(built.from, now) };
+    const [built, metrics] = await Promise.all([buildEngine(db, meta, atlas), loadMetrics(db, now).catch(() => emptyMetrics(now))]);
+    const loadMs = perf() - loadStart;
+    const host = new EngineHost(db, atlas, newSeed, meta, built, metrics);
+    const inputs = host.inputCount();
+    const r = await host.afterBuild(built.from, now);
+    const dbBytes = await storageUsage();
+    host.metrics = addBoot(host.metrics, {
+      at: r.at,
+      from: built.from,
+      totalMs: perf() - startedAt,
+      loadMs,
+      catchUpMs: r.catchUpMs,
+      spanMs: r.spanMs,
+      inputs,
+      dbBytes,
+    });
+    await host.writeMetrics(['boots', 'advance']);
+    return { host, boot: r.boot };
   }
 
   get gameMeta(): GameMeta {
     return this.meta;
   }
 
-  private async afterBuild(from: RestoredFrom, now: number): Promise<BootResult> {
+  /** 追いつき（at は追いついた時刻、catchUpMs は at までの advance の実時間、spanMs は進めたゲーム内の時間）。 */
+  private async afterBuild(
+    from: RestoredFrom,
+    now: number,
+  ): Promise<{ boot: BootResult; at: number; catchUpMs: number; spanMs: number }> {
     const t = this.clamp(now);
     if (t === null) {
-      return { ...this.view(true), restoredFrom: from, away: null };
+      return { boot: { ...this.view(true), restoredFrom: from, away: null }, at: this.engine.nowMs, catchUpMs: 0, spanMs: 0 };
     }
+    const spanMs = t - this.engine.nowMs;
+    const started = perf();
     this.engine.advance(t);
+    const catchUpMs = perf() - started;
     let away: AwaySummary | null = null;
     if (!this.fg) {
       await this.presence(true, t);
       away = this.engine.awaySummary();
     }
     await this.saveSnapshot(t, true);
-    return { ...this.view(false), restoredFrom: from, away };
+    return { boot: { ...this.view(false), restoredFrom: from, away }, at: t, catchUpMs, spanMs };
+  }
+
+  private inputCount(): number {
+    const s = this.engine.snapshot();
+    return s.grants.length + s.actions.length;
+  }
+
+  /** 前面中・操作時の advance（実時間を集計する）。 */
+  private advance(t: number): EngineSimEvent[] {
+    const started = perf();
+    const events = this.engine.advance(t);
+    this.metrics = addAdvance(this.metrics, perf() - started);
+    this.advanceDirty = true;
+    return events;
+  }
+
+  /** 計測を書く（失敗してもゲームは止めない）。 */
+  private async writeMetrics(keys: readonly (keyof Metrics)[]): Promise<void> {
+    try {
+      await putMetrics(this.db, this.metrics, keys);
+      if (keys.includes('advance')) {
+        this.advanceDirty = false;
+      }
+    } catch {
+      // 計測は捨ててよい。
+    }
   }
 
   /** 端末時計を Engine の時刻に揃える。巻き戻しなら null。 */
@@ -170,7 +240,7 @@ export class EngineHost {
     if (t === null) {
       return { ...this.view(true), events: [] };
     }
-    const events = this.engine.advance(t);
+    const events = this.advance(t);
     await this.saveSnapshot(t, false);
     return { ...this.view(false, events), events };
   }
@@ -186,7 +256,7 @@ export class EngineHost {
     }
     let before: EngineSimEvent[];
     try {
-      before = this.engine.advance(t);
+      before = this.advance(t);
       const persist = apply(t);
       await persist();
     } catch (e) {
@@ -194,7 +264,7 @@ export class EngineHost {
       throw e;
     }
     // 半開区間 [now, to) なので t の入力は t+1 まで進めて反映する。前回の前進から t までのイベントも渡す（液晶・盤面が取りこぼさない）。
-    const events = [...before, ...this.engine.advance(t + 1)];
+    const events = [...before, ...this.advance(t + 1)];
     return { ...this.view(false, events), events };
   }
 
@@ -225,8 +295,8 @@ export class EngineHost {
    * 受け取りを確定する。計画時刻は確認画面の間に Engine の時刻より古くなるので、確定時刻に付け直す
    * （claimId は時刻に依らない）。closesSession ならチェックインのセッションも同じトランザクションで閉じる。
    */
-  receive(records: readonly ClaimRecord[], closesSession: boolean, now: number): Promise<TickResult> {
-    return this.commit(now, (t) => {
+  async receive(records: readonly ClaimRecord[], closesSession: boolean, now: number): Promise<TickResult> {
+    const r = await this.commit(now, (t) => {
       const stamped = records.map((r) => ({ ...r, receivedAt: t, grant: { ...r.grant, at: t } })).sort(ledgerOrder);
       stamped.forEach((r) => this.engine.appendGrant(r.grant));
       if (closesSession) {
@@ -234,12 +304,33 @@ export class EngineHost {
       }
       return () => (stamped.length > 0 ? appendClaims(this.db, stamped) : Promise.resolve());
     });
+    if (!r.clockBack) {
+      this.metrics = addReceive(this.metrics, records.length, this.engine.nowMs);
+      await this.writeMetrics(['receives']);
+    }
+    return r;
   }
 
-  /** Debug: seed・入力の件数・スナップショット（台帳と ActionLog の中身は除く）。 */
-  debugInfo(): DebugInfo {
+  /** Debug: seed・入力の件数・スナップショット（台帳と ActionLog の中身は除く）・計測ログ。 */
+  async debugInfo(): Promise<DebugInfo> {
     const { grants, actions, ...rest } = this.engine.snapshot();
-    return { meta: this.meta, nowMs: this.engine.nowMs, grants: grants.length, actions: actions.length, snapshot: rest };
+    return {
+      meta: this.meta,
+      nowMs: this.engine.nowMs,
+      grants: grants.length,
+      actions: actions.length,
+      snapshot: rest,
+      metrics: this.metrics,
+      dbBytes: await storageUsage(),
+    };
+  }
+
+  /** Debug: 計測ログを消して集計をやり直す。 */
+  async resetMetrics(now: number): Promise<Metrics> {
+    await clearMetrics(this.db);
+    this.metrics = emptyMetrics(now);
+    this.advanceDirty = false;
+    return this.metrics;
   }
 
   /** Debug: Atlas の先頭を物理で再計算して照合する（盤面は board の JSON。数秒かかる）。 */
@@ -268,7 +359,7 @@ export class EngineHost {
     this.fg = built.fg;
     this.lastSavedAt = 0;
     this.lastSavedDay = '';
-    return this.afterBuild(built.from, now);
+    return (await this.afterBuild(built.from, now)).boot;
   }
 
   private async rebuild(now: number): Promise<void> {
@@ -300,5 +391,8 @@ export class EngineHost {
       this.lastSavedDay = day;
     }
     this.lastSavedAt = now;
+    if (this.advanceDirty) {
+      await this.writeMetrics(['advance']);
+    }
   }
 }

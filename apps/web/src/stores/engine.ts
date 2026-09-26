@@ -162,6 +162,10 @@ export function debugInfo() {
   return need().debugInfo();
 }
 
+export function resetMetrics() {
+  return need().resetMetrics(clock.now());
+}
+
 export function verifyAtlas() {
   return need().verifyAtlas();
 }

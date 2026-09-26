@@ -156,3 +156,40 @@ test('壊れたセーブの読み込みは DB を変えない', async () => {
   expect(host.gameMeta).toEqual(meta);
   expect((await loadActions(db)).length).toBeGreaterThan(0);
 });
+
+test('P7-T1: 起動・advance・受け取りを metrics store に残し、次の起動で続きから数える', async () => {
+  const db = await freshDb();
+  const host = await play(db);
+  const info = await host.debugInfo();
+  expect(info.metrics.boots).toHaveLength(1);
+  expect(info.metrics.boots[0]).toMatchObject({ at: T0, from: 'recompute', spanMs: 0, inputs: 0 });
+  expect(info.metrics.advance.count).toBeGreaterThan(100);
+  expect(info.metrics.advance.maxMs).toBeGreaterThanOrEqual(info.metrics.advance.lastMs);
+  expect(info.metrics.receives).toEqual({ count: 2, claims: 2, lastAt: T0 + 7 * MIN + 1 });
+  // 背面の間（4分）を起動で追いつく。advance の集計はスナップショットと一緒に書かれている。
+  await host.presence(false, T0 + 11 * MIN);
+  const { host: again, boot } = await EngineHost.open(db, ATLAS, T0 + 15 * MIN, seeds);
+  const m = (await again.debugInfo()).metrics;
+  expect(boot.restoredFrom).toBe('snapshot');
+  expect(m.boots).toHaveLength(2);
+  // 背面に回った操作は t+1 まで進めて反映するので、追いつきは 4分 - 1ms。
+  expect(m.boots[0]).toMatchObject({ at: T0 + 15 * MIN, from: 'snapshot', spanMs: 4 * MIN - 1 });
+  expect(m.boots[0]?.inputs).toBeGreaterThan(3);
+  expect(m.boots[0]?.catchUpMs).toBeGreaterThanOrEqual(0);
+  expect(m.advance.count).toBeGreaterThanOrEqual(info.metrics.advance.count);
+  expect(m.receives.count).toBe(2);
+  // リセットで空に戻り、DB からも消える。
+  await again.resetMetrics(T0 + 16 * MIN);
+  expect((await again.debugInfo()).metrics.boots).toHaveLength(0);
+  expect(await db.count('metrics')).toBe(0);
+});
+
+test('P7-T1: 端末時計が戻っていた起動は追いつき 0・時刻は Engine のまま記録する', async () => {
+  const db = await freshDb();
+  await play(db);
+  const { host, boot } = await EngineHost.open(db, ATLAS, T0 + MIN, seeds);
+  expect(boot.clockBack).toBe(true);
+  const b = (await host.debugInfo()).metrics.boots[0];
+  expect(b).toMatchObject({ catchUpMs: 0, spanMs: 0 });
+  expect(b?.at).toBe(boot.projection.at);
+});

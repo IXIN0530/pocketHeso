@@ -29,8 +29,9 @@ async function loadAtlas(): Promise<ArrayBuffer> {
 const api = {
   /** dbName は Debug の時間倍率用（本番のセーブと分ける）。 */
   async boot(now: number, dbName?: string) {
+    const startedAt = performance.now();
     const [db, atlas] = await Promise.all([openStorage(dbName), loadAtlas()]);
-    const opened = await EngineHost.open(db, atlas, now, randomSeed);
+    const opened = await EngineHost.open(db, atlas, now, randomSeed, startedAt);
     host = opened.host;
     return opened.boot;
   },
@@ -41,6 +42,7 @@ const api = {
   exportSave: (now: number) => need().exportSave(now),
   importSave: (text: string, now: number) => need().importSave(text, now),
   debugInfo: () => need().debugInfo(),
+  resetMetrics: (now: number) => need().resetMetrics(now),
   async verifyAtlas() {
     const [board, dirs] = await Promise.all([
       import('../../../resources/boards/default.json'),

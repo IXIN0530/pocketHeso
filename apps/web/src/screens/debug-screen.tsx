@@ -9,6 +9,7 @@ import { DEBUG_SCALES, clock } from '../stores/clock.ts';
 import { debugInfo, receiveClaims, showLastAway, useEngine, verifyAtlas } from '../stores/engine.ts';
 import { PREVIEWS, PREVIEW_SERIAL_BASE, requestPreview } from '../stores/preview.ts';
 import { DEBUG_CLAIM_PREFIX } from './records-screen.tsx';
+import { MetricsPanel } from './metrics-panel.tsx';
 import { Switch } from '../components/switch.tsx';
 import { tick } from '../platform/haptic.ts';
 import { usePrefs } from '../stores/prefs.ts';
@@ -54,7 +55,7 @@ function describePicks(pattern: string, picks: readonly number[]): string {
   return sheet && picks.length > 0 ? sheet.branches.map((b, i) => `${b.name}=${picks[i]}`).join(' ') : '分岐なし';
 }
 
-/** Debug 画面（`?debug=1` のみ, spec/40）: seed・時間倍率・Grant 注入・Atlas 照合・状態ダンプ。演出テスト（音・振動）と演出プレビュー。 */
+/** Debug 画面（`?debug=1` のみ, spec/40）: seed・時間倍率・Grant 注入・Atlas 照合・状態ダンプ。演出テスト（音・振動）と演出プレビュー。計測ログ（P7-T1）。 */
 export default function DebugScreen() {
   const { projection, restoredFrom, seed } = useEngine();
   const [previewHit, setPreviewHit] = useState(false);
@@ -226,6 +227,7 @@ export default function DebugScreen() {
         )}
         {dump !== null && <textarea className={styles.textarea} readOnly value={dump} rows={10} />}
       </section>
+      <MetricsPanel now={projection?.at ?? clock.now()} />
       {message && <p className={styles.note}>{message}</p>}
     </div>
   );
