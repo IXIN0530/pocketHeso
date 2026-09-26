@@ -148,6 +148,8 @@ export interface AwayTrackerSnapshot {
   readonly awayFrom: SimTime | null;
   readonly awayBalls: number;
   readonly awayFired: number;
+  /** 留守中に発射で消費した玉（Σrate）。無ければ totals.fired−awayFired（rate1前提）で読む。 */
+  readonly awayConsumed?: number;
   readonly awayJackpots: number;
   readonly awayMaxChain: number;
   readonly awayMaxChainBalls: number;
@@ -400,6 +402,7 @@ export class Engine {
   private awayFromState: SimTime | null;
   private awayBallsState: number;
   private awayFiredState: number;
+  private awayConsumedState: number;
   private awayJackpotsState: number;
   private awayMaxChainState: number;
   private awayMaxChainBallsState: number;
@@ -455,6 +458,7 @@ export class Engine {
     this.awayFromState = null;
     this.awayBallsState = initialBalls;
     this.awayFiredState = 0;
+    this.awayConsumedState = 0;
     this.awayJackpotsState = 0;
     this.awayMaxChainState = 0;
     this.awayMaxChainBallsState = 0;
@@ -929,6 +933,7 @@ export class Engine {
     this.awayFromState = at;
     this.awayBallsState = this.ballsState;
     this.awayFiredState = this.totalsState.fired;
+    this.awayConsumedState = 0;
     this.awayJackpotsState = this.totalsState.jackpots;
     this.awayMaxChainState = 0;
     this.awayMaxChainBallsState = 0;
@@ -943,7 +948,7 @@ export class Engine {
       return;
     }
     const from = this.awayFromState;
-    const gained = this.ballsState - this.awayBallsState + (this.totalsState.fired - this.awayFiredState);
+    const gained = this.ballsState - this.awayBallsState + this.awayConsumedState;
     this.lastSummaryState = {
       from,
       to: at,
@@ -1163,7 +1168,7 @@ export class Engine {
     }
   }
 
-  /** 同時刻の発射（600ms倍数のみ。前面shoot優先・autoはshare間引き・燃料0/止め打ち満タンで停止・釘でout→start1・1発rate玉）。 */
+  /** 同時刻の発射（600ms倍数のみ。前面shoot優先・autoはshare間引き・燃料0/止め打ち満タン/持ち玉<rateで停止・釘でout→start1・1発rate玉）。 */
   private applyFiringAt(at: SimTime, out: SimEvent[]): void {
     const rem = at - Math.floor(at / FIRE_INTERVAL_MS) * FIRE_INTERVAL_MS;
     if (rem !== 0) {
@@ -1184,12 +1189,15 @@ export class Engine {
         rate = this.autoRateState;
       }
     }
-    if (rate < 1) {
+    if (rate < 1 || this.ballsState < rate) {
       return;
     }
     const ball = this.nextBallState;
     this.nextBallState = ball + 1;
     this.ballsState = this.ballsState - rate;
+    if (this.awayFromState !== null) {
+      this.awayConsumedState = this.awayConsumedState + rate;
+    }
     this.totalsState = {
       spins: this.totalsState.spins,
       jackpots: this.totalsState.jackpots,
@@ -1401,6 +1409,7 @@ export class Engine {
         awayFrom: this.awayFromState,
         awayBalls: this.awayBallsState,
         awayFired: this.awayFiredState,
+        awayConsumed: this.awayConsumedState,
         awayJackpots: this.awayJackpotsState,
         awayMaxChain: this.awayMaxChainState,
         awayMaxChainBalls: this.awayMaxChainBallsState,
@@ -1463,6 +1472,9 @@ export class Engine {
     }
     if (away.awayFrom !== null) {
       assertTime(away.awayFrom, 'snap.away.awayFrom');
+    }
+    if (away.awayConsumed !== undefined && (typeof away.awayConsumed !== 'number' || !Number.isFinite(away.awayConsumed) || away.awayConsumed < 0)) {
+      throw new Error('invalid engine: snap.away.awayConsumed must be finite >= 0');
     }
     if (away.awayFuelEmptyAt !== null) {
       assertTime(away.awayFuelEmptyAt, 'snap.away.awayFuelEmptyAt');
@@ -1528,6 +1540,9 @@ export class Engine {
     eng.awayFromState = away.awayFrom;
     eng.awayBallsState = away.awayBalls;
     eng.awayFiredState = away.awayFired;
+    eng.awayConsumedState = away.awayConsumed === undefined
+      ? (away.awayFrom === null ? 0 : snap.totals.fired - away.awayFired)
+      : away.awayConsumed;
     eng.awayJackpotsState = away.awayJackpots;
     eng.awayMaxChainState = away.awayMaxChain;
     eng.awayMaxChainBallsState = away.awayMaxChainBalls;

@@ -341,7 +341,7 @@ test(
     const { spec, patterns } = loadMachine();
     const atlas = loadAtlas();
     const mk = (): Engine =>
-      makeEngine(20260925, atlas, spec, patterns, [{ t: 0, k: 'auto', share: 1, rate: 1 }], [], 0);
+      makeEngine(20260925, atlas, spec, patterns, [{ t: 0, k: 'auto', share: 1, rate: 1 }], [], 100000);
     mk().advance(3600000);
     const until = 8 * 60 * 60 * 1000;
     let best = Number.POSITIVE_INFINITY;

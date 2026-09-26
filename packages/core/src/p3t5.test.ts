@@ -212,3 +212,91 @@ test('決定論契約1/2: 大当たりフィーバー込みで不揃い刻み・
   expect([...head, ...tail]).toEqual(once);
   expect(d.snapshot()).toEqual(a.snapshot());
 });
+
+/** 背面オート rate4 で [1000, H) を留守にするエンジン。 */
+function awayRate4Engine(econ: IdleEconomy): Engine {
+  return makeEngine(
+    econ,
+    [{ claimId: 'fuel', at: 0, fuelMs: 12 * H, medals: 2 }],
+    [
+      { t: 0, k: 'buy', target: 'windmill', count: 10 },
+      { t: 0, k: 'buy', target: 'rate', count: 1 },
+      { t: 0, k: 'buy', target: 'auto', count: 1 },
+      { t: 0, k: 'auto', share: 1, rate: 4 },
+      { t: 1000, k: 'presence', fg: false },
+      { t: H, k: 'presence', fg: true },
+    ],
+    { seed: 3 },
+  );
+}
+
+test('留守中サマリーの獲得玉は rate>1 でも 玉差分＋消費玉（Σrate）', () => {
+  const eng = awayRate4Engine(loadEconomy());
+  const head = eng.advance(1000);
+  expect(head.filter((e) => e.k === 'rejected')).toEqual([]);
+  const before = eng.snapshot();
+  const events = eng.advance(H);
+  const after = eng.snapshot();
+  eng.advance(H + 1);
+  const fired = events.filter((e) => e.k === 'fired');
+  expect(fired.length).toBeGreaterThan(1000);
+  expect(fired.every((e) => e.k === 'fired' && e.rate === 4)).toBe(true);
+  const s = eng.awaySummary();
+  expect(s).not.toBeNull();
+  expect(s?.gainedBalls).toBe(after.balls - before.balls + 4 * (after.totals.fired - before.totals.fired));
+});
+
+test('留守中の snapshot/restore で消費玉が引き継がれ、awayConsumed 無しの旧 snapshot は rate1 前提で読む', () => {
+  const a = awayRate4Engine(loadEconomy());
+  a.advance(H + 1);
+  const { spec, patterns } = loadMachine();
+  const b = awayRate4Engine(loadEconomy());
+  b.advance(H / 2);
+  const mid = b.snapshot();
+  expect(mid.away.awayConsumed).toBe(4 * (mid.totals.fired - mid.away.awayFired));
+  const econC = loadEconomy();
+  const c = Engine.restore(mid, { seed: 3, spec, patterns, atlas: ATLAS, economy: econC });
+  c.advance(H + 1);
+  expect(c.awaySummary()).toEqual(a.awaySummary());
+
+  const legacyAway = { ...mid.away };
+  delete legacyAway.awayConsumed;
+  const legacy = Engine.restore({ ...mid, away: legacyAway }, { seed: 3, spec, patterns, atlas: ATLAS, economy: loadEconomy() });
+  expect(legacy.snapshot().away.awayConsumed).toBe(mid.totals.fired - mid.away.awayFired);
+});
+
+test('持ち玉 < rate なら発射しない（手動・オートとも。持ち玉は負にならない）', () => {
+  const econ = loadEconomy();
+  const eng = makeEngine(
+    econ,
+    [{ claimId: 'fuel', at: 0, fuelMs: 12 * H, medals: 2 }],
+    [
+      { t: 0, k: 'buy', target: 'rate', count: 1 },
+      { t: 0, k: 'shoot', on: true, rate: 4 },
+    ],
+    { seed: 3, balls: 3 },
+  );
+  const events = eng.advance(60000);
+  expect(events.filter((e) => e.k === 'fired')).toEqual([]);
+  expect(events.filter((e) => e.k === 'rejected')).toEqual([]);
+  expect(eng.snapshot().balls).toBe(3);
+
+  const auto = makeEngine(
+    loadEconomy(),
+    [{ claimId: 'fuel', at: 0, fuelMs: 12 * H, medals: 0 }],
+    [
+      { t: 0, k: 'buy', target: 'auto', count: 1 },
+      { t: 0, k: 'auto', share: 1, rate: 1 },
+      { t: 0, k: 'presence', fg: false },
+    ],
+    { seed: 3, balls: 50000 + 5 }, // オート購入50,000玉の残り5玉
+  );
+  let firedAuto = 0;
+  for (let t = 1000; t <= 10 * 60000; t = t + 1000) {
+    const evs = auto.advance(t);
+    expect(evs.filter((e) => e.k === 'rejected')).toEqual([]);
+    firedAuto = firedAuto + evs.filter((e) => e.k === 'fired').length;
+    expect(auto.snapshot().balls).toBeGreaterThanOrEqual(0);
+  }
+  expect(firedAuto).toBeGreaterThan(0);
+});
