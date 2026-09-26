@@ -4,7 +4,6 @@ import {
   BoxGeometry,
   BufferGeometry,
   CanvasTexture,
-  CatmullRomCurve3,
   Color,
   CylinderGeometry,
   DirectionalLight,
@@ -15,7 +14,6 @@ import {
   LatheGeometry,
   Mesh,
   MeshBasicMaterial,
-  MeshPhysicalMaterial,
   MeshStandardMaterial,
   Object3D,
   PerspectiveCamera,
@@ -28,7 +26,6 @@ import {
   SphereGeometry,
   SRGBColorSpace,
   TorusGeometry,
-  TubeGeometry,
   Vector2,
   Vector3,
   WebGLRenderer,
@@ -42,8 +39,9 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BALL_RADIUS_MM, type Board, type BoardYakumono, type Vec2 } from '@ph/core';
-import { LCD_RECT, bakeBoard, bakeGlare, bakeHall, bakeLogo, bakeSoftDot, bakeSymbolAtlas } from './bakeoff-art.ts';
+import { LCD_RECT, bakeBoard, bakeGlare, bakeHall, bakeSoftDot, bakeSymbolAtlas } from './bakeoff-art.ts';
 import { BallPlayer, MAX_BALLS } from './bakeoff-balls.ts';
+import { CAB, Cabinet, ledTube } from './bakeoff-cabinet.ts';
 import { LcdReels } from './bakeoff-lcd.ts';
 import { summarize, type FrameStats } from './frame-stats.ts';
 
@@ -55,29 +53,25 @@ export interface DrawInfo {
 /** 当たり演出の長さ（ブルームを ON にしておく時間）。 */
 const WIN_MS = 3000;
 
-// 奥行き（spec/50）: 盤面板 0 → 液晶 +3 → 玉・釘 +7 → 役物 +8 → ガラス +16 → 枠 +10〜+26。
+// 奥行き（spec/50）: 盤面板 0 → 液晶 +3 → 玉・釘 +7 → 役物 +8 → ガラス +16 → 枠 +10〜+50（bakeoff-cabinet）。
 const Z_LCD = 3;
 const Z_BALL = 7;
 const Z_YAKU = 8;
 const Z_GLASS = 16;
-const Z_FRAME_FACE = 26;
 
-// 筐体（盤面中心が原点のワールド座標 mm）。
-const CAB_HALF_W = 248;
-const CAB_TOP = 300;
-const PANEL_BOTTOM = -250;
-const TRAY_BOTTOM = -346;
-
-/** 役物の見た目（盤面 JSON の id ごと）。periodS は spec/23 の値が来るまでの仮。 */
+/** 役物の見た目（盤面 JSON の id ごと）。色は筐体に合わせて氷色・バイオレット・マゼンタの3色に絞る。periodS は spec/23 の値が来るまでの仮。 */
+const ICE = 0x8fe6ff;
+const VIOLET = 0x9a6bff;
+const MAGENTA = 0xff4d9a;
 const YAKU_STYLE: Record<string, { blades: number; color: number; periodS: number; pay: number }> = {
-  windmill: { blades: 4, color: 0x35e0ff, periodS: 2.0, pay: 1 },
-  'spinner-r': { blades: 3, color: 0xff3fb4, periodS: 1.6, pay: 2 },
-  'pocket-l': { blades: 6, color: 0xffb020, periodS: 2.8, pay: 3 },
-  'pocket-r': { blades: 6, color: 0xffb020, periodS: 2.4, pay: 3 },
-  'gate-l': { blades: 2, color: 0x7dff4a, periodS: 1.2, pay: 1 },
-  'gate-r': { blades: 2, color: 0x7dff4a, periodS: 1.2, pay: 1 },
-  'center-top': { blades: 8, color: 0xffd84a, periodS: 3.6, pay: 5 },
-  'center-bottom': { blades: 5, color: 0xff4050, periodS: 2.2, pay: 2 },
+  windmill: { blades: 4, color: ICE, periodS: 2.0, pay: 1 },
+  'spinner-r': { blades: 3, color: VIOLET, periodS: 1.6, pay: 2 },
+  'pocket-l': { blades: 6, color: VIOLET, periodS: 2.8, pay: 3 },
+  'pocket-r': { blades: 6, color: VIOLET, periodS: 2.4, pay: 3 },
+  'gate-l': { blades: 2, color: ICE, periodS: 1.2, pay: 1 },
+  'gate-r': { blades: 2, color: ICE, periodS: 1.2, pay: 1 },
+  'center-top': { blades: 8, color: 0xe8f6ff, periodS: 3.6, pay: 5 },
+  'center-bottom': { blades: 5, color: MAGENTA, periodS: 2.2, pay: 2 },
 };
 const YAKU_DEFAULT = { blades: 4, color: 0xffffff, periodS: 2, pay: 1 };
 
@@ -88,10 +82,6 @@ interface Yaku {
   angle: number;
   turns: number;
   pay: number;
-}
-
-interface Lamp {
-  phase: number;
 }
 
 /**
@@ -111,10 +101,7 @@ export class BakeoffBoard {
   private readonly ballMeshes: Mesh[] = [];
   private readonly ballShadows: InstancedMesh;
   private readonly yaku: Yaku[] = [];
-  private readonly lamps: Lamp[] = [];
-  private readonly lampMesh: InstancedMesh;
-  private readonly domeMats: MeshStandardMaterial[] = [];
-  private readonly ledLine: ShaderMaterial;
+  private readonly cabinet = new Cabinet();
   private readonly rainbow: Mesh<PlaneGeometry, ShaderMaterial>;
   private readonly hesoMat: MeshStandardMaterial;
   private readonly lcdLight: PointLight;
@@ -131,7 +118,7 @@ export class BakeoffBoard {
   private winMs = -1;
   private hesoFlash = 0;
   private homeDist = 1400;
-  private readonly homeY = (CAB_TOP + TRAY_BOTTOM) / 2;
+  private readonly homeY = (CAB.top + CAB.bottom) / 2;
 
   constructor(host: HTMLElement, popLayer: HTMLElement, board: Board, dirs: readonly Vec2[]) {
     this.host = host;
@@ -168,16 +155,13 @@ export class BakeoffBoard {
     this.hesoMat = heso.material as MeshStandardMaterial;
     this.scene.add(heso);
     for (const y of board.yakumono) this.scene.add(this.buildYakumono(y));
+    this.scene.add(this.buildYakuRings());
 
     const atlas = tex(bakeSymbolAtlas());
     this.lcd = new LcdReels(atlas);
     this.scene.add(this.buildLcd());
 
-    this.scene.add(this.buildCabinet());
-    this.lampMesh = this.buildLamps();
-    this.scene.add(this.lampMesh);
-    this.ledLine = ledLineMaterial();
-    this.scene.add(this.buildLedLine());
+    this.scene.add(this.cabinet.group);
     this.scene.add(this.buildGlass());
 
     // 玉: ジオメトリとマテリアルを全玉で共有（spec/50）。
@@ -208,7 +192,7 @@ export class BakeoffBoard {
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     // しきい値 1.2 で emissive（ランプ・液晶・虹）だけを光らせる（spec/50）。
-    this.bloom = new UnrealBloomPass(new Vector2(1, 1), 0.7, 0.35, 1.2);
+    this.bloom = new UnrealBloomPass(new Vector2(1, 1), 0.7, 0.35, 2.5);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
 
@@ -272,11 +256,11 @@ export class BakeoffBoard {
     this.composer.setPixelRatio(this.renderer.getPixelRatio());
     this.composer.setSize(w, h);
     this.camera.aspect = w / h;
-    // 筐体が縦横どちらにも収まる距離。
+    // 筐体が縦横どちらにも収まる距離（ボタン・ハンドルが手前に張り出す分を足す）。
     const t = Math.tan((this.camera.fov * Math.PI) / 360);
-    const needH = (CAB_TOP - TRAY_BOTTOM + 30) / 2 / t;
-    const needW = (CAB_HALF_W * 2 + 30) / 2 / (t * this.camera.aspect);
-    this.homeDist = Math.max(needH, needW) + 60;
+    const needH = (CAB.top - CAB.bottom + 24) / 2 / t;
+    const needW = (CAB.halfW * 2 + 16) / 2 / (t * this.camera.aspect);
+    this.homeDist = Math.max(needH, needW) + 50;
     this.camera.updateProjectionMatrix();
   }
 
@@ -365,37 +349,8 @@ export class BakeoffBoard {
   private updateLamps(sec: number, winLevel: number, white: number): void {
     const reach = this.lcd.reach ? 1 : 0;
     const blink = Math.sin(sec * 50) > 0 ? 1 : 0.35;
-    for (let i = 0; i < this.lamps.length; i++) {
-      const p = this.lamps[i]?.phase ?? 0;
-      // 通常: 金とピンクの流れる追いかけ。
-      const wave = 0.5 + 0.5 * Math.sin(p * 0.55 - sec * 5);
-      this.c.setHSL(wave > 0.5 ? 0.11 : 0.9, 0.95, 0.55);
-      let k = 0.35 + 2.2 * wave * wave * wave;
-      if (reach) {
-        this.c.setHSL(0.99, 1, 0.5);
-        k = 0.4 + 2.6 * (Math.sin(sec * 18 + p * 0.3) > 0 ? 1 : 0.1);
-      }
-      if (winLevel > 0) {
-        this.c.setHSL((p * 0.045 + sec * 1.4) % 1, 1, 0.55);
-        k = (1 + 1.5 * winLevel) * blink;
-      }
-      this.c.multiplyScalar(k + this.hesoFlash * 1.2 + white * 3);
-      this.lampMesh.setColorAt(i, this.c);
-    }
-    if (this.lampMesh.instanceColor) this.lampMesh.instanceColor.needsUpdate = true;
-
-    this.domeMats.forEach((m, i) => {
-      if (winLevel > 0) m.emissive.setHSL((sec * 1.2 + i * 0.5) % 1, 1, 0.5);
-      else if (reach) m.emissive.setHSL(0.99, 1, 0.5);
-      else m.emissive.setHSL(i ? 0.55 : 0.92, 0.9, 0.5);
-      m.emissiveIntensity = 1.2 + 0.8 * Math.sin(sec * (reach ? 20 : 3) + i * Math.PI) + winLevel * 2.5 * blink;
-    });
-
-    const u = this.ledLine.uniforms;
-    u.uTime!.value = sec;
-    u.uWin!.value = winLevel;
-    u.uReach!.value = reach;
-    u.uBoost!.value = this.hesoFlash * 0.8 + white * 2;
+    // 筐体の LED・エンブレム・ボタン（通常は氷色の流れ、リーチで赤、当たりで虹）。
+    this.cabinet.update({ sec, reach, win: winLevel, boost: this.hesoFlash * 0.8 + white * 2, blink });
 
     this.hesoMat.emissiveIntensity = 0.5 + this.hesoFlash * 4 + winLevel * 2 * blink;
     const hb = this.board.sensors.find((s) => s.kind === 'start1');
@@ -539,15 +494,20 @@ export class BakeoffBoard {
     const st = YAKU_STYLE[y.id] ?? YAKU_DEFAULT;
     const g = new Group();
     const len = y.r + 3;
-    const petal = new Shape();
-    const w = len * (st.blades <= 2 ? 0.28 : 0.42);
-    petal.moveTo(0, len * 0.15);
-    petal.bezierCurveTo(w, len * 0.3, w * 0.9, len * 0.85, 0, len);
-    petal.bezierCurveTo(-w * 0.9, len * 0.85, -w, len * 0.3, 0, len * 0.15);
+    // 角ばった羽根（根元が細く先が広い、少し後退角）。透明の樹脂が内側から光る。
+    const w0 = len * 0.1;
+    const w1 = len * (st.blades <= 2 ? 0.24 : st.blades >= 6 ? 0.26 : 0.36);
+    const blade = new Shape();
+    blade.moveTo(-w0, len * 0.3);
+    blade.lineTo(w0, len * 0.3);
+    blade.lineTo(w1 + len * 0.08, len * 0.94);
+    blade.lineTo(len * 0.08 - w1 * 0.4, len);
+    blade.lineTo(-w1 * 0.8, len * 0.9);
+    blade.closePath();
     const parts: BufferGeometry[] = [];
     for (let k = 0; k < st.blades; k++) {
-      const b = new ExtrudeGeometry(petal, { depth: 2, bevelEnabled: true, bevelThickness: 0.8, bevelSize: 0.6, bevelSegments: 2, curveSegments: 8 });
-      b.translate(0, 0, -1);
+      const b = new ExtrudeGeometry(blade, { depth: 1.6, bevelEnabled: true, bevelThickness: 0.6, bevelSize: 0.5, bevelSegments: 1 });
+      b.translate(0, 0, -0.8);
       b.rotateZ((k / st.blades) * Math.PI * 2);
       parts.push(b);
     }
@@ -556,23 +516,37 @@ export class BakeoffBoard {
       new MeshStandardMaterial({
         color: st.color,
         emissive: st.color,
-        emissiveIntensity: 0.35,
-        metalness: 0.1,
-        roughness: 0.18,
+        emissiveIntensity: 0.6,
+        metalness: 0.2,
+        roughness: 0.12,
         transparent: true,
-        opacity: 0.88,
+        opacity: 0.9,
       }),
     );
     parts.forEach((p) => p.dispose());
     g.add(blades);
-    const hub = new Mesh(new CylinderGeometry(1, 1, 1, 24), new MeshStandardMaterial({ color: 0xffd060, metalness: 1, roughness: 0.18 }));
-    hub.rotation.x = Math.PI / 2;
-    hub.scale.set(len * 0.3, 5, len * 0.3);
-    g.add(hub);
     this.toWorld(y.p.x, y.p.y, Z_YAKU, g.position);
     const dir = this.yaku.length % 2 ? -1 : 1;
     this.yaku.push({ group: g, data: y, omega: (dir * Math.PI * 2) / st.periodS, angle: 0, turns: 0, pay: st.pay });
     return g;
+  }
+
+  /** 役物のクロームの輪と軸（回らない部分。全役物で1メッシュ）。 */
+  private buildYakuRings(): Mesh {
+    const geos: BufferGeometry[] = [];
+    for (const y of this.board.yakumono) {
+      const len = y.r + 3;
+      const p = this.toWorld(y.p.x, y.p.y, Z_YAKU, new Vector3());
+      const ring = new TorusGeometry(len + 1.6, 1.1, 8, 40);
+      ring.translate(p.x, p.y, p.z - 0.5);
+      const hub = new CylinderGeometry(len * 0.3, len * 0.3, 4, 20);
+      hub.rotateX(Math.PI / 2);
+      hub.translate(p.x, p.y, p.z + 1);
+      geos.push(ring, hub);
+    }
+    const merged = mergeGeometries(geos) ?? new BufferGeometry();
+    geos.forEach((g) => g.dispose());
+    return new Mesh(merged, this.cabinet.chrome);
   }
 
   private buildLcd(): Group {
@@ -581,148 +555,30 @@ export class BakeoffBoard {
     const screen = new Mesh(new PlaneGeometry(w, h), this.lcd.material);
     this.toWorld(x + w / 2, y + h / 2, Z_LCD, screen.position);
     g.add(screen);
-    // 金の額縁（玉の中心より奥に置く）。
-    const outer = roundedRectShape(w + 10, h + 10, 8);
-    outer.holes.push(roundedRectShape(w, h, 4));
+    // クロームの額縁＋アクセント色の内枠＋外周の LED（玉の中心より奥に置く）。
+    const outer = roundedRectShape(w + 12, h + 12, 8);
+    outer.holes.push(roundedRectShape(w + 3, h + 3, 5));
     const bezel = new Mesh(
       new ExtrudeGeometry(outer, { depth: 1.2, bevelEnabled: true, bevelThickness: 0.8, bevelSize: 0.8, bevelSegments: 2, curveSegments: 6 }),
-      new MeshStandardMaterial({ color: 0xffcf6a, metalness: 1, roughness: 0.2 }),
+      this.cabinet.chrome,
     );
     bezel.position.copy(screen.position);
     bezel.position.z = Z_LCD + 0.2;
     g.add(bezel);
-    return g;
-  }
-
-  private buildCabinet(): Group {
-    const g = new Group();
-    const bw = this.board.widthMm / 2 + 1;
-    const bh = this.board.heightMm / 2 + 1;
-    // 本体の枠（盤面の窓をくり抜いた厚板、パール調のクリア塗装）。
-    const panel = new Shape();
-    panel.moveTo(-CAB_HALF_W + 28, PANEL_BOTTOM);
-    panel.lineTo(CAB_HALF_W - 28, PANEL_BOTTOM);
-    panel.quadraticCurveTo(CAB_HALF_W, PANEL_BOTTOM, CAB_HALF_W, PANEL_BOTTOM + 28);
-    panel.lineTo(CAB_HALF_W, CAB_TOP - 60);
-    panel.quadraticCurveTo(CAB_HALF_W, CAB_TOP, CAB_HALF_W - 60, CAB_TOP);
-    panel.lineTo(-CAB_HALF_W + 60, CAB_TOP);
-    panel.quadraticCurveTo(-CAB_HALF_W, CAB_TOP, -CAB_HALF_W, CAB_TOP - 60);
-    panel.lineTo(-CAB_HALF_W, PANEL_BOTTOM + 28);
-    panel.quadraticCurveTo(-CAB_HALF_W, PANEL_BOTTOM, -CAB_HALF_W + 28, PANEL_BOTTOM);
-    panel.holes.push(roundedRectShape(bw * 2, bh * 2, 16));
-    const pearl = new MeshPhysicalMaterial({
-      color: 0x120a26,
-      metalness: 0.2,
-      roughness: 0.34,
-      clearcoat: 1,
-      clearcoatRoughness: 0.05,
-    });
-    const body = new Mesh(new ExtrudeGeometry(panel, { depth: 10, bevelEnabled: true, bevelThickness: 3, bevelSize: 3, bevelSegments: 3, curveSegments: 16 }), pearl);
-    body.position.z = 13;
-    g.add(body);
-
-    // 窓の金縁。
-    const rim = roundedRectShape(bw * 2 + 12, bh * 2 + 12, 20);
-    rim.holes.push(roundedRectShape(bw * 2, bh * 2, 16));
-    const gold = new MeshStandardMaterial({ color: 0xffcf6a, metalness: 1, roughness: 0.16 });
-    const rimMesh = new Mesh(new ExtrudeGeometry(rim, { depth: 1.5, bevelEnabled: true, bevelThickness: 1.2, bevelSize: 1.2, bevelSegments: 2, curveSegments: 12 }), gold);
-    rimMesh.position.z = Z_FRAME_FACE + 0.3;
-    g.add(rimMesh);
-
-    // 上部: ロゴと左右のドームランプ。
-    const logo = new Mesh(
-      new PlaneGeometry(300, 56),
-      new MeshBasicMaterial({ map: tex(bakeLogo()), transparent: true, depthWrite: false, toneMapped: false }),
+    const inner = roundedRectShape(w + 3, h + 3, 5);
+    inner.holes.push(roundedRectShape(w, h, 4));
+    const trim = new Mesh(
+      new ExtrudeGeometry(inner, { depth: 0.8, bevelEnabled: false, curveSegments: 6 }),
+      new MeshStandardMaterial({ color: 0x7a3cff, emissive: 0x7a3cff, emissiveIntensity: 0.6, metalness: 0.4, roughness: 0.25 }),
     );
-    logo.position.set(0, (bh + CAB_TOP) / 2 + 2, Z_FRAME_FACE + 0.6);
-    g.add(logo);
-    const domeGeo = new SphereGeometry(17, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2);
-    domeGeo.rotateX(Math.PI / 2);
-    for (const side of [-1, 1]) {
-      const m = new MeshStandardMaterial({ color: 0x401020, emissive: 0xff40a0, emissiveIntensity: 1.5, roughness: 0.15, metalness: 0 });
-      this.domeMats.push(m);
-      const d = new Mesh(domeGeo, m);
-      d.position.set(side * 205, logo.position.y, Z_FRAME_FACE);
-      d.scale.z = 0.7;
-      g.add(d);
-    }
-
-    // 下部の上皿（手前に張り出した箱）＋クロームの縁＋ハンドル。
-    const tray = roundedRectShape(CAB_HALF_W * 2, PANEL_BOTTOM - TRAY_BOTTOM - 4, 26);
-    const trayMesh = new Mesh(new ExtrudeGeometry(tray, { depth: 30, bevelEnabled: true, bevelThickness: 4, bevelSize: 4, bevelSegments: 3, curveSegments: 12 }), pearl);
-    trayMesh.position.set(0, (PANEL_BOTTOM + TRAY_BOTTOM) / 2 - 2, 13);
-    g.add(trayMesh);
-    const chrome = new MeshStandardMaterial({ color: 0xf0f2f8, metalness: 1, roughness: 0.1 });
-    const lip = new Mesh(new BoxGeometry(CAB_HALF_W * 2 - 30, 4, 5), chrome);
-    lip.position.set(0, PANEL_BOTTOM - 6, 48);
-    g.add(lip);
-    const ring = new Mesh(new TorusGeometry(22, 5, 14, 40), chrome);
-    ring.position.set(200, TRAY_BOTTOM + 42, 50);
-    g.add(ring);
-    const knob = new Mesh(
-      new CylinderGeometry(13, 13, 12, 28),
-      new MeshPhysicalMaterial({ color: 0xd01830, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.05 }),
-    );
-    knob.rotation.x = Math.PI / 2;
-    knob.position.set(200, TRAY_BOTTOM + 42, 54);
-    g.add(knob);
+    trim.position.copy(screen.position);
+    trim.position.z = Z_LCD + 0.2;
+    g.add(trim);
+    const led = new Mesh(ledTube(roundedRectShape(w + 16, h + 16, 10).getSpacedPoints(120), 0, 0.9, 0, true), this.cabinet.led);
+    led.position.copy(screen.position);
+    led.position.z = Z_LCD + 1.6;
+    g.add(led);
     return g;
-  }
-
-  /** 枠ランプ（LED の粒）。InstancedMesh 1つで、色を instanceColor → emissive に流す。 */
-  private buildLamps(): InstancedMesh {
-    const pos: [number, number, number][] = [];
-    // 左右の柱（下から上へ）。
-    for (let i = 0; i < 13; i++) {
-      const y = -215 + i * 36;
-      pos.push([-235, y, Z_FRAME_FACE]);
-    }
-    // 上端（左→右）。
-    for (let i = 0; i < 15; i++) pos.push([-196 + i * 28, CAB_TOP - 10, Z_FRAME_FACE - 1]);
-    for (let i = 12; i >= 0; i--) pos.push([235, -215 + i * 36, Z_FRAME_FACE]);
-    // 上皿の前面。
-    for (let i = 0; i < 12; i++) pos.push([-215 + i * 30, TRAY_BOTTOM + 24, 47.5]);
-    const mat = new MeshStandardMaterial({ color: 0x1a1a1a, emissive: 0xffffff, emissiveIntensity: 1, roughness: 0.2, metalness: 0 });
-    mat.onBeforeCompile = (s) => {
-      // instanceColor を emissive にも掛ける（1回の draw call で粒ごとに色を変える）。
-      s.fragmentShader = s.fragmentShader.replace(
-        '#include <emissivemap_fragment>',
-        '#include <emissivemap_fragment>\n#ifdef USE_COLOR\n  totalEmissiveRadiance *= vColor.rgb;\n#endif',
-      );
-    };
-    const geo = new SphereGeometry(5, 14, 10);
-    const mesh = new InstancedMesh(geo, mat, pos.length);
-    pos.forEach(([x, y, z], i) => {
-      this.tmp.position.set(x, y, z);
-      this.tmp.scale.set(1, 1, 0.6);
-      this.tmp.updateMatrix();
-      mesh.setMatrixAt(i, this.tmp.matrix);
-      mesh.setColorAt(i, this.c.setRGB(1, 1, 1));
-      this.lamps.push({ phase: i });
-    });
-    this.tmp.scale.set(1, 1, 1);
-    return mesh;
-  }
-
-  /** 窓を一周する LED ライン（色が流れる）。 */
-  private buildLedLine(): Mesh {
-    const hw = this.board.widthMm / 2 + 11;
-    const hh = this.board.heightMm / 2 + 11;
-    const r = 22;
-    const pts: Vector3[] = [];
-    const corner = (cx: number, cy: number, a0: number) => {
-      for (let k = 0; k <= 8; k++) {
-        const a = a0 + (k / 8) * (Math.PI / 2);
-        pts.push(new Vector3(cx + Math.cos(a) * r, cy + Math.sin(a) * r, Z_FRAME_FACE + 1.6));
-      }
-    };
-    corner(hw - r, hh - r, 0);
-    corner(-hw + r, hh - r, Math.PI / 2);
-    corner(-hw + r, -hh + r, Math.PI);
-    corner(hw - r, -hh + r, Math.PI * 1.5);
-    const curve = new CatmullRomCurve3(pts, true, 'centripetal');
-    const m = new Mesh(new TubeGeometry(curve, 360, 2.6, 8, true), this.ledLine);
-    return m;
   }
 
   private buildGlass(): Mesh {
@@ -749,13 +605,13 @@ export class BakeoffBoard {
 
   /** 上皿に溜まった玉（静的。InstancedMesh 1つ）。 */
   private buildTrayBalls(geo: SphereGeometry, mat: MeshStandardMaterial): InstancedMesh {
+    // 上皿の溝（左右の暗い溝、x ±70〜214・y -248〜-276）に溜まった玉。
     const r = BALL_RADIUS_MM;
     const pos: [number, number, number][] = [];
-    const baseY = PANEL_BOTTOM - 3 + r;
-    for (let row = 0; row < 2; row++) {
-      for (let k = 0; k < 22; k++) pos.push([-205 + (row % 2) * r + k * r * 2, baseY, 32 + row * 9.5]);
-    }
-    for (let k = 4; k < 14; k++) pos.push([-205 + r * 2 + k * r * 2, baseY + r * 1.6, 37]);
+    const z = 26 + r;
+    for (let k = 0; k < 12; k++) pos.push([-208 + k * r * 2, -276 + r + 0.5, z]);
+    for (let k = 0; k < 8; k++) pos.push([-203 + k * r * 2, -276 + r * 2.6, z + 1]);
+    for (let k = 0; k < 5; k++) pos.push([78 + k * r * 2, -276 + r + 0.5, z]);
     const mesh = new InstancedMesh(geo, mat, pos.length);
     pos.forEach(([x, y, z], i) => {
       this.tmp.position.set(x, y, z);
@@ -790,33 +646,6 @@ function roundedRectShape(w: number, h: number, r: number): Shape {
 
 const HUE_GLSL = /* glsl */ `
   vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }`;
-
-/** 窓まわりの LED ライン。通常は金とピンクが流れ、リーチで赤、当たりで虹。 */
-function ledLineMaterial(): ShaderMaterial {
-  return new ShaderMaterial({
-    uniforms: { uTime: { value: 0 }, uWin: { value: 0 }, uReach: { value: 0 }, uBoost: { value: 0 } },
-    vertexShader: /* glsl */ `
-      varying vec2 vUv;
-      void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: /* glsl */ `
-      uniform float uTime, uWin, uReach, uBoost;
-      varying vec2 vUv;
-      ${HUE_GLSL}
-      void main() {
-        float x = vUv.x;
-        float core = 1.0 - abs(vUv.y - 0.5) * 1.6;
-        float dash = smoothstep(0.55, 1.0, sin(x * 90.0 - uTime * 9.0));
-        vec3 base = mix(vec3(1.0, 0.62, 0.18), vec3(1.0, 0.22, 0.65), 0.5 + 0.5 * sin(x * 18.0 - uTime * 2.2));
-        vec3 col = base * (0.55 + dash * 1.1);
-        col = mix(col, vec3(1.0, 0.05, 0.08) * (0.6 + 1.4 * step(0.0, sin(uTime * 22.0 + x * 40.0))), uReach);
-        col = mix(col, hue(x * 4.0 - uTime * 1.8) * (1.4 + dash * 1.2), uWin);
-        col = col * core + uBoost;
-        gl_FragColor = vec4(col, 1.0);
-        #include <colorspace_fragment>
-      }`,
-    toneMapped: false,
-  });
-}
 
 /** 当たり演出: 画面全体に加算で重ねる虹と白フラッシュ（クリップ空間に直接描く, spec/43 の FlashLayer）。 */
 function rainbowMaterial(): ShaderMaterial {

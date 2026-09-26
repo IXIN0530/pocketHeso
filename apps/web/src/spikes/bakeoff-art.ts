@@ -67,29 +67,48 @@ export function bakeBoard(board: Board): HTMLCanvasElement {
   }
   ctx.restore();
 
-  // 金のリボン（左上と右上からヘソへ流れる曲線。視線をヘソに集める）。
-  const ribbon = (sx: number, flip: number) => {
-    const g = ctx.createLinearGradient(sx, 40, 202, 300);
-    g.addColorStop(0, 'rgba(255,220,120,0)');
-    g.addColorStop(0.5, 'rgba(255,200,90,0.35)');
-    g.addColorStop(1, 'rgba(255,120,60,0.05)');
-    ctx.strokeStyle = g;
-    ctx.lineCap = 'round';
-    for (const [w, off] of [[9, 0], [2, 8]] as const) {
-      ctx.lineWidth = w;
-      ctx.beginPath();
-      ctx.moveTo(sx, 40 + off);
-      ctx.bezierCurveTo(sx + flip * 20, 220, 202 - flip * 110, 330 + off, 202, 318 + off);
-      ctx.stroke();
-    }
+  // ガラス片のような面（液晶の中心から放射。筐体の装甲の面分割に合わせる）。
+  const shards: [[number, number], [number, number]][] = [
+    [[0, 0], [130, 0]],
+    [[300, 0], [420, 0]],
+    [[420, 290], [420, 430]],
+    [[0, 350], [0, 210]],
+    [[150, 460], [270, 460]],
+  ];
+  for (const [[x0, y0], [x1, y1]] of shards) {
+    const g = ctx.createLinearGradient(cx, cy, (x0 + x1) / 2, (y0 + y1) / 2);
+    g.addColorStop(0, 'rgba(185,150,255,0.16)');
+    g.addColorStop(1, 'rgba(120,200,255,0.02)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // 氷色の細い回路線（左右の上から液晶の脇へ、下はヘソを囲む台形）。
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  const trace = (pts: [number, number][], a: number) => {
+    ctx.strokeStyle = `rgba(205,238,255,${a})`;
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.stroke();
   };
-  ribbon(30, 1);
-  ribbon(372, -1);
+  ctx.lineWidth = 0.9;
+  trace([[0, 170], [100, 110], [100, 30]], 0.35);
+  trace([[420, 150], [320, 90], [320, 20]], 0.35);
+  trace([[60, 460], [150, 270], [260, 270], [350, 460]], 0.3);
+  ctx.lineWidth = 2.4;
+  trace([[4, 176], [100, 116]], 0.1);
+  trace([[416, 156], [320, 96]], 0.1);
 
   // 同心の軌道線。
   ctx.lineWidth = 0.8;
   for (let r = 70; r < 360; r += 42) {
-    ctx.strokeStyle = `rgba(255,215,140,${0.22 - r / 2400})`;
+    ctx.strokeStyle = `rgba(190,225,255,${0.16 - r / 3000})`;
     ctx.beginPath();
     ctx.ellipse(cx, cy, r * 1.15, r, 0, 0, Math.PI * 2);
     ctx.stroke();
@@ -131,6 +150,26 @@ export function bakeBoard(board: Board): HTMLCanvasElement {
   out.addColorStop(1, 'rgba(0,0,0,0.95)');
   ctx.fillStyle = out;
   ctx.fillRect(0, 440, 388, 20);
+
+  // 液晶の左右に張り出すアクセント色の板（センター役物の翼）。
+  for (const sx of [-1, 1]) {
+    const ex = sx < 0 ? LCD_RECT.x : LCD_RECT.x + LCD_RECT.w;
+    const g = ctx.createLinearGradient(ex, LCD_RECT.y, ex + sx * 40, LCD_RECT.y + 90);
+    g.addColorStop(0, '#b996ff');
+    g.addColorStop(0.5, '#7a3cff');
+    g.addColorStop(1, '#35108a');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(ex, LCD_RECT.y);
+    ctx.lineTo(ex + sx * 35, LCD_RECT.y + 16);
+    ctx.lineTo(ex + sx * 41, LCD_RECT.y + 60);
+    ctx.lineTo(ex, LCD_RECT.y + 90);
+    ctx.closePath();
+    ctx.fill();
+    ctx.lineWidth = 0.8;
+    ctx.strokeStyle = 'rgba(235,245,255,0.8)';
+    ctx.stroke();
+  }
 
   // 液晶の落ち影。
   ctx.save();
@@ -188,8 +227,8 @@ export function bakeBoard(board: Board): HTMLCanvasElement {
     ctx.beginPath();
     ctx.arc(x, yy, r, 0, Math.PI * 2);
     ctx.fill();
-    ctx.lineWidth = 1.2;
-    ctx.strokeStyle = 'rgba(255,205,110,0.85)';
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(205,238,255,0.55)';
     ctx.stroke();
   }
 
@@ -299,29 +338,6 @@ export function bakeGlare(): HTMLCanvasElement {
     ctx.fillRect(x - w, -200, w * 2, 400);
   }
   ctx.restore();
-  return c;
-}
-
-/** 上部のロゴ（透明地）。 */
-export function bakeLogo(): HTMLCanvasElement {
-  const [c, ctx] = canvas(1024, 192);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = 'italic 900 118px "Arial Black", -apple-system, "Helvetica Neue", sans-serif';
-  ctx.lineJoin = 'round';
-  ctx.shadowColor = 'rgba(255,60,140,0.9)';
-  ctx.shadowBlur = 28;
-  ctx.lineWidth = 16;
-  ctx.strokeStyle = '#3a0a30';
-  ctx.strokeText('POCKET HESO', 512, 100);
-  ctx.shadowBlur = 0;
-  const g = ctx.createLinearGradient(0, 40, 0, 160);
-  g.addColorStop(0, '#fffbe0');
-  g.addColorStop(0.45, '#ffd34a');
-  g.addColorStop(0.55, '#ff9a1a');
-  g.addColorStop(1, '#fff0a0');
-  ctx.fillStyle = g;
-  ctx.fillText('POCKET HESO', 512, 100);
   return c;
 }
 
