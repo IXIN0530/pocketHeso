@@ -33,7 +33,7 @@ test('既定の経済定義が spec/23 の数値（P3-T4 調整 D-048 を含む�
   expect(spec.close.startBalls).toBe(100);
   expect(spec.close.medalsPerPoint).toBe(7);
   expect(spec.close.regularMult).toBe(1);
-  expect(spec.jackpotFever.multByRate).toEqual([4, 5, 6, 8, 11, 16, 21]);
+  expect(spec.jackpotFever.multByRate).toEqual([4.5, 5, 6, 8, 11, 16, 21]);
   expect(spec.upgrades.nailValues).toEqual([0, 0.0006, 0.0012, 0.0018, 0.0024, 0.003]);
   expect(spec.claims).toEqual({ streakPerDay: 0.05, streakMaxDays: 20 });
 });

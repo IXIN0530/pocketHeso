@@ -22,6 +22,8 @@ const ECON_USAGE =
   'usage: pachisim econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--json]';
 
 const MIN_MS = 60000;
+/** 経済 tick の刻み（D-047）。 */
+const ECON_TICK_MS = 1000;
 const DAY_MS = 86400000;
 /** 歩数が積み上がる時間帯（分。07:00〜21:00 に線形）。 */
 const STEPS_FROM_MIN = 7 * 60;
@@ -227,6 +229,8 @@ export interface EconDayRow {
   readonly awakens: number;
   /** 解放済みの最上位役物（Lv≥1 の最大 index。なければ '-'）。 */
   readonly top: string;
+  /** 役物 Lv の合計（週次の「最高到達」判定用）。 */
+  readonly lvTotal: number;
   readonly medals: number;
   readonly medalsActivity: number;
   readonly medalsPachinko: number;
@@ -235,7 +239,7 @@ export interface EconDayRow {
   readonly payout: number;
   /** 役物生産のうち大当たりフィーバー抜きの素点（累計）。 */
   readonly yakumono: number;
-  /** 大当たりフィーバーによる上乗せ分（累計。gain×(mult-1)/multの近似）。 */
+  /** 大当たりフィーバーによる上乗せ分（累計。advance 区間内をフィーバー tick 数で按分, feverExtraOf）。 */
   readonly fever: number;
   readonly fuelMin: number;
 }
@@ -322,14 +326,55 @@ function applyBuy(s: IdleEconomySnapshot, target: string): IdleEconomySnapshot {
   return { ...s, tomeuchiOwned: true };
 }
 
-function topYakumono(s: IdleEconomySnapshot): string {
-  let top = '-';
+function topIndex(s: IdleEconomySnapshot): number {
+  let top = -1;
   for (let i = 0; i < ECONOMY_YAKUMONO_IDS.length; i = i + 1) {
     if ((s.lv[i] as number) >= 1) {
-      top = ECONOMY_YAKUMONO_IDS[i] as string;
+      top = i;
     }
   }
   return top;
+}
+
+/** [from, to) にある経済 tick（1000ms グリッド）の数。 */
+function gridTicks(from: number, to: number): number {
+  return Math.ceil(to / ECON_TICK_MS) - Math.ceil(from / ECON_TICK_MS);
+}
+
+/**
+ * advance 1区間 [t0, t1) の tick 生産のうち大当たりフィーバーの上乗せ分。区間内の生産/秒は一定とみなし、
+ * jackpotStarted〜Ended の tick 数で按分する（同刻は spin→tick なので開始時刻の tick から掛かり、終了時刻の tick は掛からない）。
+ */
+export function feverExtraOf(
+  tick: number,
+  t0: number,
+  t1: number,
+  feverAt0: boolean,
+  evs: readonly EngineSimEvent[],
+  mult: number,
+): number {
+  let feverTicks = 0;
+  let on = feverAt0;
+  let from = t0;
+  for (let i = 0; i < evs.length; i = i + 1) {
+    const e = evs[i] as EngineSimEvent;
+    if (e.k === 'jackpotStarted' && !on) {
+      on = true;
+      from = e.at;
+    } else if (e.k === 'jackpotEnded' && on) {
+      feverTicks = feverTicks + gridTicks(from, e.at);
+      on = false;
+    }
+  }
+  if (on) {
+    feverTicks = feverTicks + gridTicks(from, t1);
+  }
+  const all = gridTicks(t0, t1);
+  if (feverTicks <= 0 || all <= 0 || mult <= 1) {
+    return 0;
+  }
+  const perTick = tick / (all - feverTicks + feverTicks * mult);
+  return perTick * feverTicks * (mult - 1);
 }
 
 /**
@@ -374,6 +419,7 @@ export function runEcon(
   let firstAwakenDay: number | null = null;
   let firstCloseDay: number | null = null;
   const dayOf = (at: number): number => Math.floor(at / DAY_MS) + 1;
+  const feverMult = spec.jackpotFever.multByRate[spec.upgrades.rates.indexOf(1)] as number;
 
   while (t < end) {
     while (idx < inputs.length && (inputs[idx] as EconInput).t === t) {
@@ -459,21 +505,15 @@ export function runEcon(
     next = next < dayEnd ? next : dayEnd;
     const total0 = econ.getTotalTotal();
     const payout0 = eng.project().totals.payoutBalls;
-    const fever0 = econ.getJackpotFeverMult();
+    const feverAt0 = econ.getJackpotFeverMult() > 1;
     const evs: EngineSimEvent[] = eng.advance(next);
     const total1 = econ.getTotalTotal();
     const payout1 = eng.project().totals.payoutBalls;
-    const fever1 = econ.getJackpotFeverMult();
     const tick = total1 - total0 - (payout1 - payout0);
     if (tick > 0) {
-      const mult = fever0 > 1 ? fever0 : fever1;
-      if (mult > 1) {
-        const extra = tick * (mult - 1) / mult;
-        feverExtra = feverExtra + extra;
-        yakumonoBase = yakumonoBase + (tick - extra);
-      } else {
-        yakumonoBase = yakumonoBase + tick;
-      }
+      const extra = feverExtraOf(tick, t, next, feverAt0, evs, feverMult);
+      feverExtra = feverExtra + extra;
+      yakumonoBase = yakumonoBase + (tick - extra);
     }
     for (let i = 0; i < evs.length; i = i + 1) {
       const e = evs[i] as EngineSimEvent;
@@ -488,6 +528,7 @@ export function runEcon(
     if (t === dayEnd) {
       const pe = eng.project();
       const se = econ.snapshot();
+      const ti = topIndex(se);
       rows.push({
         day: t / DAY_MS,
         balls: pe.balls,
@@ -499,7 +540,8 @@ export function runEcon(
         medalPts: Math.floor(se.medalsEarned / spec.close.medalsPerPoint),
         closes,
         awakens,
-        top: topYakumono(se),
+        top: ti >= 0 ? (ECONOMY_YAKUMONO_IDS[ti] as string) : '-',
+        lvTotal: se.lv.reduce((a, v) => a + v, 0),
         medals: pe.medals,
         medalsActivity,
         medalsPachinko,
@@ -554,8 +596,13 @@ function fmtNum(v: number): string {
   return v.toExponential(2);
 }
 
-/** 日別表とバランス目標の判定を文字列にする。 */
-export function formatEcon(r: EconResult, ev: { init: number; full: number } | null): string {
+/** 最終日の常連P（行が無ければ 0）。 */
+export function lastRegular(r: EconResult): number {
+  return r.rows.length > 0 ? (r.rows[r.rows.length - 1] as EconDayRow).regular : 0;
+}
+
+/** 日別表とバランス目標の判定を文字列にする。heavy は同じ機種・seed・日数の standard（baseline）と常連Pを比べる。 */
+export function formatEcon(r: EconResult, ev: { init: number; full: number } | null, baseline: EconResult | null = null): string {
   const lines: string[] = [];
   lines.push(`econ: profile=${r.profile} days=${r.days} machine=${r.machine} seed=${r.seed}`);
   lines.push('day | balls | perSec(fg) | runTotal | total | regP(ball/med) | close | awaken | top | medals | yaku/fever/payout | fever% | jackpots | fuel(h,cum)');
@@ -586,7 +633,7 @@ export function formatEcon(r: EconResult, ev: { init: number; full: number } | n
     const ok2 = r.firstAwakenDay !== null && r.firstAwakenDay >= 3 && r.firstAwakenDay <= 4;
     const ok3 = r.firstCloseDay !== null && r.firstCloseDay >= 6 && r.firstCloseDay <= 8;
     const ng3 = r.firstCloseDay === null && r.days < 8 ? 'NG (run --days >= 8)' : 'NG';
-    const firstGain = r.closeHistory.length > 0 ? (r.closeHistory[0] as { gain: number }).gain : 0;
+    const firstGain = r.closeHistory.length > 0 ? (r.closeHistory[0] as EconCloseEntry).gain : 0;
     const okGain = firstGain === 1;
     lines.push(`  croon on day 1: ${ok1 ? 'OK' : 'NG'} / first awaken ~day 3 (3-4): ${ok2 ? 'OK' : 'NG'} / first close ~day 7 (6-8): ${ok3 ? 'OK' : ng3} / first gain +1: ${okGain ? 'OK' : 'NG'}`);
     if (row7 !== null) {
@@ -597,14 +644,17 @@ export function formatEcon(r: EconResult, ev: { init: number; full: number } | n
     if (r.days >= 28) {
       const closes28 = r.closeHistory.filter((c) => c.day <= 28).length;
       lines.push(`  closes in 28d ~(weekly x4): ${closes28 >= 3 && closes28 <= 5 ? 'OK' : 'NG'} (${closes28})`);
+      // 各週の最高到達役物は (役物index, その Lv) の辞書順で比べる（最上位役物に達した後も Lv で「上回る」を判定, D-054）。
       const weekTop: number[] = [-1, -1, -1, -1];
+      const weekLv: number[] = [0, 0, 0, 0];
       const weekPer: number[] = [0, 0, 0, 0];
       for (let i = 0; i < r.rows.length && i < 28; i = i + 1) {
         const w = r.rows[i] as EconDayRow;
         const wk = Math.floor(i / 7);
         const topIdx = (ECONOMY_YAKUMONO_IDS as readonly string[]).indexOf(w.top);
-        if (topIdx > (weekTop[wk] as number)) {
+        if (topIdx > (weekTop[wk] as number) || (topIdx === weekTop[wk] && w.lvTotal > (weekLv[wk] as number))) {
           weekTop[wk] = topIdx;
+          weekLv[wk] = w.lvTotal;
         }
         if (w.perSecFg > (weekPer[wk] as number)) {
           weekPer[wk] = w.perSecFg;
@@ -613,20 +663,29 @@ export function formatEcon(r: EconResult, ev: { init: number; full: number } | n
       let topUp = true;
       let perUp = true;
       for (let k = 1; k < 4; k = k + 1) {
-        if (!((weekTop[k] as number) >= (weekTop[k - 1] as number))) {
+        const cur = weekTop[k] as number;
+        const prev = weekTop[k - 1] as number;
+        if (!(cur > prev || (cur === prev && (weekLv[k] as number) > (weekLv[k - 1] as number)))) {
           topUp = false;
         }
         if (!((weekPer[k] as number) > (weekPer[k - 1] as number))) {
           perUp = false;
         }
       }
-      lines.push(`  weekly top non-decreasing: ${topUp ? 'OK' : 'NG'} (${weekTop.join('/')}) / weekly perSec increasing: ${perUp ? 'OK' : 'NG'}`);
+      const weekStr = weekTop.map((v, k) => `${v}:${weekLv[k]}`).join('/');
+      lines.push(`  weekly top increasing: ${topUp ? 'OK' : 'NG'} (${weekStr}) / weekly perSec increasing: ${perUp ? 'OK' : 'NG'}`);
     }
   } else if (r.profile === 'none') {
     const ok = r.firstCloseDay === null ? r.days >= 60 : r.firstCloseDay > 60;
     lines.push(`  first close after day 60: ${ok ? 'OK' : r.firstCloseDay === null ? 'NG (run --days >= 61)' : 'NG'}`);
   } else {
-    lines.push(`  heavy regular ${r.rows.length > 0 ? (r.rows[r.rows.length - 1] as EconDayRow).regular : 0} (should exceed standard; compare manually)`);
+    const mine = lastRegular(r);
+    if (baseline === null) {
+      lines.push(`  heavy regular > standard: NG (no standard baseline)`);
+    } else {
+      const base = lastRegular(baseline);
+      lines.push(`  heavy regular > standard: ${mine > base ? 'OK' : 'NG'} (${mine} vs ${base})`);
+    }
   }
   if (ev !== null) {
     const lo = r.machine.startsWith('lt-') ? 0.7 : 0.8;

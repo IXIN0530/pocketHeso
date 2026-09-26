@@ -4,11 +4,16 @@ import {
   buildEconInputs,
   econDayString,
   exerciseFuelMin,
+  feverExtraOf,
   formatEcon,
+  lastRegular,
   parseEconArgs,
   runEcon,
   stepsFuelMin,
+  type EconDayRow,
+  type EconResult,
 } from './econ.ts';
+import type { EngineSimEvent } from '@ph/core';
 
 function profile(id: string) {
   const p = ECON_PROFILES.find((x) => x.id === id);
@@ -92,3 +97,66 @@ test('runEcon は決定論で、メダル内訳の合計が残高＋覚醒消費
   expect(text).toContain('croon on day 1: OK');
   expect(text).toContain('pachinko EV init 0.850 (≈0.85: OK) / all upgrades 1.000 (<=1.02: OK)');
 }, 60000);
+
+function jp(k: 'jackpotStarted' | 'jackpotEnded', at: number): EngineSimEvent {
+  return (k === 'jackpotStarted'
+    ? { k, entry: 1, at, kind: 'normal', rounds: 4 }
+    : { k, entry: 1, at, payout: 0 }) as unknown as EngineSimEvent;
+}
+
+test('feverExtraOf は区間内のフィーバー tick 数だけで按分する', () => {
+  // 60 tick 中 10 tick が ×4: 生産 = r×(50 + 40) → 上乗せ = r×30。
+  expect(feverExtraOf(90, 0, 60000, false, [jp('jackpotStarted', 20000), jp('jackpotEnded', 30000)], 4)).toBeCloseTo(30, 9);
+  // 開始時点でフィーバー中・途中で終了（開始時刻の tick は掛かり、終了時刻の tick は掛からない）。
+  expect(feverExtraOf(90, 0, 60000, true, [jp('jackpotEnded', 10000)], 4)).toBeCloseTo(30, 9);
+  // 区間の最後まで続く・グリッド外の時刻は次の tick から。
+  expect(feverExtraOf(90, 0, 60000, false, [jp('jackpotStarted', 49500)], 4)).toBeCloseTo(30, 9);
+  // 区間全体がフィーバー・フィーバー無し。
+  expect(feverExtraOf(240, 0, 60000, true, [], 4)).toBeCloseTo(180, 9);
+  expect(feverExtraOf(60, 0, 60000, false, [], 4)).toBe(0);
+});
+
+test('runEcon 7日: 閉店は獲得≥1のみ・玉内訳が累計と整合・新目標行を出す', () => {
+  const r = runEcon(profile('standard'), 7, 1, 'light-middle-01');
+  expect(r.closeHistory.length).toBeGreaterThanOrEqual(1);
+  for (const c of r.closeHistory) {
+    expect(c.gain).toBeGreaterThanOrEqual(1);
+    expect(c.day).toBeGreaterThanOrEqual(1);
+    expect(c.day).toBeLessThanOrEqual(7);
+  }
+  const last = r.rows[6] as EconDayRow;
+  expect(last.closes).toBe(r.closeHistory.length);
+  expect(r.fever).toBeGreaterThan(0);
+  // 役物素点＋フィーバー＋出玉 = 全期間累計玉（予告のボーナス等も tick 側に入る）。
+  expect((r.yakumono + r.fever + r.payout) / last.totalTotal).toBeCloseTo(1, 9);
+  const text = formatEcon(r, null);
+  expect(text).toMatch(/first gain \+1: OK/);
+  expect(text).toMatch(/fever share day1-7 20-40%: (OK|NG) \(\d+\.\d%\)/);
+}, 120000);
+
+test('formatEcon: heavy は standard と常連Pを比べ、週次は (最上位役物, Lv合計) の辞書順で上回るかを見る', () => {
+  const row = (day: number, top: string, lvTotal: number, regular: number): EconDayRow => ({
+    day, balls: 0, perSecFg: day, runTotal: 0, totalTotal: 0, regular, ballPts: 0, medalPts: 0, closes: 0, awakens: 0,
+    top, lvTotal, medals: 0, medalsActivity: 0, medalsPachinko: 0, jackpots: 0, fired: 0, payout: 0, yakumono: 0, fever: 0, fuelMin: 0,
+  });
+  const res = (profileId: string, rows: EconDayRow[]): EconResult => ({
+    profile: profileId, machine: 'light-middle-01', seed: 1, days: rows.length, rows, croonDay: 1, firstAwakenDay: 3,
+    firstCloseDay: 7, medalsActivity: 0, medalsPachinko: 0, closeHistory: [{ day: 7, gain: 1 }], yakumono: 0, fever: 0, payout: 0,
+  });
+  const heavy = res('heavy', [row(1, '-', 0, 3)]);
+  const std = res('standard', [row(1, '-', 0, 2)]);
+  expect(lastRegular(heavy)).toBe(3);
+  expect(formatEcon(heavy, null, std)).toContain('heavy regular > standard: OK (3 vs 2)');
+  expect(formatEcon(heavy, null, heavy)).toContain('heavy regular > standard: NG (3 vs 3)');
+  expect(formatEcon(heavy, null)).toContain('heavy regular > standard: NG (no standard baseline)');
+  const weeks = (lv: readonly number[]): EconDayRow[] => {
+    const out: EconDayRow[] = [];
+    for (let d = 0; d < 28; d = d + 1) {
+      const w = Math.floor(d / 7);
+      out.push(row(d + 1, w === 0 ? 'denchu' : 'shima', lv[w] as number, 0));
+    }
+    return out;
+  };
+  expect(formatEcon(res('standard', weeks([10, 20, 30, 40])), null)).toContain('weekly top increasing: OK');
+  expect(formatEcon(res('standard', weeks([10, 20, 30, 30])), null)).toContain('weekly top increasing: NG');
+});

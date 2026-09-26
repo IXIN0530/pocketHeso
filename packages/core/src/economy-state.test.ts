@@ -244,10 +244,10 @@ test('大当たりフィーバーはレート別倍率・予告フィーバー�
   econ.onBuy('windmill', 1, 1000, 0);
   const base = econ.getPerSec(true, 1000);
   econ.onJackpotFever(1);
-  expect(econ.getJackpotFeverMult()).toBe(4);
-  expect(econ.getPerSec(true, 1000)).toBe(base * 4);
+  expect(econ.getJackpotFeverMult()).toBe(4.5);
+  expect(econ.getPerSec(true, 1000)).toBe(base * 4.5);
   econ.onNoticeFever();
-  expect(econ.getPerSec(true, 1000)).toBe(base * 7 * 4);
+  expect(econ.getPerSec(true, 1000)).toBe(base * 7 * 4.5);
   econ.onJackpotFever(4);
   expect(econ.getJackpotFeverMult()).toBe(5);
   const copy = econ.fork();

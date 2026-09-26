@@ -84,7 +84,7 @@ test('ゴールデン: script01のイベント列＋最終経済状態が固定'
   const { events, fullHash } = runScript();
   expect(events.length).toBeGreaterThan(60000);
   expect(events.filter((e) => e.k === 'noticeSpawned').length).toBeGreaterThan(0);
-  expect(fullHash.slice(0, 16)).toBe('e6e133a9ca34219b');
+  expect(fullHash.slice(0, 16)).toBe('3f67ce0cf12b88a7');
 });
 
 function t3Engine(seed: number): Engine {
