@@ -328,11 +328,15 @@ test('HallProjectionはnotice・nextHot・feverMs・phaseを返す', () => {
   const p = eng.project();
   expect(p.feverMs).toBe(0);
   expect(p.yakumono.length).toBe(8);
-  const w = p.yakumono[0] as { id: string; lv: number; phase?: number };
+  const w = p.yakumono[0] as { id: string; lv: number; phase?: number; periodS?: number };
   expect(w.id).toBe('windmill');
   expect(w.lv).toBe(10);
   expect(w.phase as number).toBeGreaterThanOrEqual(0);
   expect(w.phase as number).toBeLessThan(1);
+  // 位相は at を周期で割った小数部（描画は periodS で次の投影までを補間する）。
+  const x = p.at / 1000 / (w.periodS as number);
+  expect(w.phase).toBe(x - Math.floor(x));
+  expect((p.yakumono[7] as { periodS?: number }).periodS).toBeUndefined();
   const grants: Grant[] = [{ claimId: 'f', at: 0, fuelMs: 12 * 3600000, medals: 0 }];
   const { spec, patterns } = loadMachine();
   const eng2 = new Engine(

@@ -27,8 +27,9 @@ async function loadAtlas(): Promise<ArrayBuffer> {
 }
 
 const api = {
-  async boot(now: number) {
-    const [db, atlas] = await Promise.all([openStorage(), loadAtlas()]);
+  /** dbName は Debug の時間倍率用（本番のセーブと分ける）。 */
+  async boot(now: number, dbName?: string) {
+    const [db, atlas] = await Promise.all([openStorage(dbName), loadAtlas()]);
     const opened = await EngineHost.open(db, atlas, now, randomSeed);
     host = opened.host;
     return opened.boot;

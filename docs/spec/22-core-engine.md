@@ -50,6 +50,7 @@ export class Engine {
   advance(to: SimTime): SimEvent[]                              // 新規イベントのみ返す
   snapshot(): EngineSnapshot; static restore(s: EngineSnapshot, cfg: EngineConfig): Engine
   lookahead(until: SimTime): SimEvent[]   // 状態を変えずに未来を計算。「入力追加なし・背面」を仮定
+  inFlight(): PendingSensor[]             // 飛行中の玉の写し（描画用。発射時刻・センサー時刻・入賞先）
 }
 ```
 - 玉の結果は `atlas[key(ball)]` を引くだけ（物理は走らせない）。センサー時刻 = 発射時刻 + flightMs。
@@ -69,7 +70,7 @@ export interface HallProjection {
   at: SimTime; mode: Mode; stRemaining: number
   holds: HoldColor[]; spin?: SpinView; jackpot?: JackpotView
   balls: number; medals: number; fuelMs: number; boostMs: number; perSec: number   // 現在の生産/秒（燃料・放置効率込み）
-  yakumono: YakumonoView[]            // Lv, 次の価格, 回転位相（描画用）, 覚醒数
+  yakumono: YakumonoView[]            // Lv, 次の価格, 回転位相と実効周期 periodS（描画用）, 覚醒数
   notice?: NoticeView                 // 表示中の予告
   totals: Totals                      // 回転数, 当たり, 出玉, 発射数, 累計玉
   nextHot?: HotHint                   // lookahead で見えている最も熱い予定

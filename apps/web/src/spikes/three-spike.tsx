@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { isStandalone } from '../platform/pwa.ts';
-import type { FrameStats } from './frame-stats.ts';
+import type { FrameStats } from '../board/frame-stats.ts';
 import { ThreeBoard, type DrawInfo, type ThreeOptions } from './three-board.ts';
 import styles from './spike.module.css';
 

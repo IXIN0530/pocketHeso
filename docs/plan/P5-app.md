@@ -21,7 +21,7 @@ Owner: Claude Code | Read: spec/50-app-rendering, spec/20-core-physics（盤面 
 Do: `<BoardCanvas>`（Three.js, spec/50）、盤面板のテクスチャ焼き込みと釘の InstancedMesh、役物の回転表示、玉の軌跡再生（途中から再生を含む）。
 P5-T0 の `spikes/bakeoff-*.ts`（dev にマージ済み, D-060）を土台にしてよい。P0-T6 の `spikes/three-board.ts` の質感設定も流用してよい。
 Accept:
-- [ ] ヘソに入った玉の描画終点がヘソセンサー内（軌跡末尾の自動テスト）/ Debug の x60 で破綻しない
+- [x] ヘソに入った玉の描画終点がヘソセンサー内（軌跡末尾の自動テスト）/ Debug の x60 で破綻しない
 
 ### P5-T3 ホール・液晶・HUD
 Owner: Claude Code | Read: spec/40-app-ui（画面節）, spec/21-core-lottery（流れ節）

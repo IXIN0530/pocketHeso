@@ -176,13 +176,14 @@ export interface JackpotView {
   readonly endsAt: SimTime;
 }
 
-/** 役物表示（Lv・覚醒・次の価格・回転位相0..1。位相は描画用でat基準の小数部）。 */
+/** 役物表示（Lv・覚醒・次の価格・回転位相0..1・実効周期秒。位相と周期は描画用で at 基準。Lv0 は周期なし）。 */
 export interface YakumonoView {
   readonly id: string;
   readonly lv: number;
   readonly awakened?: number | undefined;
   readonly nextPrice?: number | undefined;
   readonly phase?: number | undefined;
+  readonly periodS?: number | undefined;
 }
 
 /** Hall投影（UIはこれだけ見る。経済項目はperSec/boost/yakumono/notice/nextHot/fever）。 */
@@ -495,6 +496,15 @@ export class Engine {
   /** 現在時刻。 */
   get nowMs(): SimTime {
     return this.nowMsState;
+  }
+
+  /** 飛行中の玉（発射済み・センサー待ち）の写し。描画が軌跡と入賞先を知るため。 */
+  inFlight(): PendingSensor[] {
+    const out: PendingSensor[] = [];
+    for (let i = 0; i < this.pendingState.length; i = i + 1) {
+      out.push({ ...(this.pendingState[i] as PendingSensor) });
+    }
+    return out;
   }
 
   /** 付与を追加する（t ≥ now・時刻昇順のみ。now時刻はまだ未処理なので同刻追加も通しと一致する）。 */
@@ -1609,13 +1619,15 @@ export class Engine {
     const yakumono: YakumonoView[] = [];
     for (let i = 0; i < views.length; i = i + 1) {
       const v = views[i] as { id: string; lv: number; awakened: number; nextPrice: number };
-      yakumono.push({ id: v.id, lv: v.lv, awakened: v.awakened, nextPrice: v.nextPrice, phase: this.yakumonoPhase(v.id, v.lv) });
+      const periodS = this.yakumonoPeriodS(v.id, v.lv);
+      const x = periodS > 0 ? this.nowMsState / 1000 / periodS : 0;
+      yakumono.push({ id: v.id, lv: v.lv, awakened: v.awakened, nextPrice: v.nextPrice, phase: x - Math.floor(x), periodS: periodS > 0 ? periodS : undefined });
     }
     return { ...base, perSec, boostMs, yakumono, feverMs };
   }
 
-  /** 役物の回転位相0..1（at基準の小数部。Lv0は0）。 */
-  private yakumonoPhase(id: string, lv: number): number {
+  /** 役物の実効周期秒（Lv0・経済なしは0）。 */
+  private yakumonoPeriodS(id: string, lv: number): number {
     if (lv <= 0) {
       return 0;
     }
@@ -1626,10 +1638,6 @@ export class Engine {
       return 0;
     }
     const period = (yakHook.bind(this.economy))(id, lv) as number;
-    if (!(period > 0)) {
-      return 0;
-    }
-    const x = this.nowMsState / 1000 / period;
-    return x - Math.floor(x);
+    return period > 0 ? period : 0;
   }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { CORE_VERSION } from '@ph/core';
 import { isStandalone, setupServiceWorker } from '../platform/pwa.ts';
 import { ActivityScreen } from '../screens/activity-screen.tsx';
@@ -6,6 +6,9 @@ import { EngineStatus } from '../screens/engine-status.tsx';
 import { startEngine } from '../stores/engine.ts';
 import { SPIKE_NAMES } from '../spikes/spike-names.ts';
 import styles from './app.module.css';
+
+// Three.js 一式は盤面と一緒に別チャンクで読む（最初の表示を待たせない）。
+const BoardCanvas = lazy(() => import('../board/board-canvas.tsx'));
 
 export function App() {
   const [applyUpdate, setApplyUpdate] = useState<(() => Promise<void>) | null>(null);
@@ -28,6 +31,9 @@ export function App() {
 
   return (
     <main className={styles.main}>
+      <Suspense>
+        <BoardCanvas />
+      </Suspense>
       <h1>PocketHeso</h1>
       <dl className={styles.status}>
         <dt>起動方法</dt>

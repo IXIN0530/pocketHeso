@@ -39,11 +39,12 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BALL_RADIUS_MM, type Board, type BoardYakumono, type Vec2 } from '@ph/core';
-import { LCD_RECT, bakeBoard, bakeGlare, bakeHall, bakeSoftDot, bakeSymbolAtlas } from './bakeoff-art.ts';
-import { BallPlayer, MAX_BALLS } from './bakeoff-balls.ts';
-import { CAB, Cabinet, bakeCabinetEnv, ledTube } from './bakeoff-cabinet.ts';
-import { LcdReels } from './bakeoff-lcd.ts';
+import type { Shot } from '../engine/engine-host.ts';
+import { LCD_RECT, bakeBoard, bakeGlare, bakeHall, bakeSoftDot, bakeSymbolAtlas } from './art.ts';
+import { BallTracks, DISPLAY_LAG_MS, MAX_BALLS, PREROLL_MS } from './ball-tracks.ts';
+import { CAB, Cabinet, bakeCabinetEnv, ledTube } from './cabinet.ts';
 import { summarize, type FrameStats } from './frame-stats.ts';
+import { LcdReels } from './lcd.ts';
 
 export interface DrawInfo {
   calls: number;
@@ -53,50 +54,63 @@ export interface DrawInfo {
 /** 当たり演出の長さ（ブルームを ON にしておく時間）。 */
 const WIN_MS = 3000;
 
-// 奥行き（spec/50）: 盤面板 0 → 液晶 +3 → 玉・釘 +7 → 役物 +8 → ガラス +16 → 枠 +10〜+50（bakeoff-cabinet）。
+// 奥行き（spec/50）: 盤面板 0 → 液晶 +3 → 玉・釘 +7 → 役物 +8 → ガラス +16 → 枠 +10〜+55（cabinet.ts）。
 const Z_LCD = 3;
 const Z_BALL = 7;
 const Z_YAKU = 8;
 const Z_GLASS = 16;
 
-/** 役物の見た目（盤面 JSON の id ごと）。色は筐体に合わせて氷色・バイオレット・マゼンタの3色に絞る。periodS は spec/23 の値が来るまでの仮。 */
+/** 役物の見た目（盤面 JSON の id ごと）。色は筐体に合わせて氷色・バイオレット・マゼンタの3色に絞る。回る速さは Projection の periodS。 */
 const ICE = 0x8fe6ff;
 const VIOLET = 0x9a6bff;
 const MAGENTA = 0xff4d9a;
-const YAKU_STYLE: Record<string, { blades: number; color: number; periodS: number; pay: number }> = {
-  windmill: { blades: 4, color: ICE, periodS: 2.0, pay: 1 },
-  'spinner-r': { blades: 3, color: VIOLET, periodS: 1.6, pay: 2 },
-  'pocket-l': { blades: 6, color: VIOLET, periodS: 2.8, pay: 3 },
-  'pocket-r': { blades: 6, color: VIOLET, periodS: 2.4, pay: 3 },
-  'gate-l': { blades: 2, color: ICE, periodS: 1.2, pay: 1 },
-  'gate-r': { blades: 2, color: ICE, periodS: 1.2, pay: 1 },
-  'center-top': { blades: 8, color: 0xe8f6ff, periodS: 3.6, pay: 5 },
-  'center-bottom': { blades: 5, color: MAGENTA, periodS: 2.2, pay: 2 },
+const YAKU_STYLE: Record<string, { blades: number; color: number }> = {
+  windmill: { blades: 4, color: ICE },
+  'spinner-r': { blades: 3, color: VIOLET },
+  'pocket-l': { blades: 6, color: VIOLET },
+  'pocket-r': { blades: 6, color: VIOLET },
+  'gate-l': { blades: 2, color: ICE },
+  'gate-r': { blades: 2, color: ICE },
+  'center-top': { blades: 8, color: 0xe8f6ff },
+  'center-bottom': { blades: 5, color: MAGENTA },
 };
-const YAKU_DEFAULT = { blades: 4, color: 0xffffff, periodS: 2, pay: 1 };
+const YAKU_DEFAULT = { blades: 4, color: 0xffffff };
+
+/** 描画に要る役物の状態（Engine の YakumonoView の一部。盤面の役物 i に経済の役物 i を割り当てる, D-063）。 */
+export interface YakumonoState {
+  readonly lv: number;
+  readonly phase?: number | undefined;
+  readonly periodS?: number | undefined;
+}
+
+/** 表示の時計（Debug の時間倍率を含む）。 */
+export interface SceneClock {
+  readonly scale: number;
+  now(): number;
+}
 
 interface Yaku {
   group: Group;
-  data: BoardYakumono;
-  omega: number;
-  angle: number;
-  turns: number;
-  pay: number;
+  material: MeshStandardMaterial;
+  dir: number;
 }
 
 /**
- * BAKEOFF: default.json の盤面を Three.js で描くスパイク（spec/50 の構成・奥行き・質感に従う）。
- * 盤面板は Canvas 2D の1枚、釘は InstancedMesh 1つ、玉は Core の BallSimulator の軌跡を毎フレーム補間。
- * タップで当たり演出（虹の加算クアッド＋ブルーム3秒）。
+ * 盤面の Three.js シーン（spec/50 の構成・奥行き・質感に従う）。React からは命令的に使う（<BoardCanvas>）。
+ * 盤面板は Canvas 2D の1枚、釘は InstancedMesh 1つ、玉は Engine の Shot を BallTracks で補間、
+ * 役物は Projection の位相と周期で回す。win() で当たり演出（虹の加算クアッド＋ブルーム3秒）。
  */
-export class BakeoffBoard {
+export class BoardScene {
   private readonly renderer: WebGLRenderer;
   private readonly scene = new Scene();
   private readonly camera = new PerspectiveCamera(30, 1, 50, 6000);
   private readonly composer: EffectComposer;
   private readonly bloom: UnrealBloomPass;
   private readonly board: Board;
-  private readonly player: BallPlayer;
+  private readonly tracks: BallTracks;
+  private readonly clock: SceneClock;
+  private yakuStates: readonly YakumonoState[] = [];
+  private yakuAt = 0;
   private readonly lcd: LcdReels;
   private readonly ballMeshes: Mesh[] = [];
   private readonly ballShadows: InstancedMesh;
@@ -107,7 +121,6 @@ export class BakeoffBoard {
   private readonly lcdLight: PointLight;
   private readonly hesoLight: PointLight;
   private readonly host: HTMLElement;
-  private readonly popLayer: HTMLElement;
   private readonly resizeObs: ResizeObserver;
   private readonly tmp = new Object3D();
   private readonly v = new Vector3();
@@ -120,10 +133,10 @@ export class BakeoffBoard {
   private homeDist = 1400;
   private readonly homeY = (CAB.top + CAB.bottom) / 2;
 
-  constructor(host: HTMLElement, popLayer: HTMLElement, board: Board, dirs: readonly Vec2[]) {
+  constructor(host: HTMLElement, board: Board, dirs: readonly Vec2[], clock: SceneClock) {
     this.host = host;
-    this.popLayer = popLayer;
     this.board = board;
+    this.clock = clock;
     this.renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 3));
     this.renderer.toneMapping = ACESFilmicToneMapping;
@@ -192,14 +205,13 @@ export class BakeoffBoard {
     const rt = new WebGLRenderTarget(1, 1, { samples: 4, type: HalfFloatType });
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    // しきい値 1.2 で emissive（ランプ・液晶・虹）だけを光らせる（spec/50）。
+    // しきい値 2.5 で LED・発光部（ランプ・液晶・虹）だけを光らせる（spec/50）。
     this.bloom = new UnrealBloomPass(new Vector2(1, 1), 0.7, 0.35, 2.5);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
 
-    this.player = new BallPlayer(board, dirs, performance.now());
+    this.tracks = new BallTracks(board, dirs);
     this.resize();
-    // 最初のフレームより前に定位置へ（ポップの画面座標がカメラに依存するため）。
     this.updateCamera();
     this.resizeObs = new ResizeObserver(() => this.resize());
     this.resizeObs.observe(host);
@@ -209,6 +221,28 @@ export class BakeoffBoard {
   get info(): DrawInfo {
     const r = this.renderer.info.render;
     return { calls: r.calls, triangles: r.triangles };
+  }
+
+  /** 玉を描く時刻（時計 − 表示の遅れ。Engine の 1Hz より先に発射を知るため, D-063）。 */
+  displayNow(): number {
+    return this.clock.now() - DISPLAY_LAG_MS * this.clock.scale;
+  }
+
+  /** Engine から届いた玉（重複は BallTracks が除く）。 */
+  addShots(shots: readonly Shot[]): void {
+    this.tracks.add(shots, this.displayNow(), PREROLL_MS * this.clock.scale);
+  }
+
+  /** 役物の Lv・位相・周期（位相は時刻 at の値）。 */
+  setYakumono(states: readonly YakumonoState[], at: number): void {
+    this.yakuStates = states;
+    this.yakuAt = at;
+    this.yaku.forEach((y, i) => {
+      // 未解放は暗く表示（spec/50）。
+      const on = (states[i]?.lv ?? 0) > 0;
+      y.material.emissiveIntensity = on ? 0.6 : 0.04;
+      y.material.opacity = on ? 0.9 : 0.45;
+    });
   }
 
   /** 当たり演出（3秒。連打したら頭から）。 */
@@ -285,17 +319,15 @@ export class BakeoffBoard {
     }
     const winning = this.winMs >= 0;
 
-    this.player.grow(4);
-    this.player.update(now, (kind, x, y) => {
+    const display = this.displayNow();
+    this.tracks.update(display, (kind) => {
       if (kind !== 'start1') return;
       this.lcd.addHold();
       this.hesoFlash = 1;
-      this.toWorld(x, y, Z_BALL, this.v);
-      this.pop('+3', this.v, '#ff7a9a');
     });
     this.hesoFlash = Math.max(0, this.hesoFlash - dt / 500);
     this.updateBalls();
-    this.updateYakumono(dt, winLevel);
+    this.updateYakumono(display, winLevel);
     this.lcd.update(dt, winLevel);
     this.updateLamps(sec, winLevel, white);
     this.updateCamera();
@@ -314,7 +346,7 @@ export class BakeoffBoard {
   }
 
   private updateBalls(): void {
-    const balls = this.player.balls;
+    const balls = this.tracks.balls;
     for (let i = 0; i < balls.length; i++) {
       const b = balls[i];
       const m = this.ballMeshes[i];
@@ -333,18 +365,15 @@ export class BakeoffBoard {
     this.ballShadows.instanceMatrix.needsUpdate = true;
   }
 
-  private updateYakumono(dt: number, winLevel: number): void {
-    const speed = 1 + winLevel * 2.5;
-    for (const y of this.yaku) {
-      y.angle += y.omega * speed * (dt / 1000);
-      y.group.rotation.z = y.angle;
-      const turns = Math.floor(Math.abs(y.angle) / (Math.PI * 2));
-      if (turns > y.turns) {
-        y.turns = turns;
-        // 1周ごとに「+玉数」（当たり中は画面が騒がしいので出さない）。
-        if (winLevel === 0) this.pop(`+${y.pay}`, y.group.position, '#ffe27a');
-      }
-    }
+  /** 角度 = 位相 +（表示時刻 − at）/ 周期。表示時刻は遅れているので at より前でもよい。 */
+  private updateYakumono(display: number, winLevel: number): void {
+    this.yaku.forEach((y, i) => {
+      const st = this.yakuStates[i];
+      if (!st || st.lv <= 0 || !st.periodS) return;
+      const turns = (st.phase ?? 0) + (display - this.yakuAt) / 1000 / st.periodS;
+      y.group.rotation.z = y.dir * Math.PI * 2 * (turns - Math.floor(turns));
+      y.material.emissiveIntensity = 0.6 + winLevel * 1.2;
+    });
   }
 
   private updateLamps(sec: number, winLevel: number, white: number): void {
@@ -380,29 +409,6 @@ export class BakeoffBoard {
     // 正面からわずかに見上げる。
     this.camera.position.set(sx, this.homeY - 45 + sy, d);
     this.camera.lookAt(sx * 0.5, this.homeY + sy * 0.5, 0);
-  }
-
-  /** 画面上の小さな数字ポップ（DOM。3D には入れない）。 */
-  private pop(text: string, world: Vector3, color: string): void {
-    this.v.copy(world).project(this.camera);
-    const x = ((this.v.x + 1) / 2) * this.host.clientWidth;
-    const y = ((1 - this.v.y) / 2) * this.host.clientHeight;
-    const el = document.createElement('span');
-    el.textContent = text;
-    el.style.cssText =
-      `position:absolute;left:${x}px;top:${y}px;transform:translate(-50%,-50%);color:${color};` +
-      'font:italic 800 13px -apple-system,system-ui,sans-serif;text-shadow:0 0 6px rgba(0,0,0,.9),0 0 10px ' +
-      `${color};pointer-events:none;white-space:nowrap;`;
-    this.popLayer.appendChild(el);
-    const a = el.animate(
-      [
-        { opacity: 0, transform: 'translate(-50%,-30%) scale(0.6)' },
-        { opacity: 1, transform: 'translate(-50%,-80%) scale(1.1)', offset: 0.2 },
-        { opacity: 0, transform: 'translate(-50%,-220%) scale(1)' },
-      ],
-      { duration: 900, easing: 'ease-out' },
-    );
-    a.onfinish = () => el.remove();
   }
 
   // ---- 組み立て ----
@@ -512,23 +518,20 @@ export class BakeoffBoard {
       b.rotateZ((k / st.blades) * Math.PI * 2);
       parts.push(b);
     }
-    const blades = new Mesh(
-      mergeGeometries(parts) ?? new BufferGeometry(),
-      new MeshStandardMaterial({
-        color: st.color,
-        emissive: st.color,
-        emissiveIntensity: 0.6,
-        metalness: 0.2,
-        roughness: 0.12,
-        transparent: true,
-        opacity: 0.9,
-      }),
-    );
+    const material = new MeshStandardMaterial({
+      color: st.color,
+      emissive: st.color,
+      emissiveIntensity: 0.04,
+      metalness: 0.2,
+      roughness: 0.12,
+      transparent: true,
+      opacity: 0.45,
+    });
+    const blades = new Mesh(mergeGeometries(parts) ?? new BufferGeometry(), material);
     parts.forEach((p) => p.dispose());
     g.add(blades);
     this.toWorld(y.p.x, y.p.y, Z_YAKU, g.position);
-    const dir = this.yaku.length % 2 ? -1 : 1;
-    this.yaku.push({ group: g, data: y, omega: (dir * Math.PI * 2) / st.periodS, angle: 0, turns: 0, pay: st.pay });
+    this.yaku.push({ group: g, material, dir: this.yaku.length % 2 ? -1 : 1 });
     return g;
   }
 

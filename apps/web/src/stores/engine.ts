@@ -2,9 +2,10 @@
 import type { ClaimRecord } from '@ph/claims';
 import type { AwaySummary, HallProjection } from '@ph/core';
 import { create } from 'zustand';
-import type { ActionInput, BootResult, EngineView } from '../engine/engine-host.ts';
+import type { ActionInput, BootResult, EngineView, Shot } from '../engine/engine-host.ts';
 import { wrap, type Port, type Remote } from '../engine/rpc.ts';
 import type { EngineApi } from '../engine.worker.ts';
+import { DEBUG_DB_NAME, clock } from './clock.ts';
 
 export interface EngineState {
   readonly status: 'idle' | 'booting' | 'ready' | 'error';
@@ -31,8 +32,26 @@ let timer: ReturnType<typeof setInterval> | undefined;
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+type ShotListener = (shots: readonly Shot[]) => void;
+const shotListeners = new Set<ShotListener>();
+let lastShots: readonly Shot[] = [];
+
+/**
+ * 盤面の玉（spec/50）。React の再レンダーを通さずに描画へ渡す。戻り値で解除。
+ * 登録時に直近の結果（飛行中の玉を含む）を渡すので、盤面を後から開いても途中から再生できる。
+ */
+export function onShots(fn: ShotListener): () => void {
+  shotListeners.add(fn);
+  fn(lastShots);
+  return () => shotListeners.delete(fn);
+}
+
 function show(v: EngineView): void {
   useEngine.setState({ projection: v.projection, clockBack: v.clockBack });
+  lastShots = v.shots;
+  if (v.shots.length > 0) {
+    shotListeners.forEach((fn) => fn(v.shots));
+  }
 }
 
 function need(): Remote<EngineApi> {
@@ -46,7 +65,7 @@ function startTicking(): void {
   clearInterval(timer);
   timer = setInterval(() => {
     void need()
-      .tick(Date.now())
+      .tick(clock.now())
       .then(show, (e: unknown) => useEngine.setState({ error: message(e) }));
   }, 1000);
 }
@@ -57,7 +76,7 @@ async function onVisibility(): Promise<void> {
     clearInterval(timer);
   }
   try {
-    const r = await need().presence(fg, Date.now());
+    const r = await need().presence(fg, clock.now());
     show(r);
     if (r.away !== null) {
       useEngine.setState({ away: r.away });
@@ -79,7 +98,8 @@ export async function startEngine(): Promise<void> {
   remote = wrap<EngineApi>(worker as unknown as Port);
   useEngine.setState({ status: 'booting' });
   try {
-    const boot = await remote.boot(Date.now());
+    const boot = await remote.boot(clock.now(), clock.scale === 1 ? undefined : DEBUG_DB_NAME);
+    clock.catchUp(boot.projection.at);
     show(boot);
     useEngine.setState({ status: 'ready', away: boot.away, restoredFrom: boot.restoredFrom });
   } catch (e) {
@@ -96,19 +116,19 @@ export async function startEngine(): Promise<void> {
 
 /** 受け取りを確定する（台帳への追記は Worker が行う）。 */
 export async function receiveClaims(records: readonly ClaimRecord[], closesSession: boolean): Promise<void> {
-  show(await need().receive(records, closesSession, Date.now()));
+  show(await need().receive(records, closesSession, clock.now()));
 }
 
 export async function act(input: ActionInput): Promise<void> {
-  show(await need().act(input, Date.now()));
+  show(await need().act(input, clock.now()));
 }
 
 export function exportSave(): Promise<string> {
-  return need().exportSave(Date.now());
+  return need().exportSave(clock.now());
 }
 
 export async function importSave(text: string): Promise<void> {
-  const boot = await need().importSave(text, Date.now());
+  const boot = await need().importSave(text, clock.now());
   show(boot);
   useEngine.setState({ away: boot.away, restoredFrom: boot.restoredFrom });
 }

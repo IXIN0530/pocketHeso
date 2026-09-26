@@ -31,7 +31,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { summarize, type FrameStats } from './frame-stats.ts';
+import { summarize, type FrameStats } from '../board/frame-stats.ts';
 
 export interface ThreeOptions {
   balls: number;

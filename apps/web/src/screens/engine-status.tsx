@@ -1,6 +1,9 @@
-import { dismissAway, useEngine } from '../stores/engine.ts';
+import { act, dismissAway, useEngine } from '../stores/engine.ts';
 import { formatFuel } from '../stores/activity.ts';
 import styles from './activity.module.css';
+
+/** 打つ/止める（P5-T3 のトグルとレート選択までの仮。盤面の玉を確かめるため）。 */
+const shoot = (on: boolean) => void act({ k: 'shoot', on, rate: 1 }).catch((e: unknown) => useEngine.setState({ error: String(e) }));
 
 /** Engine の状態（P5-T3 の HUD までの最小表示）: 起動中・エラー・時計の巻き戻し・留守中サマリー。 */
 export function EngineStatus() {
@@ -29,9 +32,19 @@ export function EngineStatus() {
         </section>
       )}
       {projection !== null && (
-        <p className={styles.note}>
-          持ち玉 {Math.floor(projection.balls).toLocaleString('ja-JP')}・回転 {projection.totals.spins}・大当たり {projection.totals.jackpots}
-        </p>
+        <>
+          <p className={styles.note}>
+            持ち玉 {Math.floor(projection.balls).toLocaleString('ja-JP')}・回転 {projection.totals.spins}・大当たり {projection.totals.jackpots}
+          </p>
+          <div className={styles.row}>
+            <button className={styles.sub} onClick={() => shoot(true)}>
+              打つ
+            </button>
+            <button className={styles.sub} onClick={() => shoot(false)}>
+              止める
+            </button>
+          </div>
+        </>
       )}
     </>
   );

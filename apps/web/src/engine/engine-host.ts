@@ -1,7 +1,7 @@
 // Engine Worker の中身（Worker 外でもテストできるよう DB と Atlas を受け取る）。spec/10 保存・spec/40 状態管理。
 // 真実は seed + 機種 + 台帳 + ActionLog。スナップショットはキャッシュで、壊れていれば捨てて再計算する。
 import type { ClaimRecord } from '@ph/claims';
-import { Engine, type Action, type AwaySummary, type EngineSimEvent, type HallProjection } from '@ph/core';
+import { Engine, atlasKeyForBall, type Action, type AwaySummary, type EngineSimEvent, type HallProjection } from '@ph/core';
 import { decodeSave, dumpSave, encodeSave, replaceWithSave } from '../platform/save-file.ts';
 import {
   appendAction,
@@ -22,15 +22,29 @@ import { engineConfig } from './game-config.ts';
 export const CLOCK_SKEW_MS = 2000;
 /** 前面中にスナップショットを書く間隔。 */
 export const SNAPSHOT_EVERY_MS = 60000;
+/** 1回の前進で着いた玉を描画に渡す上限（Debug の x3600 で1時間分を送らない）。 */
+export const SHOT_LIMIT = 240;
 
 type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
 /** UI から送る操作（時刻は Worker が付ける）。 */
 export type ActionInput = DistributiveOmit<Action, 't'>;
 
+/** 盤面に描く1発（spec/50）。軌跡は描画側が Atlas キーの正準条件から計算する。 */
+export interface Shot {
+  readonly ball: number;
+  readonly fireAt: number;
+  readonly sensorAt: number;
+  /** Engine の確定した入賞先（釘の強化で out→start1 に変わることがある）。 */
+  readonly kind: 'start1' | 'out' | 'lost';
+  readonly key: number;
+}
+
 export interface EngineView {
   readonly projection: HallProjection;
   /** 端末時計の巻き戻しで前進を止めている（now < 最後に進めた時刻）。 */
   readonly clockBack: boolean;
+  /** 今回の前進で発射して着いた玉＋飛行中の玉（描画側で ball ごとに重複を除く）。 */
+  readonly shots: readonly Shot[];
 }
 
 export interface TickResult extends EngineView {
@@ -75,7 +89,7 @@ export class EngineHost {
   private async afterBuild(from: RestoredFrom, now: number): Promise<BootResult> {
     const t = this.clamp(now);
     if (t === null) {
-      return { projection: this.engine.project(), clockBack: true, restoredFrom: from, away: null };
+      return { ...this.view(true), restoredFrom: from, away: null };
     }
     this.engine.advance(t);
     let away: AwaySummary | null = null;
@@ -84,7 +98,7 @@ export class EngineHost {
       away = this.engine.awaySummary();
     }
     await this.saveSnapshot(t, true);
-    return { projection: this.engine.project(), clockBack: false, restoredFrom: from, away };
+    return { ...this.view(false), restoredFrom: from, away };
   }
 
   /** 端末時計を Engine の時刻に揃える。巻き戻しなら null。 */
@@ -96,8 +110,34 @@ export class EngineHost {
     return at - now <= CLOCK_SKEW_MS ? at : null;
   }
 
-  private view(clockBack: boolean): EngineView {
-    return { projection: this.engine.project(), clockBack };
+  private view(clockBack: boolean, events: readonly EngineSimEvent[] = []): EngineView {
+    return { projection: this.engine.project(), clockBack, shots: this.shots(events) };
+  }
+
+  /** 今回の前進内で発射して着いた玉（新しい方から SHOT_LIMIT 個。入賞先はセンサーイベント）と、まだ飛んでいる玉。 */
+  private shots(events: readonly EngineSimEvent[]): Shot[] {
+    const seed = this.meta.seed;
+    const landed = new Map<number, { at: number; kind: Shot['kind'] }>();
+    for (const e of events) {
+      if (e.k === 'sensor') {
+        landed.set(e.ball, { at: e.at, kind: e.kind });
+      }
+    }
+    const out: Shot[] = [];
+    for (const e of events) {
+      if (e.k !== 'fired') {
+        continue;
+      }
+      const s = landed.get(e.ball);
+      if (s !== undefined) {
+        out.push({ ball: e.ball, fireAt: e.at, sensorAt: s.at, kind: s.kind, key: atlasKeyForBall(seed, e.ball) });
+      }
+    }
+    out.splice(0, out.length - SHOT_LIMIT);
+    for (const p of this.engine.inFlight()) {
+      out.push({ ball: p.ball, fireAt: p.fireAt, sensorAt: p.sensorAt, kind: p.kind, key: atlasKeyForBall(seed, p.ball) });
+    }
+    return out;
   }
 
   /** 前面中の 1Hz 前進。 */
@@ -108,7 +148,7 @@ export class EngineHost {
     }
     const events = this.engine.advance(t);
     await this.saveSnapshot(t, false);
-    return { ...this.view(false), events };
+    return { ...this.view(false, events), events };
   }
 
   /**
@@ -130,7 +170,7 @@ export class EngineHost {
     }
     // 半開区間 [now, to) なので t の入力は t+1 まで進めて反映する。
     const events = this.engine.advance(t + 1);
-    return { ...this.view(false), events };
+    return { ...this.view(false, events), events };
   }
 
   /** 操作を記録する（spec/40: UI → appendAction(t=now) → advance → 新 Projection）。 */

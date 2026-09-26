@@ -2,17 +2,21 @@ import { useEffect, useRef, useState } from 'react';
 import { parseBoard, parseLaunchDirs } from '@ph/core';
 import boardJson from '../../../../resources/boards/default.json';
 import dirsJson from '../../../../resources/boards/launch_dirs.json';
-import { BakeoffBoard, type DrawInfo } from './bakeoff-board.ts';
-import type { FrameStats } from './frame-stats.ts';
+import { BoardScene, type DrawInfo } from '../board/board-scene.ts';
+import type { FrameStats } from '../board/frame-stats.ts';
+import { makeClock } from '../stores/clock.ts';
+import { DemoShots } from './bakeoff-balls.ts';
 import styles from './bakeoff.module.css';
 
 const errText = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message}` : String(e));
 
-/** BAKEOFF: 描画比較用スパイク（`?spike=bakeoff`）。画面タップで当たり演出。 */
+/** 盤面のデモ（`?spike=bakeoff`, P5-T0 の比較から継続）。本番の BoardScene にデモの玉を流す。画面タップで当たり演出。 */
+const DEMO_FIRE_MS = 150;
+const DEMO_YAKUMONO = [2, 1.6, 2.8, 2.4, 1.2, 1.2, 3.6, 2.2].map((periodS) => ({ lv: 1, phase: 0, periodS }));
+
 export function BakeoffSpike() {
   const hostRef = useRef<HTMLDivElement>(null);
-  const popRef = useRef<HTMLDivElement>(null);
-  const boardRef = useRef<BakeoffBoard | null>(null);
+  const boardRef = useRef<BoardScene | null>(null);
   const [stats, setStats] = useState<FrameStats | null>(null);
   const [info, setInfo] = useState<DrawInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -20,16 +24,24 @@ export function BakeoffSpike() {
 
   useEffect(() => {
     const host = hostRef.current;
-    const pops = popRef.current;
-    if (!host || !pops) return;
-    let board: BakeoffBoard;
+    if (!host) return;
+    let board: BoardScene;
+    const clock = makeClock(1);
+    const b = parseBoard(boardJson);
+    const dirs = parseLaunchDirs(dirsJson);
     try {
-      board = new BakeoffBoard(host, pops, parseBoard(boardJson), parseLaunchDirs(dirsJson));
+      board = new BoardScene(host, b, dirs, clock);
     } catch (e) {
       setError(errText(e));
       return;
     }
     boardRef.current = board;
+    board.setYakumono(DEMO_YAKUMONO, clock.now());
+    const demo = new DemoShots(b, dirs);
+    const fire = window.setInterval(() => {
+      const s = demo.next(clock.now());
+      if (s) board.addShots([s]);
+    }, DEMO_FIRE_MS);
     const timer = window.setInterval(() => {
       const s = board.takeStats();
       if (s.frames === 0) return;
@@ -41,6 +53,7 @@ export function BakeoffSpike() {
     document.addEventListener('visibilitychange', onVis);
     return () => {
       window.clearInterval(timer);
+      window.clearInterval(fire);
       document.removeEventListener('visibilitychange', onVis);
       board.destroy();
       boardRef.current = null;
@@ -55,7 +68,6 @@ export function BakeoffSpike() {
   return (
     <main className={styles.root} onPointerDown={win}>
       <div ref={hostRef} className={styles.canvas} />
-      <div ref={popRef} className={styles.pops} />
       {winKey > 0 && (
         <div key={winKey} className={styles.banner}>
           大当り

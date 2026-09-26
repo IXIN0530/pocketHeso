@@ -351,6 +351,29 @@ test('lookaheadは状態を変えず背面仮定・projectはパチンコ部を�
   expect(ahead.length).toBeGreaterThan(0);
 });
 
+test('inFlightは飛行中の玉の写しで、発射イベントと入賞先がセンサーイベントと一致する', () => {
+  const { spec, patterns } = loadMachine();
+  const atlas = loadAtlas();
+  const eng = makeEngine(77, atlas, spec, patterns, [{ t: 0, k: 'shoot', on: true, rate: 1 }], [], 100000);
+  const fired = eng.advance(30000).filter((e) => e.k === 'fired');
+  const flying = eng.inFlight();
+  expect(flying.length).toBeGreaterThan(0);
+  for (let i = 0; i < flying.length; i = i + 1) {
+    const p = flying[i];
+    expect(p !== undefined && p.sensorAt >= eng.nowMs && fired.some((e) => e.ball === p.ball && e.at === p.fireAt)).toBe(true);
+  }
+  // 写しなので書き換えても本体は変わらない。
+  const before = eng.snapshot();
+  flying.length = 0;
+  expect(eng.snapshot()).toEqual(before);
+  const sensors = eng.advance(60000).filter((e) => e.k === 'sensor');
+  for (let i = 0; i < before.pending.length; i = i + 1) {
+    const p = before.pending[i];
+    const s = sensors.find((e) => p !== undefined && e.ball === p.ball);
+    expect(s !== undefined && p !== undefined && s.at === p.sensorAt && s.kind === p.kind).toBe(true);
+  }
+});
+
 // CI（Vercel 等）は共有マシンで並列実行されるため計時がぶれる。目標 100ms はローカルで判定し、
 // CI では桁違いの退行だけを検出する。並列負荷の spikes を避けるためウォームアップ＋5回中の最小で判定する。
 const ADVANCE_8H_LIMIT_MS = process.env['CI'] || process.env['VERCEL'] ? 1000 : 100;

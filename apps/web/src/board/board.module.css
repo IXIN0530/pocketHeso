@@ -1,0 +1,38 @@
+/* 筐体（幅 576mm × 高さ 818mm）がちょうど収まる比率。縦に長い画面では高さを抑え、下の操作欄を見せる。 */
+.frame {
+  position: relative;
+  width: min(100%, calc(76dvh * 576 / 818));
+  aspect-ratio: 576 / 818;
+  margin: 0 auto;
+  overflow: hidden;
+  background: #05030f;
+  border-radius: 12px;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.stats {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  margin: 0;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #f2f2f7;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.error {
+  position: absolute;
+  bottom: 10px;
+  left: 12px;
+  right: 12px;
+  color: #ff8080;
+  font-size: 13px;
+}
