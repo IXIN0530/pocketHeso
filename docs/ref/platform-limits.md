@@ -34,7 +34,8 @@ iOS ネイティブ時代の制限値は docs/archive/native-v1/ref/platform-lim
 | 位置情報 | 前面の `getCurrentPosition` のみ。許可が毎回聞かれるか | ⚠ ホーム画面アプリでも**起動のたびに許可を聞かれる**（起動時の `permissions.query` は `prompt`）。前面にいる間は2回目以降が数 ms で返る |
 | 屋内の位置精度 | `coords.accuracy` の実測（ジム・公園） | ✅ 自宅（屋外・窓際）7〜17m（計9回）。初回の取得は約1.8秒。屋内ジムは未計測（P4） |
 | クリップボード読み取り | ユーザー操作内で `readText()`、iOS は「ペースト」確認 UI | ⚠ 自アプリが書いた内容は `readText()` 可。他アプリ（ショートカット）由来は `NotAllowedError` が即時に返ることが多い（`readText` 4/4 失敗、`read()` 1回目失敗・2回目成功）。確認 UI は未観測 → API を試し、失敗時は手動ペーストへ誘導する |
-| Web Audio | 最初のタップで resume。消音スイッチ時の挙動 | ⚠ 最初のタップで `suspended`→`running`（48kHz）。消音 OFF は全部鳴る。**消音 ON では Web Audio は鳴らない**（`audioSession.type` を auto/ambient/playback に変えても。ただし type の変更は AudioContext 作成後）。`<audio>` は消音 ON でも auto/playback なら鳴り、ambient だと鳴らない。背面→前面後も state は running のまま（消音 ON なので音は未確認）→ 消音時は無音で正しいとする |
+| Web Audio | 最初のタップで resume。消音スイッチ時の挙動 | ⚠ 最初のタップで `suspended`→`running`（48kHz）。消音 OFF は全部鳴る。**消音 ON では Web Audio は鳴らない**（`audioSession.type` を auto/ambient/playback に変えても。ただし type の変更は AudioContext 作成後）。`<audio>` は消音 ON でも auto/playback なら鳴り、ambient だと鳴らない。背面→前面後も state は running のまま → 消音時は無音で正しいとする。✅ P6-T3（2026-09-27, 16e, 人間の確認「おそらく全部OK」・数値なし）: 本体の音量ボタンで Web Audio の音量が変わる / 消音 ON で鳴らない / ホームへ出て30秒以上→戻ってもタップ無しで演出の音が鳴る / 留守中リプレイ（モーダルのタップ）で鳴る |
+| 全画面フラッシュ | 3回/秒・明るさ上限（spec/43） | ✅ P6-T3（2026-09-27, 16e, 同上）: 激アツ・確定の光は眩しすぎない |
 | Web Push | iOS 16.4+、ホーム画面 Web アプリのみ。サーバーと VAPID が必要 | （P8） |
 | バッジ | `navigator.setAppBadge`（ホーム画面 Web アプリ、通知許可が必要な場合あり） | ☐ P8 |
 | 振動 | `navigator.vibrate` 非対応 | |

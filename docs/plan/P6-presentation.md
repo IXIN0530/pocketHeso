@@ -19,5 +19,5 @@ Accept:
 Owner: Claude Code | Read: spec/22-core-engine（Projection 節）, spec/43-presentation-effects, ref/platform-limits
 Do: AwaySummary の最も熱い当たりをリプレイ、実機での音量・消音スイッチ・フラッシュの確認。
 Accept:
-- [ ] 放置中に当たった演出を復帰後に再生でき、結果が Engine と一致
-- [ ] platform-limits の音の欄を実測値で更新
+- [x] 放置中に当たった演出を復帰後に再生でき、結果が Engine と一致
+- [x] platform-limits の音の欄を実測値で更新
