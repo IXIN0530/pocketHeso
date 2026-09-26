@@ -19,6 +19,8 @@ export interface ClaimRecord {
   readonly span?: readonly [SimTime, SimTime] | undefined;
   readonly trust: number;
   readonly grant: Grant;
+  /** 登録地点の初成立メダルを出した行ならその placeId（spec/32）。 */
+  readonly placeBonus?: string | undefined;
 }
 
 /** ヘルスケアの1日分（累計値）。 */
@@ -48,6 +50,10 @@ export interface CheckinResult {
   readonly day: string;
   /** 自分で登録した地点なら true（trust が下がる）。 */
   readonly own: boolean;
+  /** own のときの登録地点 ID（初成立メダルの判定に使う）。 */
+  readonly placeId?: string | undefined;
+  /** 施設外で終了・失効を自己申告に切り替えた（source self、上限 selfMaxMinutes、メダル・連続日数なし）。 */
+  readonly selfReported?: boolean | undefined;
   readonly minutes: number;
   readonly span: readonly [SimTime, SimTime];
 }
@@ -114,11 +120,22 @@ function count(ledger: readonly ClaimRecord[], pred: (r: ClaimRecord) => boolean
   return n;
 }
 
+/** 連続日数に数える運動の分（自己申告に切り替えたチェックインは除く）。 */
+function streakMinutes(ledger: readonly ClaimRecord[], day: string): number {
+  let s = 0;
+  for (const r of ledger) {
+    if (r.kind === 'checkin' && r.source !== 'self' && r.day === day) {
+      s = s + r.amount;
+    }
+  }
+  return s;
+}
+
 /** 行動で連続日数の条件を満たした日か（休養日は含まない。self は数えない）。 */
 function achievedReal(ledger: readonly ClaimRecord[], day: string, rules: ClaimRules): boolean {
   return (
     maxAmount(ledger, 'steps', day) >= rules.streak.minSteps ||
-    sumAmount(ledger, 'checkin', day) >= rules.streak.minMinutes
+    streakMinutes(ledger, day) >= rules.streak.minMinutes
   );
 }
 
@@ -155,6 +172,7 @@ interface Draft {
   readonly medals: number;
   readonly span?: readonly [SimTime, SimTime] | undefined;
   readonly claimId?: string | undefined;
+  readonly placeBonus?: string | undefined;
 }
 
 /**
@@ -175,7 +193,7 @@ export function planGrants(ledger: readonly ClaimRecord[], input: ClaimInput, ru
     const nowAchieved =
       !wasAchieved &&
       ((d.kind === 'steps' && d.amount >= rules.streak.minSteps) ||
-        (d.kind === 'checkin' && sumAmount(work, 'checkin', d.day) + d.amount >= rules.streak.minMinutes));
+        (d.kind === 'checkin' && d.source !== 'self' && streakMinutes(work, d.day) + d.amount >= rules.streak.minMinutes));
     if (nowAchieved) {
       const gap = addDays(d.day, -1);
       if (restCoverable(work, gap, rules)) {
@@ -192,7 +210,8 @@ export function planGrants(ledger: readonly ClaimRecord[], input: ClaimInput, ru
         ? { claimId, at, fuelMs: d.fuelMs, medals: d.medals }
         : { claimId, at, fuelMs: d.fuelMs, medals: d.medals, streakDay };
     const base = { claimId, receivedAt: at, source: d.source, kind: d.kind, day: d.day, amount: d.amount, trust, grant };
-    const r: ClaimRecord = d.span === undefined ? base : { ...base, span: d.span };
+    const withSpan: ClaimRecord = d.span === undefined ? base : { ...base, span: d.span };
+    const r: ClaimRecord = d.placeBonus === undefined ? withSpan : { ...withSpan, placeBonus: d.placeBonus };
     work.push(r);
     out.push(r);
   };
@@ -232,14 +251,33 @@ export function planGrants(ledger: readonly ClaimRecord[], input: ClaimInput, ru
     if (input.minutes === 0 || !claimable(input.day, input.today, rules) || work.some((r) => r.claimId === claimId)) {
       return out;
     }
-    const source: Source = input.own ? 'checkin-own' : 'checkin';
+    const self = input.selfReported === true;
+    const source: Source = self ? 'self' : input.own ? 'checkin-own' : 'checkin';
     const trust = rules.trust[source];
+    const minutes = self && input.minutes > rules.checkin.selfMaxMinutes ? rules.checkin.selfMaxMinutes : input.minutes;
+    // 逓減は自己申告も含めた日の合算で数える。
     const prev = sumAmount(work, 'checkin', input.day);
-    const eq = tiered(prev + input.minutes, rules.checkin.tiers) - tiered(prev, rules.checkin.tiers);
+    const eq = tiered(prev + minutes, rules.checkin.tiers) - tiered(prev, rules.checkin.tiers);
     const fuelMs = Math.round(eq * rules.checkin.fuelMinPerMin * MIN_MS * trust);
-    const medalsToday = count(work, (r) => r.kind === 'checkin' && r.day === input.day && r.grant.medals > 0);
-    const medals = input.minutes >= rules.checkin.medalMinMinutes && medalsToday < rules.checkin.medalMaxPerDay ? 1 : 0;
-    push({ source, kind: 'checkin', day: input.day, amount: input.minutes, fuelMs, medals, span: input.span, claimId });
+    const sessionMedal = (r: ClaimRecord): boolean =>
+      r.kind === 'checkin' && r.day === input.day && r.grant.medals - (r.placeBonus === undefined ? 0 : 1) > 0;
+    const medalsToday = count(work, sessionMedal);
+    let medals = !self && minutes >= rules.checkin.medalMinMinutes && medalsToday < rules.checkin.medalMaxPerDay ? 1 : 0;
+    // 登録地点での初めての成立: 地点ごとに1回、1日1回まで（その日に出せなければ次の成立へ持ち越す）。
+    const pid = input.placeId;
+    let placeBonus: string | undefined;
+    if (
+      !self &&
+      input.own &&
+      pid !== undefined &&
+      minutes >= rules.checkin.minMinutes &&
+      !work.some((r) => r.placeBonus === pid) &&
+      !work.some((r) => r.placeBonus !== undefined && r.day === input.day)
+    ) {
+      medals = medals + 1;
+      placeBonus = pid;
+    }
+    push({ source, kind: 'checkin', day: input.day, amount: minutes, fuelMs, medals, span: input.span, claimId, placeBonus });
     return out;
   }
 

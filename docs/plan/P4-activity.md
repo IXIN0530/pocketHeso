@@ -20,7 +20,7 @@ Accept:
 Owner: Claude Code | Read: spec/32-training-checkin
 Do: 範囲判定（登録地点・YOLP 業種別半径、accuracy 加味）、セッションの開始/終了/失効、報酬の判定表、YOLP 応答のパース（fixture、同一 Gid の重複まとめ）。
 Accept:
-- [ ] 判定表の各行をテストで網羅（成立・20分未満・範囲外・失効・登録地点の初成立・後からボーナス）
+- [x] 判定表の各行をテストで網羅（成立・20分未満・範囲外・失効・登録地点の初成立。後からボーナスは D-022 で廃止）
 
 ### P4-T4 ブラウザ側の配線
 Owner: Claude Code | Read: spec/31-shortcut-health（利用者の流れ）, spec/32-training-checkin（流れ・施設の候補）, spec/41-pwa-platform（OS 連携節）

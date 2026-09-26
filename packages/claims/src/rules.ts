@@ -23,6 +23,10 @@ export interface ClaimRules {
     readonly tiers: readonly Tier[];
     readonly medalMinMinutes: number;
     readonly medalMaxPerDay: number;
+    /** チェックインが成立する最短の分（spec/32）。 */
+    readonly minMinutes: number;
+    /** 施設外で終了・失効を自己申告に切り替えたときの上限の分。 */
+    readonly selfMaxMinutes: number;
   };
   readonly self: {
     readonly fuelMinPerItem: number;
@@ -104,6 +108,8 @@ export function parseClaimRules(economy: unknown): ClaimRules {
       tiers: tiers(ck['tiers'], 'checkin.tiers'),
       medalMinMinutes: int(ck['medal_min_minutes'], 'checkin.medal_min_minutes', 1, 1440),
       medalMaxPerDay: int(ck['medal_max_per_day'], 'checkin.medal_max_per_day', 0, 100),
+      minMinutes: int(ck['min_minutes'], 'checkin.min_minutes', 1, 1440),
+      selfMaxMinutes: int(ck['self_max_minutes'], 'checkin.self_max_minutes', 0, 1440),
     },
     self: {
       fuelMinPerItem: num(sf['fuel_min_per_item'], 'self.fuel_min_per_item', 0, 1440),

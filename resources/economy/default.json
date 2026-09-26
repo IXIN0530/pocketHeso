@@ -45,7 +45,8 @@
     "streak_max_days": 20,
     "claim_days": 3,
     "steps": { "fuel_min_per_1000": 10, "tiers": [{ "to": 10000, "mult": 1 }, { "to": 15000, "mult": 0.5 }], "medal_at": 8000 },
-    "checkin": { "fuel_min_per_min": 2, "tiers": [{ "to": 60, "mult": 1 }, { "to": 120, "mult": 0.5 }], "medal_min_minutes": 20, "medal_max_per_day": 2 },
+    "checkin": { "fuel_min_per_min": 2, "tiers": [{ "to": 60, "mult": 1 }, { "to": 120, "mult": 0.5 }], "medal_min_minutes": 20, "medal_max_per_day": 2,
+      "min_minutes": 20, "self_max_minutes": 60 },
     "self": { "fuel_min_per_item": 10, "max_per_day": 5 },
     "trust": { "health": 1.0, "checkin": 1.0, "checkin-own": 0.8, "self": 0.3 },
     "streak": { "min_steps": 5000, "min_minutes": 20 }
