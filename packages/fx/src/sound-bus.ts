@@ -69,6 +69,11 @@ export class SoundBus {
     return this.ctx !== null && (this.ctx.state === 'running' || this.resuming);
   }
 
+  /** AudioContext の状態（解錠前は locked）と出力のサンプルレート（実機の計測用, platform-limits）。 */
+  get status(): { readonly state: AudioContextState | 'locked'; readonly sampleRate: number } {
+    return this.ctx ? { state: this.ctx.state, sampleRate: this.ctx.sampleRate } : { state: 'locked', sampleRate: 0 };
+  }
+
   /** 音量 0〜1。master = 0 がアプリ内ミュート。 */
   setVolume(key: VolumeKey, v: number): void {
     const vol = Math.min(1, Math.max(0, v));

@@ -78,4 +78,4 @@ export interface HallProjection {
 export function project(s: EngineState, at: SimTime): HallProjection
 ```
 - **留守中サマリー**: 前面復帰時、`presence(fg=false)` 〜 now のイベントを集計した `AwaySummary`
-  （獲得玉・大当たり回数・最大連チャン・燃料切れ時刻）を返す。UI は最も熱い当たりの演出を再生する（spec/40）。
+  （獲得玉・大当たり回数・最大連チャン・燃料切れ時刻）を返す。UI は最も熱い当たりの演出を再生する（spec/40）。`replay` は留守中に変動を始めた当たりのうち hot 最大（D-068）。

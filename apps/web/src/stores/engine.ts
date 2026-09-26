@@ -35,6 +35,8 @@ export const useEngine = create<EngineState>(() => ({
 let remote: Remote<EngineApi> | null = null;
 let worker: Worker | null = null;
 let timer: ReturnType<typeof setInterval> | undefined;
+/** 直近の留守中サマリー（閉じた後も Debug から出し直せる）。 */
+let lastAway: AwaySummary | null = null;
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -101,6 +103,7 @@ async function onVisibility(): Promise<void> {
     const r = await need().presence(fg, clock.now());
     show(r);
     if (r.away !== null) {
+      lastAway = r.away;
       useEngine.setState({ away: r.away });
     }
   } catch (e) {
@@ -175,4 +178,12 @@ export async function resetGame(): Promise<void> {
 
 export function dismissAway(): void {
   useEngine.setState({ away: null });
+}
+
+
+/** Debug: 直近の留守中サマリーをもう一度出す（無ければ false）。 */
+export function showLastAway(): boolean {
+  if (lastAway === null) return false;
+  useEngine.setState({ away: lastAway });
+  return true;
 }

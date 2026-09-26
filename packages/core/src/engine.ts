@@ -35,6 +35,21 @@ export interface HotHint {
   readonly hot: number;
 }
 
+/** 留守中に変動を始めた当たりの1つ（復帰後に演出をリプレイする材料。値は Engine のイベントそのもの）。 */
+export interface AwayReplay {
+  readonly entry: number;
+  readonly pattern: string;
+  readonly color: LotteryHoldColor;
+  readonly hot: number;
+  readonly startedAt: SimTime;
+  readonly endsAt: SimTime;
+  readonly kind: JackpotKind;
+  readonly rounds: number;
+}
+
+/** 変動を始めた当たり（大当たり開始でリプレイ候補に上げる）。 */
+export type AwaySpinCandidate = Omit<AwayReplay, 'kind' | 'rounds'>;
+
 /** 留守中サマリー（presence false〜復帰の集計。獲得玉は生産＋払出の合計）。 */
 export interface AwaySummary {
   readonly from: SimTime;
@@ -46,6 +61,8 @@ export interface AwaySummary {
   readonly fuelEmptyAt: SimTime | null;
   readonly hottestEntry: number | null;
   readonly maxHot: number;
+  /** 留守中に変動を始めて大当たりになった中で最も熱いもの（hot 最大・同点は先）。無ければ null。 */
+  readonly replay: AwayReplay | null;
 }
 
 /** 営業時間などの付与（spec/30が生成。燃料・メダル・連日を経済に渡す）。 */
@@ -172,6 +189,10 @@ export interface AwayTrackerSnapshot {
   readonly awayFuelEmptyAt: SimTime | null;
   readonly awayHottestEntry: number | null;
   readonly awayMaxHot: number;
+  /** 変動中の当たり（留守中に始まったもの）。旧版の複写には無い。 */
+  readonly awaySpinCand?: AwaySpinCandidate | null;
+  /** リプレイ候補。旧版の複写には無い。 */
+  readonly awayReplay?: AwayReplay | null;
   readonly lastSummary: AwaySummary | null;
 }
 
@@ -245,6 +266,15 @@ const UINT32_RANGE = 4294967296;
 const MAX_SAFE_MS = 9007199254740991;
 
 /** 時刻を検証する。 */
+/** 留守中サマリーの複写（旧版の複写は replay が無いので null で埋める）。 */
+function copySummary(s: AwaySummary | null): AwaySummary | null {
+  if (s === null) {
+    return null;
+  }
+  const replay = s.replay === undefined || s.replay === null ? null : { ...s.replay };
+  return { ...s, replay };
+}
+
 function assertTime(at: number, what: string): SimTime {
   if (typeof at !== 'number' || !Number.isFinite(at) || Math.floor(at) !== at || at < 0 || at >= MAX_SAFE_MS) {
     throw new Error('invalid engine: ' + what + ' must be an int ms in range');
@@ -441,6 +471,8 @@ export class Engine {
   private awayFuelEmptyAtState: SimTime | null;
   private awayHottestEntryState: number | null;
   private awayMaxHotState: number;
+  private awaySpinCandState: AwaySpinCandidate | null;
+  private awayReplayState: AwayReplay | null;
   private lastSummaryState: AwaySummary | null;
 
   constructor(cfg: EngineConfig, grants: readonly Grant[], actions: readonly Action[]) {
@@ -498,6 +530,8 @@ export class Engine {
     this.awayFuelEmptyAtState = null;
     this.awayHottestEntryState = null;
     this.awayMaxHotState = -1;
+    this.awaySpinCandState = null;
+    this.awayReplayState = null;
     this.lastSummaryState = null;
     this.noticeCfgCache = this.readNoticeConfig();
     this.nailQCache = null;
@@ -985,6 +1019,8 @@ export class Engine {
     this.awayFuelEmptyAtState = null;
     this.awayHottestEntryState = null;
     this.awayMaxHotState = -1;
+    this.awaySpinCandState = null;
+    this.awayReplayState = null;
   }
 
   /** 留守を終える（presence true時。集計をlastSummaryに保存）。 */
@@ -1004,8 +1040,11 @@ export class Engine {
       fuelEmptyAt: this.awayFuelEmptyAtState,
       hottestEntry: this.awayHottestEntryState,
       maxHot: this.awayMaxHotState < 0 ? 0 : this.awayMaxHotState,
+      replay: this.awayReplayState,
     };
     this.awayFromState = null;
+    this.awaySpinCandState = null;
+    this.awayReplayState = null;
   }
 
   /** 留守中の当たり・熱さ・燃料切れを更新する。 */
@@ -1030,6 +1069,29 @@ export class Engine {
       this.awayMaxHotState = hot;
       this.awayHottestEntryState = entrySerial;
     }
+  }
+
+  /** 留守中に当たりの変動が始まったら候補として覚える（外れは覚えない）。 */
+  private noteAwaySpin(entry: HoldEntry, at: SimTime, pattern: string, endsAt: SimTime): void {
+    if (this.awayFromState === null) {
+      return;
+    }
+    this.awaySpinCandState = entry.isHit
+      ? { entry: entry.serial, pattern, color: entry.color, hot: entry.hot, startedAt: at, endsAt }
+      : null;
+  }
+
+  /** 留守中の大当たり開始で、候補が今までより熱ければリプレイに上げる。 */
+  private noteAwayReplay(entry: number, kind: JackpotKind, rounds: number): void {
+    const cand = this.awaySpinCandState;
+    if (this.awayFromState === null || cand === null || cand.entry !== entry) {
+      return;
+    }
+    const best = this.awayReplayState;
+    if (best === null || cand.hot > best.hot) {
+      this.awayReplayState = { ...cand, kind, rounds };
+    }
+    this.awaySpinCandState = null;
   }
 
   /** 留守中の燃料切れを更新する（最初の1回のみ）。 */
@@ -1336,6 +1398,7 @@ export class Engine {
                 firstHits: this.totalsState.firstHits + (fromRush ? 0 : 1),
               };
               this.setJackpotFever(this.spins.jackpotRate);
+              this.noteAwayReplay(e.entry, e.kind, e.rounds);
             }
             out.push(e);
           }
@@ -1393,6 +1456,9 @@ export class Engine {
           if (e === undefined) {
             continue;
           }
+          if (e.k === 'spinStarted') {
+            this.noteAwaySpin(entry, at, e.pattern, e.endsAt);
+          }
           out.push(e);
         }
         this.totalsState = {
@@ -1435,7 +1501,7 @@ export class Engine {
       actionsCopy.push({ ...a });
     }
     const activeCopy = this.activeNoticeState === null ? null : { ...this.activeNoticeState };
-    const lastCopy = this.lastSummaryState === null ? null : { ...this.lastSummaryState };
+    const lastCopy = copySummary(this.lastSummaryState);
     return {
       nowMs: this.nowMsState,
       nextBall: this.nextBallState,
@@ -1471,6 +1537,8 @@ export class Engine {
         awayFuelEmptyAt: this.awayFuelEmptyAtState,
         awayHottestEntry: this.awayHottestEntryState,
         awayMaxHot: this.awayMaxHotState,
+        awaySpinCand: this.awaySpinCandState === null ? null : { ...this.awaySpinCandState },
+        awayReplay: this.awayReplayState === null ? null : { ...this.awayReplayState },
         lastSummary: lastCopy,
       },
     };
@@ -1610,7 +1678,9 @@ export class Engine {
     eng.awayFuelEmptyAtState = away.awayFuelEmptyAt;
     eng.awayHottestEntryState = away.awayHottestEntry;
     eng.awayMaxHotState = away.awayMaxHot;
-    eng.lastSummaryState = away.lastSummary === null ? null : { ...away.lastSummary };
+    eng.awaySpinCandState = away.awaySpinCand === undefined || away.awaySpinCand === null ? null : { ...away.awaySpinCand };
+    eng.awayReplayState = away.awayReplay === undefined || away.awayReplay === null ? null : { ...away.awayReplay };
+    eng.lastSummaryState = copySummary(away.lastSummary);
     eng.syncHoldMax();
     return eng;
   }

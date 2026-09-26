@@ -146,6 +146,8 @@ export {
 export type {
   Action,
   ActiveNotice,
+  AwayReplay,
+  AwaySpinCandidate,
   AwaySummary,
   AwayTrackerSnapshot,
   CloseRecord,

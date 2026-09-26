@@ -45,11 +45,11 @@ import {
   type BoardYakumono,
   type EngineSimEvent,
   type HallProjection,
-  type LotteryHoldColor,
   type Vec2,
 } from '@ph/core';
 import type { Shot } from '../engine/engine-host.ts';
 import { packTexts, planFor, playCue, playCues, setFlashTarget, setSceneTarget } from '../fx/fx-host.ts';
+import { PREVIEW_TAIL_MS, type PreviewRequest } from '../stores/preview.ts';
 import { LCD_RECT, bakeBoard, bakeGlare, bakeHall, bakeSoftDot, bakeSymbolAtlas, bakeTextAtlas } from './art.ts';
 import { BallTracks, DISPLAY_LAG_MS, MAX_BALLS, PREROLL_MS } from './ball-tracks.ts';
 import { CAB, Cabinet, bakeCabinetEnv, ledTube } from './cabinet.ts';
@@ -71,17 +71,8 @@ export interface PatternInfo {
   readonly ms: number;
 }
 
-/** Debug の演出プレビュー（Engine と無関係に液晶で1変動を流す）。 */
-export interface PreviewSpin {
-  readonly pattern: string;
-  readonly hit: boolean;
-  /** 分岐の通し番号（Engine の保留と重ならない値）。 */
-  readonly serial: number;
-  readonly color: LotteryHoldColor;
-}
-
-/** プレビューで変動の後に当たり・ハズレを見せる時間。 */
-const PREVIEW_TAIL_MS = 3500;
+/** 演出プレビュー（Debug の4本と留守中リプレイ。Engine の液晶を止めて1変動を流す）。 */
+export type PreviewSpin = PreviewRequest;
 
 // 奥行き（spec/50）: 盤面板 0 → 液晶 +3 → 玉・釘 +7 → 役物 +8 → ガラス +16 → 枠 +10〜+55（cabinet.ts）。
 const Z_LCD = 3;
@@ -311,7 +302,7 @@ export class BoardScene {
     this.seed = seed;
   }
 
-  /** Debug の演出プレビュー（次に描くフレームから実時間で流す）。 */
+  /** 演出プレビュー・留守中リプレイ（次に描くフレームから実時間で流す）。 */
   playPreview(p: PreviewSpin): void {
     this.preview = { ...p, start: -1 };
   }
@@ -453,14 +444,14 @@ export class BoardScene {
     const pv = this.preview;
     if (!pv) return null;
     if (pv.start < 0) pv.start = now;
-    const ms = this.patterns(pv.pattern)?.ms ?? 20000;
+    const ms = pv.durationMs ?? this.patterns(pv.pattern)?.ms ?? 20000;
     const t = now - pv.start;
     if (t < ms) {
       const spin = { entry: pv.serial, pattern: pv.pattern, startAt: pv.start, endsAt: pv.start + ms, color: pv.color, hit: pv.hit };
       return { holds: [], spin, resolved: null, jackpot: null };
     }
     if (t < ms + PREVIEW_TAIL_MS) {
-      const jackpot = pv.hit ? { entry: pv.serial, kind: 'kakuhen' as const, rounds: 10 } : null;
+      const jackpot = pv.hit ? { entry: pv.serial, kind: pv.kind ?? 'kakuhen', rounds: pv.rounds ?? 10 } : null;
       return { holds: [], spin: null, resolved: { entry: pv.serial, hit: pv.hit }, jackpot };
     }
     this.preview = null;

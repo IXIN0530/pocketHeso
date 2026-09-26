@@ -7,6 +7,22 @@
   position: relative;
 }
 
+/* 留守中リプレイの間だけ盤面の上に出す（その場の変動と見分けるため）。 */
+.replay {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(10, 12, 32, 0.78);
+  color: #ffe38a;
+  font-size: 13px;
+  font-weight: 700;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 /* 予告は盤面の下寄りに重ねる（片手の親指が届く位置）。見た目は赤保留・キリン柄・金保留（spec/23）。 */
 .notice {
   position: absolute;

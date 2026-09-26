@@ -1,10 +1,12 @@
+import { sound } from '../fx/fx-host.ts';
 import { dismissAway, useEngine } from '../stores/engine.ts';
 import { formatNum, formatSpan, formatTime } from '../stores/format.ts';
+import { replayRequest, requestPreview } from '../stores/preview.ts';
 import styles from './activity.module.css';
 
 /**
  * 留守中サマリー（spec/40）: 復帰時に経過時間・獲得玉・大当たり・燃料切れ時刻を出す。
- * 「最も熱い当たりを見る」は演出と一緒に P6 で足す。
+ * 「最も熱い当たりを見る」はホールの液晶で Engine が決めた変動のままリプレイする（spec/22 AwaySummary）。
  */
 export function AwayModal() {
   const away = useEngine((s) => s.away);
@@ -12,6 +14,7 @@ export function AwayModal() {
   if (away === null) {
     return null;
   }
+  const replay = replayRequest(away);
   return (
     <div className={styles.backdrop} role="dialog" aria-modal="true" aria-labelledby="away-title">
       <div className={styles.modal}>
@@ -33,7 +36,20 @@ export function AwayModal() {
         </dl>
         {(away.fuelEmptyAt !== null || fuelMs === 0) && <p className={styles.note}>燃料が切れると生産はごくわずかになります。行動タブで運動を受け取ると補給できます。</p>}
         <div className={styles.row}>
-          <button className={styles.button} onClick={dismissAway}>
+          {replay && (
+            <button
+              className={styles.button}
+              onClick={() => {
+                // iOS はタップの中で音を解錠する必要がある。
+                sound.unlock();
+                requestPreview(replay);
+                dismissAway();
+              }}
+            >
+              最も熱い当たりを見る（{formatTime(replay.replayAt ?? away.to, away.to)}）
+            </button>
+          )}
+          <button className={replay ? styles.sub : styles.button} onClick={dismissAway}>
             閉じる
           </button>
         </div>

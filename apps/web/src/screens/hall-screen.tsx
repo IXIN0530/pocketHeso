@@ -1,8 +1,9 @@
-import { Suspense, lazy, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import type { HallProjection, NoticeEffect } from '@ph/core';
 import { formatFuel } from '../stores/activity.ts';
 import { act, useEngine } from '../stores/engine.ts';
-import { formatNum } from '../stores/format.ts';
+import { formatNum, formatTime } from '../stores/format.ts';
+import { PREVIEW_TAIL_MS, usePreview } from '../stores/preview.ts';
 import styles from './hall.module.css';
 
 // Three.js 一式は盤面と一緒に別チャンクで読む（最初の表示を待たせない）。
@@ -32,6 +33,22 @@ export const NOTICE_TEXT: Record<NoticeEffect, { title: string; body: string }> 
 
 const report = (e: unknown) => useEngine.setState({ error: e instanceof Error ? e.message : String(e) });
 
+/** 留守中リプレイの間だけ「リプレイ」の札を出す（盤面は Engine の液晶を止めてリプレイを流している）。 */
+function ReplayBadge() {
+  const request = usePreview((s) => s.request);
+  const [label, setLabel] = useState<string | null>(null);
+  useEffect(() => {
+    if (request?.replayAt === undefined) {
+      setLabel(null);
+      return;
+    }
+    setLabel(`リプレイ ${formatTime(request.replayAt, Date.now())} の当たり`);
+    const id = setTimeout(() => setLabel(null), (request.durationMs ?? 0) + PREVIEW_TAIL_MS);
+    return () => clearTimeout(id);
+  }, [request]);
+  return label && <div className={styles.replay}>{label}</div>;
+}
+
 /**
  * ホール（spec/40 メイン画面の最小版）: 盤面＋液晶（保留・変動は盤面の中）、HUD、打つトグルとレート選択、予告。
  * 演出は P6 で差し替える。active=false（別タブ表示中）は盤面の描画を止める。
@@ -57,6 +74,7 @@ export function HallScreen({ active = true }: { active?: boolean }) {
         <Suspense>
           <BoardCanvas active={active} />
         </Suspense>
+        <ReplayBadge />
         {notice && (
           <button
             className={`${styles.notice} ${styles[notice.effect]}`}

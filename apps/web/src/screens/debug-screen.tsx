@@ -6,7 +6,7 @@ import { haptics, pack, planFor, playCue, sound } from '../fx/fx-host.ts';
 import { writeClipboard } from '../platform/clipboard.ts';
 import { formatFuel, localDay } from '../stores/activity.ts';
 import { DEBUG_SCALES, clock } from '../stores/clock.ts';
-import { debugInfo, receiveClaims, useEngine, verifyAtlas } from '../stores/engine.ts';
+import { debugInfo, receiveClaims, showLastAway, useEngine, verifyAtlas } from '../stores/engine.ts';
 import { PREVIEWS, PREVIEW_SERIAL_BASE, requestPreview } from '../stores/preview.ts';
 import { DEBUG_CLAIM_PREFIX } from './records-screen.tsx';
 import styles from './activity.module.css';
@@ -37,6 +37,13 @@ const scaleHref = (x: number) => `/?debug=1${x === 1 ? '' : `&x=${x}`}`;
 
 /** プレビューの通し番号（押すたびに進めて分岐を変える。画面を開き直しても続きから）。 */
 let previewCount = 0;
+
+/** 音の状態（実機の計測用, platform-limits の Web Audio 欄）。audioSession は iOS 17+ の Safari のみ。 */
+function audioStatus(): string {
+  const st = sound.status;
+  const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession?.type ?? '非対応';
+  return `AudioContext ${st.state}${st.sampleRate > 0 ? ` ${st.sampleRate}Hz` : ''} / audioSession ${session} / 表示 ${document.visibilityState}`;
+}
 
 /** 分岐の結果（名前=選んだ番号）。 */
 function describePicks(pattern: string, picks: readonly number[]): string {
@@ -130,10 +137,16 @@ export default function DebugScreen() {
               // iOS はタップの中で解錠する必要がある（playCue より先）。
               sound.unlock();
               playCue('test', 0, 0);
-              setMessage(sound.ready ? '再生しました' : '音を準備中です。もう一度押してください');
+              setMessage(sound.ready ? `再生しました（${audioStatus()}）` : '音を準備中です。もう一度押してください');
             }}
           >
             キュー再生
+          </button>
+          <button className={styles.sub} onClick={() => setMessage(audioStatus())}>
+            音の状態
+          </button>
+          <button className={styles.sub} onClick={() => setMessage(showLastAway() ? null : 'この起動ではまだ留守中サマリーがありません')}>
+            留守サマリーを再表示
           </button>
         </div>
       </section>
@@ -201,10 +214,6 @@ export default function DebugScreen() {
           </p>
         )}
         {dump !== null && <textarea className={styles.textarea} readOnly value={dump} rows={10} />}
-      </section>
-      <section className={styles.card}>
-        <h2>演出プレビュー</h2>
-        <p className={styles.note}>P6（音・光・振動）で追加します。</p>
       </section>
       {message && <p className={styles.note}>{message}</p>}
     </div>
