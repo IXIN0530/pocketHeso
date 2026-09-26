@@ -41,7 +41,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BALL_RADIUS_MM, type Board, type BoardYakumono, type Vec2 } from '@ph/core';
 import { LCD_RECT, bakeBoard, bakeGlare, bakeHall, bakeSoftDot, bakeSymbolAtlas } from './bakeoff-art.ts';
 import { BallPlayer, MAX_BALLS } from './bakeoff-balls.ts';
-import { CAB, Cabinet, ledTube } from './bakeoff-cabinet.ts';
+import { CAB, Cabinet, bakeCabinetEnv, ledTube } from './bakeoff-cabinet.ts';
 import { LcdReels } from './bakeoff-lcd.ts';
 import { summarize, type FrameStats } from './frame-stats.ts';
 
@@ -137,6 +137,7 @@ export class BakeoffBoard {
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.6;
     pmrem.dispose();
+    this.cabinet.setEnvironment(bakeCabinetEnv(this.renderer));
     this.scene.background = tex(bakeHall());
 
     const key = new DirectionalLight(0xfff4e8, 1.6);

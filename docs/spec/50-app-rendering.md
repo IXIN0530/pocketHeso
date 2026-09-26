@@ -12,6 +12,7 @@
 
 ## 質感（外部素材なしが基本）
 - 環境光は `RoomEnvironment` を PMREM に通した環境マップ（`environmentIntensity` 0.6）。トーンマップは ACES。
+  筐体の材質だけは照明の帯を置いた専用の環境マップ（`bakeCabinetEnv`, D-062）で、つやのある樹脂に見せる。
 - 素材: 玉 = 金属（metalness 1, roughness 0.08）/ 釘 = 真鍮 / 役物 = 金属 / 盤面板 = つや消し（roughness 0.85）。
   盤面板のつやを上げると天井照明の映り込みで白く飛ぶ（P0-T6 で確認）。
 - ガラス: 黒の加算合成で鏡面の映り込みだけを足す（`envMapIntensity` 0.25）。透明マテリアルで白く曇らせない。

@@ -1,10 +1,12 @@
 import {
+  BackSide,
   BufferGeometry,
   CanvasTexture,
   CatmullRomCurve3,
   CircleGeometry,
   Color,
   CylinderGeometry,
+  DoubleSide,
   ExtrudeGeometry,
   Float32BufferAttribute,
   Group,
@@ -15,7 +17,9 @@ import {
   OctahedronGeometry,
   Path,
   PlaneGeometry,
+  PMREMGenerator,
   RepeatWrapping,
+  Scene,
   ShaderMaterial,
   Shape,
   ShapeGeometry,
@@ -25,6 +29,9 @@ import {
   TubeGeometry,
   Vector2,
   Vector3,
+  type Material,
+  type WebGLRenderer,
+  type Texture,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -82,6 +89,7 @@ const LOGO_PLATE = 'M -188 -284 L 188 -284 L 204 -266 L 188 -248 L -188 -248 L -
 const V_PLATE = 'M 276 282 L 80 282 L 60 320 L 92 356 L 258 378 L 280 332 Z';
 const V_ACCENT = 'M 92 356 L 258 378 L 262 369 L 98 347 Z';
 const SPEAKER = 'M 258 388 L 96 366 L 62 402 L 62 430 L 258 430 Z';
+const SPEAKER_IN = 'M 253 393 L 98 372 L 67 404 L 67 425 L 253 425 Z';
 const HOUSING = 'M -86 252 L 86 252 L 72 350 L 0 408 L -72 350 Z';
 const HOUSING_IN = 'M -76 260 L 76 260 L 63 344 L 0 395 L -63 344 Z';
 const HOUSING_LED = 'M -76 260 L -63 344 L 0 395 L 63 344 L 76 260';
@@ -162,6 +170,24 @@ function extrude(shape: Shape, z: number, depth: number, bevel = 1.2): BufferGeo
   return g;
 }
 
+/**
+ * 成形品の樹脂パネル: 外形を変えずに（bevelOffset で内側から）縁を大きく丸める。
+ * 丸い縁が照明の帯を拾うことで、平らな板ではなくつやのあるプラスチックに見える。
+ */
+function molded(shape: Shape, z: number, depth: number, round = 3): BufferGeometry {
+  const g = new ExtrudeGeometry(shape, {
+    depth,
+    bevelEnabled: true,
+    bevelThickness: round,
+    bevelSize: round,
+    bevelOffset: -round,
+    bevelSegments: 5,
+    curveSegments: 20,
+  });
+  g.translate(0, 0, z);
+  return g;
+}
+
 /** 形の違うジオメトリを1つに（draw call 1）。index の有無と groups を揃えてから結合する。 */
 function merge(geos: BufferGeometry[]): BufferGeometry {
   const flat = geos.map((g) => {
@@ -218,6 +244,9 @@ export class Cabinet {
   private readonly accentMat: MeshPhysicalMaterial;
   private readonly pal: CabinetPalette;
   private readonly c = new Color();
+  private readonly glossy: MeshStandardMaterial[] = [];
+  private readonly pearl: MeshPhysicalMaterial;
+  private readonly smoke: MeshPhysicalMaterial;
 
   constructor(palette: CabinetPalette = PALETTES['pearl-violet']) {
     this.pal = palette;
@@ -226,25 +255,29 @@ export class Cabinet {
     // 本体（黒つや）: 外形から窓をくり抜く。
     const body = mirroredShape(BODY);
     body.holes.push(roundedRect(BEZEL.halfW - 1, BEZEL.halfH - 1, BEZEL.r));
-    const trimMat = new MeshPhysicalMaterial({ color: palette.trim, metalness: 0.35, roughness: 0.38, clearcoat: 1, clearcoatRoughness: 0.08 });
+    const trimMat = new MeshPhysicalMaterial({ color: palette.trim, metalness: 0.1, roughness: 0.5, clearcoat: 1, clearcoatRoughness: 0.04 });
     g.add(new Mesh(extrude(body, Z_BODY, 10, 2.5), trimMat));
 
     // パールの装甲（翼・眉・V 字の板）。
-    const pearl = new MeshPhysicalMaterial({
-      color: palette.body,
-      metalness: 0.05,
-      roughness: 0.32,
+    // 白は地が明るくハイライトが埋もれるので、地を少し落としてクリアコートの映り込みで白さを出す。
+    const pearl = (this.pearl = new MeshPhysicalMaterial({
+      color: new Color(palette.body).multiplyScalar(0.93),
+      metalness: 0,
+      roughness: 0.2,
+      // 樹脂の反射率 4% では白い地に映り込みが埋もれるので、下地の反射を強める（F0 ≈ 11%）。
+      ior: 2.0,
       clearcoat: 1,
-      clearcoatRoughness: 0.06,
-    });
+      clearcoatRoughness: 0.03,
+    }));
+    moldedShading(pearl);
     g.add(
       new Mesh(
         merge([
-          extrude(parsePath(SIDE_ARMOR), Z_PEARL, 5, 1.6),
-          extrude(parsePath(SIDE_ARMOR, true), Z_PEARL, 5, 1.6),
-          extrude(parsePath(BROW), Z_PEARL, 5, 1.6),
-          extrude(parsePath(V_PLATE), Z_PEARL - 3, 5, 1.6),
-          extrude(parsePath(V_PLATE, true), Z_PEARL - 3, 5, 1.6),
+          molded(parsePath(SIDE_ARMOR), Z_PEARL, 3.5, 3.5),
+          molded(parsePath(SIDE_ARMOR, true), Z_PEARL, 3.5, 3.5),
+          molded(parsePath(BROW), Z_PEARL, 3.5, 3.5),
+          molded(parsePath(V_PLATE), Z_PEARL - 3, 3.5, 3.5),
+          molded(parsePath(V_PLATE, true), Z_PEARL - 3, 3.5, 3.5),
         ]),
         pearl,
       ),
@@ -275,7 +308,8 @@ export class Cabinet {
     g.add(new Mesh(merge(accents), this.accentMat));
 
     // スモーク（翼の溝・ロゴ帯・ボタン台の内側・上皿の溝・スリット・エンブレムの地・台座）。
-    const smoke = new MeshStandardMaterial({ color: palette.smoke, metalness: 0.4, roughness: 0.22 });
+    // スモーク: 黒い透明樹脂（クリアコートで照明が映る）。
+    const smoke = (this.smoke = new MeshPhysicalMaterial({ color: palette.smoke, metalness: 0.2, roughness: 0.35, clearcoat: 1, clearcoatRoughness: 0.03 }));
     const smokes: BufferGeometry[] = [
       extrude(parsePath(SIDE_CHANNEL), Z_PEARL - 2, 3, 0.6),
       extrude(parsePath(SIDE_CHANNEL, true), Z_PEARL - 2, 3, 0.6),
@@ -299,7 +333,7 @@ export class Cabinet {
     g.add(new Mesh(merge(smokes), smoke));
 
     // クローム（窓の額・エンブレムの輪・ボタン台と輪・ハンドル）。
-    this.chrome = new MeshStandardMaterial({ color: 0xf2f4f8, metalness: 1, roughness: 0.1 });
+    this.chrome = new MeshStandardMaterial({ color: 0xf2f4f8, metalness: 1, roughness: 0.08 });
     const bezel = roundedRect(BEZEL.halfW, BEZEL.halfH, BEZEL.r);
     bezel.holes.push(roundedRect(WIN.halfW, WIN.halfH, WIN.r));
     const housing = parsePath(HOUSING);
@@ -317,6 +351,16 @@ export class Cabinet {
           extrude(ring(BUTTON.x, BUTTON.y, 38, 44), Z_ACCENT + 3, 5, 1.6),
           handleRing,
           handleBar,
+          ...[false, true].map((f) => {
+            const frame = parsePath(SPEAKER, f);
+            frame.holes.push(parsePath(SPEAKER_IN, f));
+            return extrude(frame, Z_FACE, 1.5, 1);
+          }),
+          ...[-1, 1].map((sx) => {
+            const lip = roundedRect(75, 17, 12);
+            lip.holes.push(roundedRect(72, 14, 10));
+            return extrude(lip, Z_FACE, 1.5, 0.8).translate(sx * 142, -262, 0);
+          }),
         ]),
         this.chrome,
       ),
@@ -369,14 +413,24 @@ export class Cabinet {
     dome.position.set(BUTTON.x, -BUTTON.y, Z_ACCENT + 4);
     g.add(dome);
 
-    // スピーカー（六角メッシュの焼き込み）。
-    const meshTex = new CanvasTexture(bakeSpeakerMesh());
-    meshTex.colorSpace = SRGBColorSpace;
-    meshTex.wrapS = meshTex.wrapT = RepeatWrapping;
-    meshTex.repeat.set(1 / 14, 1 / 12);
-    const speakers = merge([new ShapeGeometry(parsePath(SPEAKER), 4), new ShapeGeometry(parsePath(SPEAKER, true), 4)]);
+    // スピーカー: ガンメタの穴あき金属板（穴の凹みは法線マップ、クロームの枠で囲む）。
+    const [colorTex, normalTex] = bakeSpeakerMesh().map((c, i) => {
+      const t = new CanvasTexture(c);
+      if (i === 0) t.colorSpace = SRGBColorSpace;
+      t.wrapS = t.wrapT = RepeatWrapping;
+      t.repeat.set(1 / 14, 1 / 12);
+      return t;
+    }) as [CanvasTexture, CanvasTexture];
+    const speakers = merge([new ShapeGeometry(parsePath(SPEAKER_IN), 4), new ShapeGeometry(parsePath(SPEAKER_IN, true), 4)]);
     speakers.translate(0, 0, Z_FACE + 0.5);
-    g.add(new Mesh(speakers, new MeshStandardMaterial({ map: meshTex, roughness: 0.7, metalness: 0.2 })));
+    g.add(
+      new Mesh(
+        speakers,
+        new MeshStandardMaterial({ map: colorTex, normalMap: normalTex, normalScale: new Vector2(1.2, 1.2), metalness: 0.85, roughness: 0.32 }),
+      ),
+    );
+
+    this.glossy.push(trimMat, pearl, this.accentMat, smoke, this.chrome, this.dome);
 
     // ロゴ帯の文字と PUSH の文字（1枚のテクスチャ、ジオメトリ2枚を結合）。
     const logoGeo = new PlaneGeometry(320, 30);
@@ -387,6 +441,17 @@ export class Cabinet {
     pushGeo.translate(BUTTON.x, -372, Z_ACCENT + 3.2);
     const labels = new MeshBasicMaterial({ map: labelTexture(palette), transparent: true, depthWrite: false });
     g.add(new Mesh(merge([logoGeo, pushGeo]), labels));
+  }
+
+  /** 筐体の材質（と盤面側で共有しているクローム）にだけ bakeCabinetEnv の映り込みを使う。 */
+  setEnvironment(tex: Texture): void {
+    for (const m of this.glossy) {
+      m.envMap = tex;
+      // アクセント色とスモークは映り込みで色が淡くならないよう控えめに。
+      // クロームは反射率がほぼ 100% なので、照明の帯がブルームのしきい値（2.5）を超えないよう弱める。
+      m.envMapIntensity = m === this.chrome ? 0.3 : m === this.accentMat || m === this.smoke ? 0.55 : 1;
+      m.needsUpdate = true;
+    }
   }
 
   update(s: CabinetState): void {
@@ -474,24 +539,138 @@ function labelTexture(p: CabinetPalette): CanvasTexture {
   return t;
 }
 
-/** スピーカーの六角メッシュ（14mm × 12mm の繰り返し単位）。 */
-function bakeSpeakerMesh(): HTMLCanvasElement {
-  const [c, ctx] = canvas(56, 48);
-  ctx.fillStyle = '#07070a';
-  ctx.fillRect(0, 0, 56, 48);
-  ctx.fillStyle = '#34343f';
-  for (const [x, y] of [
-    [14, 12],
-    [42, 12],
-    [0, 36],
-    [28, 36],
-    [56, 36],
-  ] as const) {
-    ctx.beginPath();
-    ctx.arc(x, y, 8, 0, Math.PI * 2);
-    ctx.fill();
+/**
+ * 成形品らしい陰影（パール用）: 窓の奥まりに近いほど暗く（簡易 AO）、上から下へわずかに暗く。
+ * 一様な白ベタだと「デジタル素材」に見えるため（2026-09-26 のデザインへのコメント）。
+ */
+function moldedShading(m: MeshPhysicalMaterial): void {
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vCabPos;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvCabPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vCabPos;')
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        vec2 q = max(abs(vCabPos.xy - vec2(0.0, -4.0)) - vec2(${BEZEL.halfW.toFixed(1)}, ${BEZEL.halfH.toFixed(1)}), 0.0);
+        float ao = mix(0.72, 1.0, smoothstep(0.0, 46.0, length(q)));
+        float sky = mix(0.9, 1.03, smoothstep(-450.0, 380.0, vCabPos.y));
+        diffuseColor.rgb *= ao * sky;`,
+      );
+  };
+}
+
+/** スピーカーの穴あき板（14mm × 12mm の繰り返し単位、8px/mm）。[色, 法線] を返す。 */
+function bakeSpeakerMesh(): [HTMLCanvasElement, HTMLCanvasElement] {
+  const PX = 8;
+  const W = 14 * PX;
+  const H = 12 * PX;
+  const holes = [
+    [3.5, 3],
+    [10.5, 3],
+    [0, 9],
+    [7, 9],
+    [14, 9],
+    [0, -3],
+    [7, -3],
+    [14, -3],
+    [3.5, 15],
+    [10.5, 15],
+  ] as const;
+  const R = 2.1;
+  const EDGE = 0.5;
+  // 深さ: 穴の中は 1、縁は EDGE mm で丸く落ちる。
+  const depth = (x: number, y: number) => {
+    let d = 0;
+    for (const [hx, hy] of holes) {
+      const r = Math.hypot(x - hx, y - hy);
+      d = Math.max(d, Math.min(1, Math.max(0, (R - r) / EDGE)));
+    }
+    return d;
+  };
+  const [cc, cctx] = canvas(W, H);
+  const [nc, nctx] = canvas(W, H);
+  const col = cctx.createImageData(W, H);
+  const nor = nctx.createImageData(W, H);
+  const e = 1 / PX;
+  for (let j = 0; j < H; j++) {
+    for (let i = 0; i < W; i++) {
+      const x = (i + 0.5) / PX;
+      const y = (j + 0.5) / PX;
+      const d = depth(x, y);
+      const k = (j * W + i) * 4;
+      // 板は明るめのガンメタ、穴の奥は黒。
+      const v = 92 - 86 * d;
+      col.data[k] = v;
+      col.data[k + 1] = v + 2;
+      col.data[k + 2] = v + 8;
+      col.data[k + 3] = 255;
+      // 高さ = -深さ。canvas の +y は下向き、uv の +v は上向きなので dy の符号を反転。
+      const dx = (depth(x + e, y) - depth(x - e, y)) / (2 * e);
+      const dy = -(depth(x, y + e) - depth(x, y - e)) / (2 * e);
+      const nx = dx * 0.35;
+      const ny = dy * 0.35;
+      const len = Math.hypot(nx, ny, 1);
+      nor.data[k] = Math.round((nx / len * 0.5 + 0.5) * 255);
+      nor.data[k + 1] = Math.round((ny / len * 0.5 + 0.5) * 255);
+      nor.data[k + 2] = Math.round((1 / len * 0.5 + 0.5) * 255);
+      nor.data[k + 3] = 255;
+    }
   }
-  return c;
+  cctx.putImageData(col, 0, 0);
+  nctx.putImageData(nor, 0, 0);
+  return [cc, nc];
+}
+
+/**
+ * 筐体用の環境マップ（ホールの天井照明とソフトボックス）。
+ * RoomEnvironment は一様な灰色でつやが見えないため、暗い背景に明るい帯を置き、
+ * クリアコートとクロームに照明の帯が映るようにする。
+ */
+export function bakeCabinetEnv(renderer: WebGLRenderer): Texture {
+  const env = new Scene();
+  const bg = new SphereGeometry(40, 32, 16);
+  const cols: number[] = [];
+  const pos = bg.attributes.position;
+  for (let i = 0; i < (pos?.count ?? 0); i++) {
+    const t = ((pos?.getY(i) ?? 0) / 40 + 1) / 2; // 0 = 床, 1 = 天井
+    const v = 0.04 + 0.2 * t * t;
+    cols.push(v, v * 0.95, v * 1.2);
+  }
+  bg.setAttribute('color', new Float32BufferAttribute(cols, 3));
+  env.add(new Mesh(bg, new MeshBasicMaterial({ vertexColors: true, side: BackSide })));
+  const panel = (w: number, h: number, x: number, y: number, z: number, color: number, k: number) => {
+    const m = new Mesh(new PlaneGeometry(w, h), new MeshBasicMaterial({ color: new Color(color).multiplyScalar(k), side: DoubleSide }));
+    m.position.set(x, y, z);
+    m.lookAt(0, 0, 0);
+    env.add(m);
+  };
+  // 正面の上（見る人の頭上）の大きなソフトボックス → 平らな面に斜めの明るい帯。
+  panel(16, 3.2, 0, 7, 12, 0xffffff, 6);
+  // 平らな正面が映すのは真後ろ ±7° ほど（カメラが約 2.4m 離れるため）。その範囲に帯を置く:
+  // 横の帯 → 眉の高さに横の映り込み、細い縦の照明 → 翼の面に縦の映り込み。
+  panel(22, 0.55, 0, 2.35, 14, 0xffffff, 9);
+  panel(0.3, 20, -1.48, 0, 14, 0xffffff, 10);
+  panel(0.3, 20, 1.48, 0, 14, 0xffffff, 10);
+  // 左右の縦長の照明 → 翼の丸い縁に縦のハイライト。
+  panel(1.2, 16, -11, 2, 9, 0xf4f8ff, 6);
+  panel(1.2, 16, 11, 2, 9, 0xf4f8ff, 6);
+  // 天井の蛍光灯の列 → 上向きの縁に細い線。
+  for (const z of [-8, -2, 4]) panel(24, 0.7, 0, 14, z, 0xffffff, 4);
+  // ホールの色（隣の台の光）を少し。
+  panel(6, 6, -16, -2, 2, 0xa060ff, 1.2);
+  panel(6, 6, 16, -2, 2, 0x40c0ff, 1.0);
+  const pmrem = new PMREMGenerator(renderer);
+  const tex = pmrem.fromScene(env, 0.02).texture;
+  pmrem.dispose();
+  env.traverse((o) => {
+    if (o instanceof Mesh) {
+      (o.geometry as BufferGeometry).dispose();
+      (o.material as Material).dispose();
+    }
+  });
+  return tex;
 }
 
 const HUE_GLSL = /* glsl */ `
