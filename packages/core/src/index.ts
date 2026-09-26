@@ -110,7 +110,9 @@ export type {
 export { ECONOMY_BUY_TARGETS, IdleEconomy } from './economy-state.ts';
 export type { Amount } from './economy-math.ts';
 export {
+  AMOUNT_MAX,
   CBRT_ITERATIONS,
+  addAmount,
   awakenMedalCost,
   ballPoints,
   buildGrowthTable,

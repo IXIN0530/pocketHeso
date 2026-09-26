@@ -3,6 +3,7 @@ import type { EconomySpec } from './economy-config.ts';
 import { ECONOMY_YAKUMONO_IDS } from './economy-config.ts';
 import type { EconomyPort } from './economy.ts';
 import {
+  addAmount,
   awakenMedalCost,
   ballPoints,
   buildGrowthTable,
@@ -750,8 +751,8 @@ export class IdleEconomy implements EconomyPort {
     const perSec = this.getPerSec(fg, curFuelMs);
     const gain = perSec;
     if (gain > 0) {
-      this.runTotalState = this.runTotalState + gain;
-      this.totalTotalState = this.totalTotalState + gain;
+      this.runTotalState = addAmount(this.runTotalState, gain);
+      this.totalTotalState = addAmount(this.totalTotalState, gain);
     }
     let fuel = curFuelMs;
     let becameEmpty = false;
@@ -786,8 +787,8 @@ export class IdleEconomy implements EconomyPort {
     if (amount <= 0) {
       return;
     }
-    this.runTotalState = this.runTotalState + amount;
-    this.totalTotalState = this.totalTotalState + amount;
+    this.runTotalState = addAmount(this.runTotalState, amount);
+    this.totalTotalState = addAmount(this.totalTotalState, amount);
   }
 
   /** 強化画面の表示（役物の毎秒・まとめ買い価格・覚醒、強化の段と次の価格、閉店の見込み）。 */

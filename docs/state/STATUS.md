@@ -2,7 +2,7 @@
 <!-- 30行以内を維持。古い Notes は削除してよい（履歴は git log にある） -->
 
 - Current phase: P7 → `docs/plan/P7-soak-tune.md`
-- Last done: P6-T3 留守中リプレイ（AwaySummary.replay・留守モーダルの「最も熱い当たりを見る」・Debug の音の状態, D-068）＋実機の音・光の確認を platform-limits に記録。P6 完了
+- Last done: P6-T3 留守中リプレイ（AwaySummary.replay・留守モーダルの「最も熱い当たりを見る」・Debug の音の状態, D-068）＋実機の音・光の確認を platform-limits に記録。P6 完了。追加で持ち玉・累計玉の上限ガード（`addAmount`、Infinity にしない, D-069）と images/ の gitignore
 - Next: P7-T1 ローカル計測ログ
 - Owner hint: Claude Code
 

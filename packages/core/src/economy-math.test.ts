@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 import {
+  AMOUNT_MAX,
+  addAmount,
   awakenMedalCost,
   buildGrowthTable,
   buildPow115Table,
@@ -186,4 +188,12 @@ test('ECONOMY リソースの既定値で価格が再現できる', () => {
   const t = buildPow115Table(100);
   const windmill = json.yakumono[0] as { base_price: number };
   expect(relErr(yakumonoPrice(windmill.base_price, 10, t), 60.68336603561861)).toBeLessThan(1e-12);
+});
+
+test('addAmount は Infinity にならず AMOUNT_MAX で止まる', () => {
+  expect(addAmount(1, 2)).toBe(3);
+  expect(addAmount(AMOUNT_MAX, AMOUNT_MAX)).toBe(AMOUNT_MAX);
+  expect(addAmount(AMOUNT_MAX, 1)).toBe(AMOUNT_MAX);
+  expect(addAmount(AMOUNT_MAX * 0.75, AMOUNT_MAX * 0.5)).toBe(AMOUNT_MAX);
+  expect(addAmount(AMOUNT_MAX, -AMOUNT_MAX)).toBe(0);
 });

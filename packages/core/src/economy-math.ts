@@ -3,6 +3,15 @@
 /** 玉・メダル等の数量（double。1e308超の後期に仮数＋指数型へ差し替え可能にする別名）。 */
 export type Amount = number;
 
+/** Amount の上限（double の最大値。これ以上は増えずに止まる）。 */
+export const AMOUNT_MAX: Amount = Number.MAX_VALUE;
+
+/** Amount の加算（Infinity にならず AMOUNT_MAX で止まる。セーブの復元・JSON 書き出しを壊さない）。 */
+export function addAmount(a: Amount, b: Amount): Amount {
+  const s = a + b;
+  return s > AMOUNT_MAX ? AMOUNT_MAX : s;
+}
+
 /** cbrt のニュートン反復回数（固定）。 */
 export const CBRT_ITERATIONS = 40;
 

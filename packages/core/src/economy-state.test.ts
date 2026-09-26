@@ -4,7 +4,7 @@ import type { MachineSpec, PatternTable } from './machine.ts';
 import { parseMachineText, parsePatternsText } from './machine.ts';
 import { parseEconomy } from './economy-config.ts';
 import { IdleEconomy } from './economy-state.ts';
-import type { Action, Grant, SimEvent } from './engine.ts';
+import type { Action, EngineSnapshot, Grant, SimEvent } from './engine.ts';
 import { Engine } from './engine.ts';
 
 function loadMachine(): { spec: MachineSpec; patterns: PatternTable } {
@@ -419,4 +419,26 @@ test('閉店の記録は Projection と snapshot に残る（P5-T4）', () => {
   const closes = eng.project().closes;
   expect(closes).toEqual([{ at: 1000, runTotal: 1000000000, gain: 1 }]);
   expect(Engine.restore(eng.snapshot(), { ...cfg, economy: loadEconomy() }).project().closes).toEqual(closes);
+});
+
+test('持ち玉と累計は double の最大値で止まり、セーブの復元と JSON 書き出しが壊れない', () => {
+  const { spec, patterns } = loadMachine();
+  const econ = loadEconomy();
+  econ.noteGain(Number.MAX_VALUE);
+  econ.noteGain(Number.MAX_VALUE);
+  expect(econ.getRunTotal()).toBe(Number.MAX_VALUE);
+  expect(econ.getTotalTotal()).toBe(Number.MAX_VALUE);
+  const eng = new Engine(
+    { seed: 5, spec, patterns, atlas: loadAtlas(), initialBalls: Number.MAX_VALUE, initialMedals: 0, economy: econ },
+    [{ claimId: 'fuel12h', at: 0, fuelMs: H12, medals: 0 }],
+    [{ t: 0, k: 'buy', target: 'windmill', count: 100 }],
+  );
+  eng.advance(H);
+  const p = eng.project();
+  expect(p.balls).toBe(Number.MAX_VALUE);
+  expect(p.perSec).toBeGreaterThan(0);
+  const snap = JSON.parse(JSON.stringify(eng.snapshot())) as EngineSnapshot;
+  expect(snap.balls).toBe(Number.MAX_VALUE);
+  const back = Engine.restore(snap, { seed: 5, spec, patterns, atlas: loadAtlas(), economy: loadEconomy() });
+  expect(back.project().balls).toBe(Number.MAX_VALUE);
 });

@@ -9,6 +9,7 @@ import { ATLAS_ENTRY_BYTES, ATLAS_HEADER_BYTES, ATLAS_TOTAL_BYTES, atlasKeyForBa
 import type { EconomyPort } from './economy.ts';
 import type { ShopView } from './economy-state.ts';
 import { StubEconomy } from './economy.ts';
+import { addAmount } from './economy-math.ts';
 import { RNGStream } from './rng.ts';
 
 /** 予告の効果（fever=生産×7・rush=即時出玉・bonus=1/10特別変動）。 */
@@ -1146,7 +1147,7 @@ export class Engine {
         const cap = perSec * cfg.rushCapS;
         const gain = byBalls < cap ? byBalls : cap;
         if (gain > 0) {
-          this.ballsState = this.ballsState + gain;
+          this.ballsState = addAmount(this.ballsState, gain);
           this.noteEconomyGain(gain);
         }
       }
@@ -1166,7 +1167,7 @@ export class Engine {
             cfg.bonus1In,
             weights,
           );
-          this.ballsState = this.ballsState + entry.hesoPayoutBalls;
+          this.ballsState = addAmount(this.ballsState, entry.hesoPayoutBalls);
           this.totalsState = {
             ...this.totalsState,
             spins: this.totalsState.spins,
@@ -1242,7 +1243,7 @@ export class Engine {
     }
     const r = (hook.bind(this.economy))(this.fgState, this.fuelMsState);
     if (r.ballGain !== 0) {
-      this.ballsState = this.ballsState + r.ballGain;
+      this.ballsState = addAmount(this.ballsState, r.ballGain);
     }
     this.fuelMsState = r.fuelMs;
     if (r.fuelBecameEmpty) {
@@ -1354,7 +1355,7 @@ export class Engine {
       const h = hits[i] as PendingSensor;
       const mode = this.spins.mode;
       const entry = drawHold(this.spec, this.patterns, this.seed, mode, h.ball, h.rate);
-      this.ballsState = this.ballsState + entry.hesoPayoutBalls;
+      this.ballsState = addAmount(this.ballsState, entry.hesoPayoutBalls);
       this.totalsState = {
         ...this.totalsState,
         spins: this.totalsState.spins,
@@ -1428,7 +1429,7 @@ export class Engine {
             deferredMode = { k: 'modeChanged', to: e.to, at: e.at, stRemaining: e.stRemaining };
           } else {
             if (e.k === 'jackpotEnded') {
-              this.ballsState = this.ballsState + e.payout;
+              this.ballsState = addAmount(this.ballsState, e.payout);
               this.setJackpotFever(null);
               this.totalsState = {
                 ...this.totalsState,
