@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { isStandalone } from '../platform/pwa.ts';
-import { evaluate, type Evaluated, type Facility } from './geo-range.ts';
-import { buildYolpUrl, fetchJsonp, parseYolp } from './yolp.ts';
+import { distanceM, parseYolp, type YolpPlace } from '@ph/claims';
+import { fetchJsonp, YOLP_CREDIT, yolpUrl } from '../platform/yolp.ts';
 import styles from './spike.module.css';
 
 const stamp = () => new Date().toISOString().slice(11, 23);
@@ -30,8 +30,7 @@ export function GeoSpike() {
   const [log, setLog] = useState<string[]>([]);
   const [perm, setPerm] = useState('?');
   const [fix, setFix] = useState<Fix | null>(null);
-  const [radius, setRadius] = useState(300);
-  const [facilities, setFacilities] = useState<Facility[] | null>(null);
+  const [facilities, setFacilities] = useState<YolpPlace[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [appid, setAppid] = useState(loadAppid);
   const [showNames, setShowNames] = useState(false);
@@ -88,14 +87,16 @@ export function GeoSpike() {
     if (!fix) return;
     setBusy(true);
     const t0 = performance.now();
-    add(`YOLP 問い合わせ 半径 ${radius}m`);
+    add('YOLP 問い合わせ 半径 300m');
     try {
-      const json = (await fetchJsonp((cb) => buildYolpUrl(appid.trim(), fix.lat, fix.lon, radius, cb))) as {
+      const at = { lat: fix.lat, lon: fix.lon, accuracyM: fix.accuracy };
+      const json = (await fetchJsonp((cb) => yolpUrl(appid.trim(), at, cb))) as {
         ResultInfo?: { Status?: unknown; Total?: unknown };
         Error?: { Message?: unknown };
       };
       if (json.Error) throw new Error(`YOLP Error: ${String(json.Error.Message)}`);
       const list = parseYolp(json);
+      if (list === null) throw new Error('YOLP 応答を読めない');
       setFacilities(list);
       add(`YOLP OK ${list.length} 件 Status=${String(json.ResultInfo?.Status)} (${Math.round(performance.now() - t0)}ms)`);
     } catch (e) {
@@ -124,16 +125,6 @@ export function GeoSpike() {
       </div>
       <p>accuracy: {summary}</p>
       <label>
-        検索半径（m, 既定 300）
-        <input
-          className={styles.input}
-          type="number"
-          inputMode="numeric"
-          value={radius}
-          onChange={(e) => setRadius(Math.max(50, Math.min(1000, Number(e.target.value) || 300)))}
-        />
-      </label>
-      <label>
         YOLP Client ID（この端末にだけ保存）
         <input className={styles.input} value={appid} onChange={(e) => saveAppid(e.target.value)} />
       </label>
@@ -145,17 +136,38 @@ export function GeoSpike() {
         <input type="checkbox" checked={showNames} onChange={(e) => setShowNames(e.target.checked)} /> 名前と ID を表示（確認用）
       </label>
       {facilities && fix && (
-        <FacilityList list={evaluate(fix.lat, fix.lon, fix.accuracy, facilities)} showNames={showNames} />
+        <FacilityList list={evaluate(fix, facilities)} showNames={showNames} />
       )}
       <p>
-        <a className={styles.back} href="https://developer.yahoo.co.jp/sitemap/">
-          Webサービス by Yahoo! JAPAN
+        <a className={styles.back} href={YOLP_CREDIT.href}>
+          {YOLP_CREDIT.text}
         </a>
       </p>
       <h2>ログ（新しい順）</h2>
       <pre className={styles.pre}>{log.join('\n')}</pre>
     </main>
   );
+}
+
+interface Evaluated extends YolpPlace {
+  /** 中心までの距離（m） */
+  centerM: number;
+  /** 中心からの距離 ≤ 半径 */
+  inRange: boolean;
+  /** 中心からの距離 ≤ 半径 + accuracy（spec/32 の判定） */
+  inRangePlusAcc: boolean;
+}
+
+/** 近い順に並べ、半径だけの判定と半径 + accuracy の判定を付ける。 */
+function evaluate(fix: Fix, list: readonly YolpPlace[]): Evaluated[] {
+  const from = { lat: fix.lat, lon: fix.lon, accuracyM: fix.accuracy };
+  const cosLat = Math.cos((fix.lat * Math.PI) / 180);
+  return list
+    .map((f) => {
+      const centerM = distanceM(from, cosLat, f.lat, f.lon);
+      return { ...f, centerM, inRange: centerM <= f.radiusM, inRangePlusAcc: centerM <= f.radiusM + fix.accuracy };
+    })
+    .sort((a, b) => a.centerM - b.centerM);
 }
 
 function FacilityList({ list, showNames }: { list: Evaluated[]; showNames: boolean }) {
@@ -170,9 +182,9 @@ function FacilityList({ list, showNames }: { list: Evaluated[]; showNames: boole
         {list
           .map(
             (f) =>
-              `${f.inRange ? '●' : '○'}${f.inRangePlusAcc ? '●' : '○'} ${f.centerM.toFixed(0).padStart(4)}m ${f.kind}` +
-              ` [半径 ${f.radiusM ?? '-'}m]` +
-              (showNames ? ` ${f.name || '(名前なし)'} ${f.id}` : ''),
+              `${f.inRange ? '●' : '○'}${f.inRangePlusAcc ? '●' : '○'} ${f.centerM.toFixed(0).padStart(4)}m ${f.genre}` +
+              ` [半径 ${f.radiusM}m]` +
+              (showNames ? ` ${f.name || '(名前なし)'} ${f.gid}` : ''),
           )
           .join('\n') || '0 件'}
       </pre>
