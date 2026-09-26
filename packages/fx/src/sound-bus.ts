@@ -4,6 +4,9 @@ import { renderSynth } from './synth.ts';
 
 export type VolumeKey = CueBus | 'master';
 
+/** 解錠のタップから resume が効くまで待つ時間。過ぎても running でなければ解錠失敗として再生を捨てる。 */
+const RESUME_GRACE_MS = 500;
+
 interface Playing {
   readonly src: AudioBufferSourceNode;
   readonly bus: CueBus;
@@ -27,12 +30,17 @@ export class SoundBus {
   private readonly sources = new Map<string, { readonly asset: SoundAsset; readonly baseUrl: string }>();
   private readonly buffers = new Map<string, AudioBuffer>();
   private readonly playing = new Set<Playing>();
-  /** resume の完了待ち（この間の再生は resume 後に鳴る）。 */
+  /** 解錠を試みた直後（この間の再生は resume 後に鳴る）。解錠に失敗したまま残らないよう短時間で戻す。 */
   private resuming = false;
+  private attempt = 0;
 
   constructor(private readonly createContext: () => AudioContext = () => new AudioContext()) {}
 
-  /** ユーザー操作のハンドラ内で呼ぶ。何度呼んでもよい（iOS の中断からの復帰も兼ねる）。 */
+  /**
+   * ユーザー操作のハンドラ内で呼ぶ。何度呼んでもよい（iOS の中断からの復帰も兼ねる）。
+   * iOS は操作の外で呼んだ resume を解決しないまま保留し、無音の再生も効かない。
+   * 操作の外（touch の pointerdown など）で先に呼ばれても次の操作で解錠できるよう、止まっている間は毎回やり直す。
+   */
   unlock(): void {
     if (!this.ctx) {
       const ctx = this.createContext();
@@ -46,22 +54,21 @@ export class SoundBus {
         g.connect(this.master);
         this.gains.set(bus, g);
       }
-      // iOS: 操作中に何か鳴らすと以後の再生が許される（無音1サンプル）。
-      const silent = ctx.createBufferSource();
-      silent.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
-      silent.connect(ctx.destination);
-      silent.start();
       for (const name of this.sources.keys()) void this.decode(name);
     }
-    if (this.ctx.state !== 'running' && !this.resuming) {
-      this.resuming = true;
-      this.ctx
-        .resume()
-        .catch(() => {})
-        .finally(() => {
-          this.resuming = false;
-        });
-    }
+    const ctx = this.ctx;
+    if (ctx.state === 'running') return;
+    // iOS: 操作中に何か鳴らすと以後の再生が許される（無音1サンプル）。
+    const silent = ctx.createBufferSource();
+    silent.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+    silent.connect(ctx.destination);
+    silent.start();
+    ctx.resume().catch(() => {});
+    const attempt = ++this.attempt;
+    this.resuming = true;
+    setTimeout(() => {
+      if (this.attempt === attempt) this.resuming = false;
+    }, RESUME_GRACE_MS);
   }
 
   /** 鳴らせる状態か（解錠のタップ直後で resume 待ちの間も true）。 */

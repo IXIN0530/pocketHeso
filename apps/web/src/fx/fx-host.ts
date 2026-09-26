@@ -22,15 +22,17 @@ usePrefs.subscribe((p, prev) => {
   if (p.volume !== prev.volume) applyVolume(p.volume);
 });
 
-/** 最初のタップで音を解錠する（iOS はユーザー操作の中でないと鳴らない）。以後のタップは中断からの復帰。 */
+/**
+ * タップで音を解錠する（iOS はユーザー操作の中でないと鳴らない）。以後のタップは中断からの復帰。
+ * touch の pointerdown はユーザー操作に数えられない（解錠できない）ので、離した時・クリック・キーで呼ぶ。
+ */
 export function installAudioUnlock(): () => void {
   const unlock = () => sound.unlock();
   const opts = { capture: true, passive: true } as const;
-  document.addEventListener('pointerdown', unlock, opts);
-  document.addEventListener('touchend', unlock, opts);
+  const events = ['touchend', 'pointerup', 'click', 'keydown'] as const;
+  for (const e of events) document.addEventListener(e, unlock, opts);
   return () => {
-    document.removeEventListener('pointerdown', unlock, opts);
-    document.removeEventListener('touchend', unlock, opts);
+    for (const e of events) document.removeEventListener(e, unlock, opts);
   };
 }
 
