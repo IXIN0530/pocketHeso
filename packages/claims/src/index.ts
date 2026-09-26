@@ -7,4 +7,6 @@ export type { ClaimRules, Source, Tier } from './rules.ts';
 export { parseClaimRules } from './rules.ts';
 export type { CheckinResult, ClaimInput, ClaimRecord, HealthDay, Kind, ParsedHealth, SelfReport } from './ledger.ts';
 export { planGrants, streakOf } from './ledger.ts';
+export type { ClaimError, ClaimErrorCode } from './shortcut-code.ts';
+export { parseShortcutCode } from './shortcut-code.ts';
 export { addDays, dayNumber, dayString, weekOf } from './day.ts';

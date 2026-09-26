@@ -1,9 +1,12 @@
+import { parseShortcutCode } from '@ph/claims';
 import { useEffect, useRef, useState } from 'react';
 import { isStandalone } from '../platform/pwa.ts';
 import { decodeShortcutCode } from './shortcut-code.ts';
 import styles from './spike.module.css';
 
 const DEFAULT_NAME = 'PocketHeso Sync';
+/** 手順書（resources/shortcut/README.md）の試験用の鍵。 */
+const TEST_KEY = 'abcdefghijklmnop';
 
 const stamp = () => new Date().toISOString().slice(11, 23);
 
@@ -12,6 +15,7 @@ export function ShortcutSpike() {
   const [name, setName] = useState(DEFAULT_NAME);
   const [log, setLog] = useState<string[]>([]);
   const [raw, setRaw] = useState('');
+  const [key, setKey] = useState(TEST_KEY);
   const openedAt = useRef<number | null>(null);
 
   const add = (line: string) => setLog((l) => [`${stamp()} ${line}`, ...l].slice(0, 50));
@@ -94,6 +98,7 @@ export function ShortcutSpike() {
   };
 
   const decoded = raw ? decodeShortcutCode(raw) : null;
+  const verified = raw ? parseShortcutCode(raw, key, Date.now()) : null;
 
   return (
     <main className={styles.main}>
@@ -114,6 +119,16 @@ export function ShortcutSpike() {
         生テキスト（readText が失敗したら手で貼る）
         <textarea className={styles.textarea} value={raw} onChange={(e) => setRaw(e.target.value)} />
       </label>
+      <label>
+        ペアリング鍵（検証用）
+        <input className={styles.input} value={key} onChange={(e) => setKey(e.target.value)} />
+      </label>
+      {verified && (
+        <>
+          <h2>検証（parseShortcutCode）</h2>
+          <pre className={styles.pre}>{JSON.stringify(verified, null, 2)}</pre>
+        </>
+      )}
       {decoded && (
         <>
           <h2>デコード</h2>

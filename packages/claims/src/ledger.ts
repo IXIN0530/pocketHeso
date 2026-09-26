@@ -35,6 +35,8 @@ export interface ParsedHealth {
   /** 端末の今日（受け取れる日の基準）。 */
   readonly today: string;
   readonly days: readonly HealthDay[];
+  /** 検証で捨てた項目の説明（確認画面に出す）。 */
+  readonly warnings?: readonly string[] | undefined;
 }
 
 /** チェックインの成立結果（spec/32）。 */
