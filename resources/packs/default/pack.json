@@ -6,30 +6,153 @@
     "reach": { "synth": { "wave": "square", "hz": [660, 990], "ms": 320, "gain": 0.3 } },
     "gun": { "synth": { "wave": "sawtooth", "hz": [220, 880], "ms": 600, "gain": 0.3 } },
     "kyuin": { "synth": { "wave": "sawtooth", "hz": [400, 2400], "ms": 700, "gain": 0.35 } },
-    "fanfare": { "synth": { "wave": "triangle", "hz": [523, 1047], "ms": 900, "gain": 0.45 } }
+    "fanfare": { "synth": { "wave": "triangle", "hz": [523, 1047], "ms": 900, "gain": 0.45 } },
+    "pseudo": { "synth": { "wave": "square", "hz": [880, 1760], "ms": 180, "gain": 0.3 } },
+    "cutin": { "synth": { "wave": "sawtooth", "hz": [1400, 300], "ms": 420, "gain": 0.3 } },
+    "swarm": { "synth": { "wave": "triangle", "hz": [300, 1500], "ms": 1400, "gain": 0.25 } },
+    "black": { "synth": { "wave": "sine", "hz": [110, 55], "ms": 1200, "gain": 0.5 } },
+    "kime": { "synth": { "wave": "square", "hz": [1320, 1980], "ms": 260, "gain": 0.35 } }
   },
   "sheets": [
     {
       "pattern": "reach_n",
       "cues": [
-        { "at": 0, "kind": "sound", "bus": "se", "asset": "reach" }
+        { "at": 1800, "kind": "lcd", "scene": "reach", "ms": 18200 },
+        { "at": 1800, "kind": "lcd", "scene": "telop", "ms": 1400, "text": "リーチ", "color": "#ffffff" },
+        { "at": 1800, "kind": "sound", "bus": "se", "asset": "reach" },
+        { "at": 1800, "kind": "camera", "shot": "lcd", "ms": 1600 },
+        { "at": 18500, "kind": "lcd", "scene": "climax", "ms": 1500 }
+      ],
+      "branches": [
+        {
+          "name": "chance",
+          "options": [
+            { "weight": 4, "cues": [] },
+            { "weight": 1, "cues": [
+              { "at": 9000, "kind": "lcd", "scene": "telop", "ms": 1600, "text": "チャンス!", "color": "#ffd23f" },
+              { "at": 9000, "kind": "sound", "bus": "se", "asset": "pseudo" }
+            ] }
+          ]
+        }
       ]
     },
     {
       "pattern": "sp_reach",
       "cues": [
-        { "at": 0, "kind": "sound", "bus": "se", "asset": "reach" },
+        { "at": 2000, "kind": "lcd", "scene": "reach", "ms": 43000 },
+        { "at": 2000, "kind": "lcd", "scene": "telop", "ms": 1400, "text": "リーチ", "color": "#ffffff" },
+        { "at": 2000, "kind": "sound", "bus": "se", "asset": "reach" },
+        { "at": 2000, "kind": "camera", "shot": "lcd", "ms": 1600 },
+        { "at": 6000, "kind": "lcd", "scene": "sp", "ms": 32000 },
+        { "at": 6000, "kind": "lcd", "scene": "cutin", "ms": 1800, "text": "SPリーチ", "color": "#ffd23f" },
+        { "at": 6000, "kind": "sound", "bus": "se", "asset": "cutin" },
+        { "at": 38000, "kind": "lcd", "scene": "climax", "ms": 7000 },
+        { "at": 38000, "kind": "sound", "bus": "se", "asset": "kime" },
         { "at": 38000, "kind": "flash", "style": "white", "ms": 300, "min_intensity": 2 },
-        { "at": 38000, "kind": "haptic", "pattern": [60] }
+        { "at": 38000, "kind": "haptic", "pattern": [60] },
+        { "at": 38000, "kind": "camera", "shot": "lcd", "ms": 7000 }
       ],
       "branches": [
         {
-          "name": "gun",
+          "name": "group",
           "options": [
             { "weight": 3, "cues": [] },
             { "weight": 1, "cues": [
-              { "at": 1500, "kind": "sound", "bus": "se", "asset": "gun" },
-              { "at": 1500, "kind": "shake", "ms": 600, "amp": 0.4, "min_intensity": 2 }
+              { "at": 0, "kind": "lcd", "scene": "group", "ms": 2200 },
+              { "at": 0, "kind": "sound", "bus": "se", "asset": "swarm" },
+              { "at": 0, "kind": "shake", "ms": 600, "amp": 0.4, "min_intensity": 2 }
+            ] }
+          ]
+        },
+        {
+          "name": "telop",
+          "options": [
+            { "weight": 2, "cues": [
+              { "at": 20000, "kind": "lcd", "scene": "telop", "ms": 2000, "text": "チャンス!", "color": "#ffd23f" }
+            ] },
+            { "weight": 1, "cues": [
+              { "at": 20000, "kind": "lcd", "scene": "telop", "ms": 2000, "text": "激アツ!!", "color": "#ff3040" },
+              { "at": 20000, "kind": "sound", "bus": "se", "asset": "kyuin" }
+            ] }
+          ]
+        }
+      ]
+    },
+    {
+      "pattern": "spsp_gekiatsu",
+      "cues": [
+        { "at": 2600, "kind": "lcd", "scene": "pseudo", "ms": 900, "text": "×2", "color": "#ffd23f" },
+        { "at": 2600, "kind": "sound", "bus": "se", "asset": "pseudo" },
+        { "at": 8000, "kind": "lcd", "scene": "reach", "ms": 62000 },
+        { "at": 8000, "kind": "lcd", "scene": "telop", "ms": 1400, "text": "リーチ", "color": "#ffffff" },
+        { "at": 8000, "kind": "sound", "bus": "se", "asset": "reach" },
+        { "at": 8000, "kind": "camera", "shot": "lcd", "ms": 1600 },
+        { "at": 12000, "kind": "lcd", "scene": "sp", "ms": 50000 },
+        { "at": 12000, "kind": "lcd", "scene": "cutin", "ms": 2000, "text": "SPSPリーチ", "color": "#ff3040" },
+        { "at": 12000, "kind": "sound", "bus": "se", "asset": "cutin" },
+        { "at": 30000, "kind": "lcd", "scene": "telop", "ms": 2200, "text": "激アツ!!", "color": "#ff3040" },
+        { "at": 30000, "kind": "sound", "bus": "se", "asset": "kyuin" },
+        { "at": 30000, "kind": "bloom", "ms": 2000, "strength": 0.5, "min_intensity": 3 },
+        { "at": 62000, "kind": "lcd", "scene": "climax", "ms": 8000 },
+        { "at": 62000, "kind": "sound", "bus": "se", "asset": "kime" },
+        { "at": 62000, "kind": "flash", "style": "white", "ms": 300, "min_intensity": 2 },
+        { "at": 62000, "kind": "haptic", "pattern": [60] },
+        { "at": 62000, "kind": "camera", "shot": "lcd", "ms": 8000 }
+      ],
+      "branches": [
+        {
+          "name": "group",
+          "options": [
+            { "weight": 1, "cues": [] },
+            { "weight": 2, "cues": [
+              { "at": 0, "kind": "lcd", "scene": "group", "ms": 2200 },
+              { "at": 0, "kind": "sound", "bus": "se", "asset": "swarm" },
+              { "at": 0, "kind": "shake", "ms": 600, "amp": 0.4, "min_intensity": 2 }
+            ] }
+          ]
+        },
+        {
+          "name": "pseudo3",
+          "options": [
+            { "weight": 2, "cues": [] },
+            { "weight": 3, "cues": [
+              { "at": 5000, "kind": "lcd", "scene": "pseudo", "ms": 900, "text": "×3", "color": "#ff3040" },
+              { "at": 5000, "kind": "sound", "bus": "se", "asset": "pseudo" }
+            ] }
+          ]
+        }
+      ]
+    },
+    {
+      "pattern": "kakutei",
+      "cues": [
+        { "at": 0, "kind": "lcd", "scene": "blackout", "ms": 1500 },
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "black" },
+        { "at": 2500, "kind": "lcd", "scene": "reach", "ms": 57500 },
+        { "at": 2500, "kind": "lcd", "scene": "telop", "ms": 1400, "text": "リーチ", "color": "#ffffff" },
+        { "at": 2500, "kind": "sound", "bus": "se", "asset": "reach" },
+        { "at": 2500, "kind": "camera", "shot": "lcd", "ms": 1600 },
+        { "at": 6000, "kind": "lcd", "scene": "sp", "ms": 44000 },
+        { "at": 6000, "kind": "lcd", "scene": "cutin", "ms": 1800, "text": "SPリーチ", "color": "#ffd23f" },
+        { "at": 6000, "kind": "sound", "bus": "se", "asset": "cutin" },
+        { "at": 50000, "kind": "lcd", "scene": "kakutei", "ms": 10000 },
+        { "at": 50000, "kind": "lcd", "scene": "telop", "ms": 3000, "text": "確定!!", "color": "#ffe066" },
+        { "at": 50000, "kind": "sound", "bus": "se", "asset": "kyuin" },
+        { "at": 50700, "kind": "sound", "bus": "voice", "asset": "fanfare" },
+        { "at": 50000, "kind": "flash", "style": "rainbow", "ms": 600, "min_intensity": 2 },
+        { "at": 50000, "kind": "bloom", "ms": 3000, "strength": 0.7, "min_intensity": 2 },
+        { "at": 50000, "kind": "haptic", "pattern": [80, 40, 120] },
+        { "at": 50000, "kind": "camera", "shot": "lcd", "ms": 4000 }
+      ],
+      "branches": [
+        {
+          "name": "kirin",
+          "options": [
+            { "weight": 2, "cues": [] },
+            { "weight": 1, "cues": [
+              { "at": 1500, "kind": "lcd", "scene": "kirin", "ms": 3000 },
+              { "at": 1500, "kind": "lcd", "scene": "telop", "ms": 1500, "text": "!?", "color": "#ffe066" },
+              { "at": 1500, "kind": "sound", "bus": "se", "asset": "kyuin" }
             ] }
           ]
         }

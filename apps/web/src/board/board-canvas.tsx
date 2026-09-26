@@ -7,14 +7,17 @@ import { installAudioUnlock } from '../fx/fx-host.ts';
 import { clock } from '../stores/clock.ts';
 import { onShots, onView, useEngine } from '../stores/engine.ts';
 import { usePrefs } from '../stores/prefs.ts';
-import { BoardScene, type DrawInfo } from './board-scene.ts';
+import { usePreview } from '../stores/preview.ts';
+import { BoardScene, type DrawInfo, type PatternInfo } from './board-scene.ts';
 import type { FrameStats } from './frame-stats.ts';
 import styles from './board.module.css';
 
 const errText = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message}` : String(e));
 const showStats = new URLSearchParams(location.search).get('debug') === '1';
-const hotByPattern = new Map((patternsJson as readonly { id: string; hot: number }[]).map((p) => [p.id, p.hot]));
-const patternHot = (id: string) => hotByPattern.get(id) ?? 0;
+const byPattern = new Map<string, PatternInfo>(
+  (patternsJson as readonly { id: string; hot: number; ms: number }[]).map((p) => [p.id, { hot: p.hot, ms: p.ms }]),
+);
+const patternInfo = (id: string) => byPattern.get(id);
 
 /**
  * 盤面（spec/50）。Three のシーンは命令的に保持し、Engine の玉・役物・液晶のイベントは購読で渡す（毎フレームの React 再レンダーなし）。
@@ -32,7 +35,7 @@ export function BoardCanvas({ active = true }: { active?: boolean }) {
     if (!host) return;
     let scene: BoardScene;
     try {
-      scene = new BoardScene(host, parseBoard(boardJson), parseLaunchDirs(dirsJson), clock, patternHot);
+      scene = new BoardScene(host, parseBoard(boardJson), parseLaunchDirs(dirsJson), clock, patternInfo);
     } catch (e) {
       setError(errText(e));
       return;
@@ -47,8 +50,13 @@ export function BoardCanvas({ active = true }: { active?: boolean }) {
       if (p) scene.setYakumono(p.yakumono, p.at);
     };
     showYaku(useEngine.getState().projection);
+    scene.setSeed(useEngine.getState().seed);
     const offYaku = useEngine.subscribe((s, prev) => {
       if (s.projection !== prev.projection) showYaku(s.projection);
+      if (s.seed !== prev.seed) scene.setSeed(s.seed);
+    });
+    const offPreview = usePreview.subscribe((s, prev) => {
+      if (s.request && s.request !== prev.request) scene.playPreview(s.request);
     });
     // 背面・非表示の間は描画ループを止める（spec/50）。
     const onVis = () => scene.setRunning(activeRef.current && document.visibilityState === 'visible');
@@ -66,6 +74,7 @@ export function BoardCanvas({ active = true }: { active?: boolean }) {
       offShots();
       offView();
       offYaku();
+      offPreview();
       offPrefs();
       offAudio();
       sceneRef.current = null;

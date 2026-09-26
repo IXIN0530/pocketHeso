@@ -23,7 +23,7 @@ export function modeLabel(p: Pick<HallProjection, 'mode' | 'stRemaining'>): stri
   }
 }
 
-/** 予告の種類（spec/23: fever=生産×7・rush=即時出玉・bonus=特別変動）。 */
+/** 予告の種類（spec/23: fever=生産×7・rush=即時出玉・bonus=特別変動）。見た目は赤保留・キリン柄・金保留（spec/23, P6-T2）。 */
 export const NOTICE_TEXT: Record<NoticeEffect, { title: string; body: string }> = {
   fever: { title: 'フィーバー予告', body: 'タップで生産 ×7' },
   rush: { title: 'ラッシュ予告', body: 'タップで出玉' },
@@ -65,9 +65,12 @@ export function HallScreen({ active = true }: { active?: boolean }) {
               send({ k: 'noticeTap', noticeId: notice.id });
             }}
           >
-            <b>{NOTICE_TEXT[notice.effect].title}</b>
-            <span>
-              {NOTICE_TEXT[notice.effect].body}（残り{Math.ceil((notice.expiresAt - p!.at) / 1000)}秒）
+            <span className={styles.noticeIcon} aria-hidden="true" />
+            <span className={styles.noticeText}>
+              <b>{NOTICE_TEXT[notice.effect].title}</b>
+              <span>
+                {NOTICE_TEXT[notice.effect].body}（残り{Math.ceil((notice.expiresAt - p!.at) / 1000)}秒）
+              </span>
             </span>
           </button>
         )}

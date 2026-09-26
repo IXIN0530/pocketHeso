@@ -13,7 +13,7 @@ Owner: Claude Code | Read: spec/43-presentation-effects, spec/21-core-lottery（
 Do: 液晶エリアの演出: 通常リーチ / SP / 激アツ（疑似連・群予告）/ 確定。図形・テキスト・パーティクルのみ。尺はパターンの `ms` に一致。
 予告（赤保留・キリン柄）の見た目。
 Accept:
-- [ ] 同じ入力で同じ演出分岐（乱数ログ比較テスト）/ Debug の演出プレビューで4本が再生できる
+- [x] 同じ入力で同じ演出分岐（乱数ログ比較テスト）/ Debug の演出プレビューで4本が再生できる
 
 ### P6-T3 留守中リプレイと実機の音
 Owner: Claude Code | Read: spec/22-core-engine（Projection 節）, spec/43-presentation-effects, ref/platform-limits

@@ -38,16 +38,24 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FlashLayer } from '@ph/fx';
-import { BALL_RADIUS_MM, type Board, type BoardYakumono, type EngineSimEvent, type HallProjection, type Vec2 } from '@ph/core';
+import { FlashLayer, type SceneCue } from '@ph/fx';
+import {
+  BALL_RADIUS_MM,
+  type Board,
+  type BoardYakumono,
+  type EngineSimEvent,
+  type HallProjection,
+  type LotteryHoldColor,
+  type Vec2,
+} from '@ph/core';
 import type { Shot } from '../engine/engine-host.ts';
-import { playCue, setFlashTarget } from '../fx/fx-host.ts';
-import { LCD_RECT, bakeBoard, bakeGlare, bakeHall, bakeSoftDot, bakeSymbolAtlas } from './art.ts';
+import { packTexts, planFor, playCue, playCues, setFlashTarget, setSceneTarget } from '../fx/fx-host.ts';
+import { LCD_RECT, bakeBoard, bakeGlare, bakeHall, bakeSoftDot, bakeSymbolAtlas, bakeTextAtlas } from './art.ts';
 import { BallTracks, DISPLAY_LAG_MS, MAX_BALLS, PREROLL_MS } from './ball-tracks.ts';
 import { CAB, Cabinet, bakeCabinetEnv, ledTube } from './cabinet.ts';
 import { summarize, type FrameStats } from './frame-stats.ts';
-import { LcdReels } from './lcd.ts';
-import { LcdTimeline } from './lcd-timeline.ts';
+import { LcdReels, type SpinShow } from './lcd.ts';
+import { LcdTimeline, type LcdState } from './lcd-timeline.ts';
 
 export interface DrawInfo {
   calls: number;
@@ -56,6 +64,24 @@ export interface DrawInfo {
 
 /** 当たり演出の長さ（ブルームを ON にしておく時間）。 */
 const WIN_MS = 3000;
+
+/** 変動パターンの熱さ（1 以上をリーチとして見せる）と基準の尺（spec/21 patterns.json）。 */
+export interface PatternInfo {
+  readonly hot: number;
+  readonly ms: number;
+}
+
+/** Debug の演出プレビュー（Engine と無関係に液晶で1変動を流す）。 */
+export interface PreviewSpin {
+  readonly pattern: string;
+  readonly hit: boolean;
+  /** 分岐の通し番号（Engine の保留と重ならない値）。 */
+  readonly serial: number;
+  readonly color: LotteryHoldColor;
+}
+
+/** プレビューで変動の後に当たり・ハズレを見せる時間。 */
+const PREVIEW_TAIL_MS = 3500;
 
 // 奥行き（spec/50）: 盤面板 0 → 液晶 +3 → 玉・釘 +7 → 役物 +8 → ガラス +16 → 枠 +10〜+55（cabinet.ts）。
 const Z_LCD = 3;
@@ -117,6 +143,13 @@ export class BoardScene {
   private readonly lcd: LcdReels;
   private readonly lcdTimeline = new LcdTimeline();
   private lastJackpot = -1;
+  /** 今の変動の演出（CueSheet の lcd キュー）。 */
+  private show: SpinShow | null = null;
+  private seed = 0;
+  private preview: (PreviewSpin & { start: number }) | null = null;
+  private cueShake = { until: 0, amp: 0 };
+  private cueCam = { from: 0, ms: 0 };
+  private readonly lcdCenter = new Vector3();
   private readonly ballMeshes: Mesh[] = [];
   private readonly ballShadows: InstancedMesh;
   private readonly yaku: Yaku[] = [];
@@ -141,8 +174,13 @@ export class BoardScene {
   private homeDist = 1400;
   private readonly homeY = (CAB.top + CAB.bottom) / 2;
 
-  /** patternHot は変動パターンの熱さ（1 以上をリーチとして見せる, spec/21）。 */
-  constructor(host: HTMLElement, board: Board, dirs: readonly Vec2[], clock: SceneClock, patternHot?: (pattern: string) => number) {
+  constructor(
+    host: HTMLElement,
+    board: Board,
+    dirs: readonly Vec2[],
+    clock: SceneClock,
+    private readonly patterns: (id: string) => PatternInfo | undefined = () => undefined,
+  ) {
     this.host = host;
     this.board = board;
     this.clock = clock;
@@ -181,7 +219,15 @@ export class BoardScene {
     this.scene.add(this.buildYakuRings());
 
     const atlas = tex(bakeSymbolAtlas());
-    this.lcd = new LcdReels(atlas, patternHot);
+    const texts = packTexts();
+    this.lcd = new LcdReels(
+      atlas,
+      tex(bakeTextAtlas(texts)),
+      texts.length,
+      (id) => this.patterns(id)?.hot ?? 0,
+      (text) => texts.indexOf(text),
+    );
+    this.toWorld(LCD_RECT.x + LCD_RECT.w / 2, LCD_RECT.y + LCD_RECT.h / 2, 0, this.lcdCenter);
     this.scene.add(this.buildLcd());
 
     this.scene.add(this.cabinet.group);
@@ -222,7 +268,7 @@ export class BoardScene {
 
     this.tracks = new BallTracks(board, dirs);
     this.resize();
-    this.updateCamera();
+    this.updateCamera(performance.now());
     this.resizeObs = new ResizeObserver(() => this.resize());
     this.resizeObs.observe(host);
     this.setRunning(true);
@@ -260,6 +306,16 @@ export class BoardScene {
     this.lcdTimeline.push(projection, events);
   }
 
+  /** 演出の分岐に使う seed（Engine の GameMeta, spec/43）。 */
+  setSeed(seed: number): void {
+    this.seed = seed;
+  }
+
+  /** Debug の演出プレビュー（次に描くフレームから実時間で流す）。 */
+  playPreview(p: PreviewSpin): void {
+    this.preview = { ...p, start: -1 };
+  }
+
   /** 当たり演出（3秒。連打したら頭から）。 */
   win(): void {
     this.winMs = 0;
@@ -273,6 +329,7 @@ export class BoardScene {
   setRunning(running: boolean): void {
     this.last = 0;
     setFlashTarget(this.flashLayer, running);
+    setSceneTarget(this.onSceneCue, running);
     this.renderer.setAnimationLoop(running ? (t) => this.frame(t) : null);
   }
 
@@ -344,22 +401,32 @@ export class BoardScene {
     this.tracks.update(display, (kind) => {
       if (kind === 'start1') this.hesoFlash = 1;
     });
-    const lcdState = this.lcdTimeline.advance(display);
+    const clockNow = performance.now();
+    let lcdState = this.lcdTimeline.advance(display);
+    let lcdNow = display;
+    let lcdScale = this.clock.scale;
+    const pv = this.previewState(clockNow);
+    if (pv) {
+      // プレビュー中は Engine の液晶を止めて、実時間でプレビューの変動を映す。
+      lcdState = pv;
+      lcdNow = clockNow;
+      lcdScale = 1;
+    }
+    this.startShow(lcdState, lcdNow, lcdScale);
     const jackpot = lcdState.jackpot?.entry ?? -1;
     if (jackpot !== this.lastJackpot) {
       this.lastJackpot = jackpot;
       if (jackpot >= 0) {
         this.win();
-        // TODO(P6-T2): seed を Engine から受け取る（今の jackpot シートは分岐なし）。
-        playCue('jackpot', 0, jackpot);
+        playCue('jackpot', this.seed, jackpot);
       }
     }
     this.hesoFlash = Math.max(0, this.hesoFlash - dt / 500);
     this.updateBalls();
     this.updateYakumono(display, winLevel);
-    this.lcd.update(dt, display, this.clock.scale, lcdState, (e) => this.lcdTimeline.peekResult(e), winLevel);
+    this.lcd.update(dt, lcdNow, lcdScale, lcdState, (e) => this.lcdTimeline.peekResult(e), winLevel, this.show);
     this.updateLamps(sec, winLevel, white);
-    this.updateCamera();
+    this.updateCamera(clockNow);
 
     this.rainbow.visible = winning;
     if (winning) {
@@ -373,7 +440,6 @@ export class BoardScene {
     }
 
     // ブルームは bloom キューの期間だけ（常時は重いので使わない, spec/50）。
-    const clockNow = performance.now();
     const bloom = this.bloomOn ? this.flashLayer.bloomStrength(clockNow) : 0;
     if (bloom > 0) {
       this.bloom.strength = bloom;
@@ -381,6 +447,46 @@ export class BoardScene {
     } else this.renderer.render(this.scene, this.camera);
     this.flashLayer.render(this.renderer, clockNow);
   }
+
+  /** プレビューの液晶の状態（変動 → 当たり/ハズレの表示 → 終了で Engine の液晶に戻る）。 */
+  private previewState(now: number): LcdState | null {
+    const pv = this.preview;
+    if (!pv) return null;
+    if (pv.start < 0) pv.start = now;
+    const ms = this.patterns(pv.pattern)?.ms ?? 20000;
+    const t = now - pv.start;
+    if (t < ms) {
+      const spin = { entry: pv.serial, pattern: pv.pattern, startAt: pv.start, endsAt: pv.start + ms, color: pv.color, hit: pv.hit };
+      return { holds: [], spin, resolved: null, jackpot: null };
+    }
+    if (t < ms + PREVIEW_TAIL_MS) {
+      const jackpot = pv.hit ? { entry: pv.serial, kind: 'kakuhen' as const, rounds: 10 } : null;
+      return { holds: [], spin: null, resolved: { entry: pv.serial, hit: pv.hit }, jackpot };
+    }
+    this.preview = null;
+    return null;
+  }
+
+  /**
+   * 変動が始まったら演出を決める（分岐は RNGStream(seed, 'presentation', entry)、尺は実際の変動時間, D-067）。
+   * 液晶のシーンは LcdReels が描き、音・光・振動・揺れ・カメラは CuePlayer が実時間で鳴らす（Debug の倍速では鳴らさない）。
+   */
+  private startShow(st: LcdState, now: number, scale: number): void {
+    const spin = st.spin;
+    if (!spin || spin.entry === this.show?.entry) return;
+    const patternMs = this.patterns(spin.pattern)?.ms ?? spin.endsAt - (spin.startAt ?? now);
+    // Projection から作った変動は開始時刻が分からないので、パターンの尺から逆算する。
+    const origin = spin.startAt ?? spin.endsAt - patternMs;
+    const plan = planFor(spin.pattern, this.seed, spin.entry, patternMs, spin.endsAt - origin);
+    this.show = { entry: spin.entry, origin, lcd: plan.lcd };
+    if (scale === 1) playCues(plan.cues, now - origin);
+  }
+
+  /** 盤面が受け持つキュー: 揺れと液晶への寄り（spec/43 shake・camera）。 */
+  private readonly onSceneCue = (cue: SceneCue, offsetMs: number, nowMs: number): void => {
+    if (cue.kind === 'shake') this.cueShake = { until: nowMs - offsetMs + cue.ms, amp: cue.amp };
+    else if (cue.kind === 'camera' && cue.shot === 'lcd') this.cueCam = { from: nowMs - offsetMs, ms: cue.ms };
+  };
 
   private updateBalls(): void {
     const balls = this.tracks.balls;
@@ -431,7 +537,7 @@ export class BoardScene {
     this.lcdLight.intensity = 50 + winLevel * 25 + reach * 20;
   }
 
-  private updateCamera(): void {
+  private updateCamera(nowMs: number): void {
     // 当たりの瞬間だけ寄って揺らし、1.2 秒で定位置に戻す。
     let zoom = 1;
     let shake = 0;
@@ -440,12 +546,19 @@ export class BoardScene {
       zoom = w < 180 ? 1 - 0.07 * (w / 180) : 1 - 0.07 * Math.max(0, 1 - (w - 180) / 1000);
       shake = Math.max(0, 1 - w / 600) * 3;
     }
-    const d = this.homeDist * zoom;
+    // shake キュー（amp 1 ≒ 5mm。終わりに向けて弱める）。
+    const sk = this.cueShake;
+    if (nowMs < sk.until) shake = Math.max(shake, sk.amp * 5 * Math.min(1, (sk.until - nowMs) / 300));
+    // camera キュー（液晶へ寄る）。入り・抜けは 400ms、終わったら必ず定位置（spec/50）。
+    const ct = nowMs - this.cueCam.from;
+    const lcd = ct >= 0 && ct < this.cueCam.ms ? ease(Math.min(1, ct / 400, (this.cueCam.ms - ct) / 400)) : 0;
+    const d = this.homeDist * zoom * (1 - 0.28 * lcd);
+    const ty = this.homeY + (this.lcdCenter.y - this.homeY) * lcd;
     const sx = shake ? (Math.random() - 0.5) * shake : 0;
     const sy = shake ? (Math.random() - 0.5) * shake : 0;
     // 正面からわずかに見上げる。
-    this.camera.position.set(sx, this.homeY - 45 + sy, d);
-    this.camera.lookAt(sx * 0.5, this.homeY + sy * 0.5, 0);
+    this.camera.position.set(sx, ty - 45 * (1 - lcd) + sy, d);
+    this.camera.lookAt(sx * 0.5, ty + sy * 0.5, 0);
   }
 
   // ---- 組み立て ----
@@ -661,6 +774,10 @@ export class BoardScene {
     });
     return mesh;
   }
+}
+
+function ease(t: number): number {
+  return t * t * (3 - 2 * t);
 }
 
 function tex(c: HTMLCanvasElement): CanvasTexture {

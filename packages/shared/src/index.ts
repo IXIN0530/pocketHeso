@@ -16,6 +16,7 @@ export type {
   FlashCue,
   FlashStyle,
   HapticCue,
+  LcdCue,
   ParticleCue,
   ShakeCue,
   SoundAsset,

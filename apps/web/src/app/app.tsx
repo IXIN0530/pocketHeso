@@ -8,6 +8,7 @@ import { RecordsScreen } from '../screens/records-screen.tsx';
 import { SettingsScreen } from '../screens/settings-screen.tsx';
 import { ShopScreen } from '../screens/shop-screen.tsx';
 import { startEngine } from '../stores/engine.ts';
+import { usePreview } from '../stores/preview.ts';
 import styles from './app.module.css';
 
 // Debug 画面は `?debug=1` の時だけ読む（spec/40）。
@@ -37,6 +38,15 @@ export function App() {
   useEffect(() => {
     const update = setupServiceWorker(() => setApplyUpdate(() => update));
   }, []);
+
+  // Debug の演出プレビューはホールの液晶で流す。
+  useEffect(
+    () =>
+      usePreview.subscribe((s, prev) => {
+        if (s.request !== prev.request) setTab('hall');
+      }),
+    [],
+  );
 
   return (
     <main className={styles.main}>

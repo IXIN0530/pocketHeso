@@ -58,6 +58,8 @@ export interface EngineView {
   readonly clockBack: boolean;
   /** 今回の前進で発射して着いた玉＋飛行中の玉（描画側で ball ごとに重複を除く）。 */
   readonly shots: readonly Shot[];
+  /** 演出の分岐に使う（RNGStream(seed, 'presentation', entry), spec/43）。 */
+  readonly seed: number;
 }
 
 export interface TickResult extends EngineView {
@@ -133,7 +135,7 @@ export class EngineHost {
   }
 
   private view(clockBack: boolean, events: readonly EngineSimEvent[] = []): EngineView {
-    return { projection: this.engine.project(), clockBack, shots: this.shots(events) };
+    return { projection: this.engine.project(), clockBack, shots: this.shots(events), seed: this.meta.seed };
   }
 
   /** 今回の前進内で発射して着いた玉（新しい方から SHOT_LIMIT 個。入賞先はセンサーイベント）と、まだ飛んでいる玉。 */

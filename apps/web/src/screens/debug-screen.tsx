@@ -2,11 +2,12 @@ import { useState } from 'react';
 import type { ClaimRecord } from '@ph/claims';
 import type { AtlasVerifyResult } from '@ph/core';
 import type { DebugInfo } from '../engine/engine-host.ts';
-import { haptics, playCue, sound } from '../fx/fx-host.ts';
+import { haptics, pack, planFor, playCue, sound } from '../fx/fx-host.ts';
 import { writeClipboard } from '../platform/clipboard.ts';
 import { formatFuel, localDay } from '../stores/activity.ts';
 import { DEBUG_SCALES, clock } from '../stores/clock.ts';
 import { debugInfo, receiveClaims, useEngine, verifyAtlas } from '../stores/engine.ts';
+import { PREVIEWS, PREVIEW_SERIAL_BASE, requestPreview } from '../stores/preview.ts';
 import { DEBUG_CLAIM_PREFIX } from './records-screen.tsx';
 import styles from './activity.module.css';
 
@@ -34,9 +35,19 @@ export function debugRecord(at: number, fuelMs: number, medals: number): ClaimRe
 
 const scaleHref = (x: number) => `/?debug=1${x === 1 ? '' : `&x=${x}`}`;
 
-/** Debug 画面（`?debug=1` のみ, spec/40）: seed・時間倍率・Grant 注入・Atlas 照合・状態ダンプ。演出テスト（音・振動）。演出プレビューは P6-T2。 */
+/** プレビューの通し番号（押すたびに進めて分岐を変える。画面を開き直しても続きから）。 */
+let previewCount = 0;
+
+/** 分岐の結果（名前=選んだ番号）。 */
+function describePicks(pattern: string, picks: readonly number[]): string {
+  const sheet = pack.sheets.find((s) => s.pattern === pattern);
+  return sheet && picks.length > 0 ? sheet.branches.map((b, i) => `${b.name}=${picks[i]}`).join(' ') : '分岐なし';
+}
+
+/** Debug 画面（`?debug=1` のみ, spec/40）: seed・時間倍率・Grant 注入・Atlas 照合・状態ダンプ。演出テスト（音・振動）と演出プレビュー。 */
 export default function DebugScreen() {
-  const { projection, restoredFrom } = useEngine();
+  const { projection, restoredFrom, seed } = useEngine();
+  const [previewHit, setPreviewHit] = useState(false);
   const [info, setInfo] = useState<DebugInfo | null>(null);
   const [atlas, setAtlas] = useState<AtlasVerifyResult | string | null>(null);
   const [dump, setDump] = useState<string | null>(null);
@@ -124,6 +135,34 @@ export default function DebugScreen() {
           >
             キュー再生
           </button>
+        </div>
+      </section>
+      <section className={styles.card}>
+        <h2>演出プレビュー</h2>
+        <p className={styles.note}>
+          ホールの液晶で1変動を実時間で流します（Engine の抽選には触れません）。押すたびに通し番号が進み、群予告・疑似連などの分岐が変わります。
+        </p>
+        <label className={styles.row}>
+          <input type="checkbox" checked={previewHit} onChange={(e) => setPreviewHit(e.target.checked)} />
+          当たりで止める（確定は常に当たり）
+        </label>
+        <div className={styles.row}>
+          {PREVIEWS.map((p) => (
+            <button
+              key={p.pattern}
+              className={styles.sub}
+              onClick={() => {
+                // iOS はタップの中で解錠する必要がある。
+                sound.unlock();
+                const serial = PREVIEW_SERIAL_BASE + previewCount++;
+                const plan = planFor(p.pattern, seed, serial, 1, 1);
+                requestPreview({ pattern: p.pattern, hit: p.alwaysHit === true || previewHit, serial, color: p.color });
+                setMessage(`${p.label} #${serial - PREVIEW_SERIAL_BASE}: ${describePicks(p.pattern, plan.picks)}`);
+              }}
+            >
+              {p.label}
+            </button>
+          ))}
         </div>
       </section>
       <section className={styles.card}>

@@ -1,6 +1,6 @@
 // 演出の実行（spec/43）: 既定パックの CueSheet を CuePlayer で再生し、音・光・振動へ振り分ける。
-import { CuePlayer, FlashLayer, Haptics, SoundBus, createCueRouter, resolveCueSheet } from '@ph/fx';
-import { parseCuePack, type CueSheet } from '@ph/shared';
+import { CuePlayer, FlashLayer, Haptics, SoundBus, createCueRouter, planSpin, resolveCueSheet, type SceneCue, type SpinPlan } from '@ph/fx';
+import { parseCuePack, type Cue, type CueSheet } from '@ph/shared';
 import packJson from '../../../../resources/packs/default/pack.json';
 import { usePrefs } from '../stores/prefs.ts';
 
@@ -51,9 +51,18 @@ reducedMotion?.addEventListener('change', () => {
   if (flashTarget) flashTarget.reducedMotion = reducedMotion.matches;
 });
 
+/** 盤面の揺れ・カメラ（盤面が表示されている間だけ）。 */
+type SceneTarget = (cue: SceneCue, offsetMs: number, nowMs: number) => void;
+let sceneTarget: SceneTarget | null = null;
+export function setSceneTarget(fn: SceneTarget, on: boolean): void {
+  if (on) sceneTarget = fn;
+  else if (sceneTarget === fn) sceneTarget = null;
+}
+
 const route = createCueRouter({
   sound,
   haptics,
+  scene: (cue, off, now) => sceneTarget?.(cue, off, now),
   flash: {
     flash: (style, ms, now, off) => flashTarget?.flash(style, ms, now, off) ?? false,
     bloom: (strength, ms, now, off) => flashTarget?.bloom(strength, ms, now, off),
@@ -78,6 +87,30 @@ export function playCue(pattern: string, seed: number, serial: number, startedAg
   player.start(resolveCueSheet(sheet, { seed, serial, intensity: INTENSITY }).cues, performance.now() - startedAgoMs);
   tick();
   return true;
+}
+
+/** パックに書かれた液晶テロップの文字（起動時にテクスチャアトラスへ焼く, spec/50）。 */
+export function packTexts(): string[] {
+  const out: string[] = [];
+  for (const sheet of pack.sheets) {
+    for (const c of [...sheet.cues, ...sheet.branches.flatMap((b) => b.options.flatMap((o) => o.cues))]) {
+      if (c.kind === 'lcd' && c.text !== undefined && !out.includes(c.text)) out.push(c.text);
+    }
+  }
+  return out;
+}
+
+/** 変動1回の演出（分岐は RNGStream(seed, 'presentation', serial)、尺は実際の変動時間, D-067）。シートの無いパターンは空。 */
+export function planFor(pattern: string, seed: number, serial: number, patternMs: number, durationMs: number): SpinPlan {
+  return planSpin(sheets.get(pattern), { seed, serial, intensity: INTENSITY, patternMs, durationMs });
+}
+
+/** 決めたキュー列を再生する（startedAgoMs > 0 なら途中から）。空なら今の演出を止めない。 */
+export function playCues(cues: readonly Cue[], startedAgoMs = 0): void {
+  if (cues.length === 0) return;
+  stopCue();
+  player.start(cues, performance.now() - startedAgoMs);
+  tick();
 }
 
 export function stopCue(): void {

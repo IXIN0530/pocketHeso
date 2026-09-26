@@ -20,7 +20,9 @@
   {"at": 41200, "kind": "sound",  "bus": "se",  "asset": "kyuin"},
   {"at": 41200, "kind": "haptic", "pattern": [80, 40, 120]}]}
 ```
-- `kind`: `sound` / `flash` / `particle` / `haptic` / `shake` / `bloom` / `camera`。未知の kind は無視（前方互換）。
+- `kind`: `sound` / `flash` / `particle` / `haptic` / `shake` / `bloom` / `camera` / `lcd`。未知の kind は無視（前方互換）。
+  `lcd` は `{scene, ms, text?, color?}` で液晶の演出シーン（`reach` `sp` `climax` `pseudo` `group` `blackout` `kakutei` `kirin` `telop` `cutin`, D-067）。
+  変動パターンのシートの時刻は patterns.json の `ms` 基準で書き、実際の変動時間（変動短縮など）に合わせて伸縮する。
   `bloom` は `{ms, strength}` で数秒だけブルームを ON（常時は重い, spec/50）。`camera` は `{shot, ms}` で寄り・引き、終了後は定位置へ戻す。
 - `min_intensity`: 設定の強度（1〜3）未満ならスキップ。
 - 分岐（群予告の有無など）は `RNGStream(seed, 'presentation', serial)` で決める → 同じ seed で同じキュー列。

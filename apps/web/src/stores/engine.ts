@@ -18,6 +18,8 @@ export interface EngineState {
   /** 未読の留守中サマリー。 */
   readonly away: AwaySummary | null;
   readonly restoredFrom: BootResult['restoredFrom'] | null;
+  /** 演出の分岐に使う seed（spec/43）。 */
+  readonly seed: number;
 }
 
 export const useEngine = create<EngineState>(() => ({
@@ -27,6 +29,7 @@ export const useEngine = create<EngineState>(() => ({
   clockBack: false,
   away: null,
   restoredFrom: null,
+  seed: 0,
 }));
 
 let remote: Remote<EngineApi> | null = null;
@@ -64,7 +67,7 @@ export function onView(fn: ViewListener): () => void {
 }
 
 function show(v: EngineView & { readonly events?: readonly EngineSimEvent[] }): void {
-  useEngine.setState({ projection: v.projection, clockBack: v.clockBack });
+  useEngine.setState({ projection: v.projection, clockBack: v.clockBack, seed: v.seed });
   lastShots = v.shots;
   if (v.shots.length > 0) {
     shotListeners.forEach((fn) => fn(v.shots));

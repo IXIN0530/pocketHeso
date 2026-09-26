@@ -54,7 +54,21 @@ export interface CameraCue extends CueCommon {
   readonly ms: number;
 }
 
-export type Cue = SoundCue | FlashCue | ParticleCue | HapticCue | ShakeCue | BloomCue | CameraCue;
+/**
+ * 液晶の演出シーン（図形・テキスト・パーティクル, D-067）。scene は描画側が知っているものだけ描き、知らないものは無視する。
+ * 時刻と長さは変動パターンの ms を基準に書き、実際の変動時間（変動短縮など）に合わせて伸縮する。
+ */
+export interface LcdCue extends CueCommon {
+  readonly kind: 'lcd';
+  readonly scene: string;
+  readonly ms: number;
+  /** テロップの文字（テクスチャアトラスに焼く）。 */
+  readonly text?: string;
+  /** `#rrggbb`。 */
+  readonly color?: string;
+}
+
+export type Cue = SoundCue | FlashCue | ParticleCue | HapticCue | ShakeCue | BloomCue | CameraCue | LcdCue;
 export type CueKind = Cue['kind'];
 
 /** 分岐（群予告の有無など）。options から重みで1つ選ぶ（乱数は RNGStream(seed, 'presentation', serial)）。 */
@@ -150,6 +164,20 @@ function parseCue(v: unknown, path: string): Cue | null {
       return { ...common, kind: 'bloom', ms: num(o.ms, `${path}.ms`, 1), strength: num(o.strength, `${path}.strength`) };
     case 'camera':
       return { ...common, kind: 'camera', shot: str(o.shot, `${path}.shot`), ms: num(o.ms, `${path}.ms`, 1) };
+    case 'lcd': {
+      const c: { -readonly [K in keyof LcdCue]: LcdCue[K] } = {
+        ...common,
+        kind: 'lcd',
+        scene: str(o.scene, `${path}.scene`),
+        ms: num(o.ms, `${path}.ms`, 1),
+      };
+      if (o.text !== undefined) c.text = str(o.text, `${path}.text`);
+      if (o.color !== undefined) {
+        if (typeof o.color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(o.color)) fail(`${path}.color`, '#rrggbb が必要');
+        c.color = o.color;
+      }
+      return c;
+    }
     default:
       if (typeof o.kind !== 'string') fail(`${path}.kind`, '文字列が必要');
       return null;

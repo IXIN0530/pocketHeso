@@ -1,5 +1,7 @@
 import { ShaderMaterial, Vector3, Vector4, type Texture } from 'three';
 import type { LotteryHoldColor } from '@ph/core';
+import type { LcdCue } from '@ph/shared';
+import { NO_LOOK, lcdLook, pseudoWindows, reachAt, type LcdLook } from './lcd-scenes.ts';
 import type { LcdSpin, LcdState } from './lcd-timeline.ts';
 
 const SPIN_SPEED = 16; // 図柄/秒
@@ -20,6 +22,19 @@ interface Reel {
   target: number;
 }
 
+/** 変動1回の演出（CueSheet の lcd キュー。origin は変動開始の時刻, D-067）。 */
+export interface SpinShow {
+  readonly entry: number;
+  readonly origin: number;
+  readonly lcd: readonly LcdCue[];
+}
+
+/** 疑似連で止める図柄（揃わない並び。区間ごとにずらす）。 */
+function pseudoTargets(entry: number, k: number): [number, number, number] {
+  const a = (((entry + k * 5) * 2654435761) >>> 0) % SYMBOLS;
+  return [a, (a + 4) % SYMBOLS, (a + 2) % SYMBOLS];
+}
+
 /** 1回の変動の出目（左・中・右）。当たりは3つ揃い、リーチのハズレは中だけ1コマずれ、通常のハズレは左右が揃わない。 */
 export function spinTargets(entry: number, reach: boolean, hit: boolean): [number, number, number] {
   // 出目は通し番号から決める（同じ変動を開き直しても同じ図柄）。
@@ -32,9 +47,11 @@ export function spinTargets(entry: number, reach: boolean, hit: boolean): [numbe
 }
 
 /**
- * 液晶の3列図柄と保留（spec/40 ホールの最小版。演出は P6 で差し替える）。LcdTimeline の状態を表示時刻で映す:
- * 変動の開始で回し、左 → 右 → 中の順に止める。中は変動の終了時刻に止まる。リーチ（パターンの hot ≥ 1）は左右を早めに揃え、
- * 中を終了まで回して最後の 1.2 秒で減速する。保留は色＋形で4つまで、当該変動の保留は中央下に大きく出す。
+ * 液晶の3列図柄・保留・演出シーン（spec/40, spec/43）。LcdTimeline の状態を表示時刻で映す:
+ * 変動の開始で回し、左 → 右 → 中の順に止める。中は変動の終了時刻に止まる。リーチ（パターンの hot ≥ 1）は左右を
+ * シートの reach の時刻（無ければ早め）に揃え、中を終了まで回して最後の 1.2 秒で減速する。疑似連の区間は3列をいったん
+ * 止めて回し直す。SP・決め・群予告・テロップなどはシートの lcd キューをシェーダーで描く（図形・テキスト・パーティクルのみ）。
+ * 保留は色＋形で4つまで、当該変動の保留は中央下に大きく出す。
  */
 export class LcdReels {
   readonly material: ShaderMaterial;
@@ -56,12 +73,19 @@ export class LcdReels {
   private reachMs = -1;
   private flash = 0;
   private holdCount = 0;
+  private show: SpinShow | null = null;
+  private pseudo: { from: number; to: number; state: 'wait' | 'stopped' | 'done' }[] = [];
+  /** 中の図柄を最後に止めた（疑似連の停止と区別する）。 */
+  private final = false;
 
   constructor(
     atlas: Texture,
+    textAtlas: Texture,
+    textRows: number,
     private readonly patternHot: (pattern: string) => number = () => 0,
+    private readonly textRow: (text: string) => number = () => -1,
   ) {
-    this.material = lcdMaterial(atlas);
+    this.material = lcdMaterial(atlas, textAtlas, textRows);
   }
 
   get reach(): boolean {
@@ -72,14 +96,24 @@ export class LcdReels {
    * 表示時刻 now の状態を映す。scale は Debug の時間倍率（止まる動きは実時間なので、その分だけ早めに止め始める）。
    * peek は当否が不明な変動（Projection に揃えた直後）の結果を先読みする。
    */
-  update(dtMs: number, now: number, scale: number, st: LcdState, peek: (entry: number) => boolean | null, winLevel: number): void {
+  update(
+    dtMs: number,
+    now: number,
+    scale: number,
+    st: LcdState,
+    peek: (entry: number) => boolean | null,
+    winLevel: number,
+    show: SpinShow | null,
+  ): void {
     this.elapsed += dtMs;
     this.flash = Math.max(0, this.flash - dtMs / 400);
     if (st.holds.length > this.holdCount) this.flash = 1;
     this.holdCount = st.holds.length;
 
-    if (st.spin && st.spin.entry !== this.spin?.entry) this.begin(st.spin, now);
+    if (st.spin && st.spin.entry !== this.spin?.entry) this.begin(st.spin, now, show?.entry === st.spin.entry ? show : null);
     if (this.spin) this.step(dtMs, now, scale, st, peek);
+    const look = this.show && this.spin ? lcdLook(this.show.lcd, now - this.show.origin, this.textRow) : NO_LOOK;
+    this.setLook(look);
 
     const u = this.material.uniforms;
     (u.uReel!.value as Vector3).set(this.reels[0]!.pos, this.reels[1]!.pos, this.reels[2]!.pos);
@@ -93,34 +127,65 @@ export class LcdReels {
     u.uWin!.value = Math.max(winLevel, st.jackpot ? 0.35 : 0);
   }
 
-  private begin(spin: LcdSpin, now: number): void {
+  private begin(spin: LcdSpin, now: number, show: SpinShow | null): void {
     this.spin = spin;
-    this.spinStart = spin.startAt ?? now;
-    this.isReach = this.patternHot(spin.pattern) >= 1;
+    this.show = show;
+    this.spinStart = show?.origin ?? spin.startAt ?? now;
+    const cueReach = show ? reachAt(show.lcd) : null;
+    this.isReach = cueReach !== null || this.patternHot(spin.pattern) >= 1;
     this.targets = spinTargets(spin.entry, this.isReach, spin.hit === true);
     this.reachMs = -1;
+    this.final = false;
     const d = Math.max(1, spin.endsAt - this.spinStart);
-    // リーチは左右を早めに揃えて中を長く見せる。通常は終了までに3列を順に止める。
-    const l = this.isReach ? Math.min(0.12 * d, 1400) : 0.45 * d;
-    const r = this.isReach ? Math.min(0.2 * d, 2200) : 0.7 * d;
+    // リーチは左右を早めに（シートがあれば reach の時刻に）揃えて中を長く見せる。通常は終了までに3列を順に止める。
+    const l = cueReach !== null ? Math.max(0, cueReach - 500) : this.isReach ? Math.min(0.12 * d, 1400) : 0.45 * d;
+    const r = cueReach ?? (this.isReach ? Math.min(0.2 * d, 2200) : 0.7 * d);
     this.stopAt = [this.spinStart + l, spin.endsAt, this.spinStart + r];
+    // 途中から開いた時、終わった疑似連の区間は飛ばす。
+    this.pseudo = (show ? pseudoWindows(show.lcd) : []).map((w) => ({
+      from: this.spinStart + w.from,
+      to: this.spinStart + w.to,
+      state: this.spinStart + w.to <= now ? ('done' as const) : ('wait' as const),
+    }));
     for (const reel of this.reels) {
       reel.mode = 'spin';
       reel.vel = SPIN_SPEED;
     }
   }
 
+  /** 疑似連: 区間の頭で3列を止め、終わりで回し直す（左右の停止・リーチより前の区間に書く）。 */
+  private stepPseudo(now: number, lead: number): boolean {
+    let inPseudo = false;
+    this.pseudo.forEach((w, k) => {
+      if (w.state === 'wait' && now >= w.from - lead) {
+        w.state = 'stopped';
+        const t = pseudoTargets(this.spin!.entry, k);
+        this.reels.forEach((reel, i) => this.stop(reel, t[i]!));
+      }
+      if (w.state === 'stopped' && now >= w.to) {
+        w.state = 'done';
+        for (const reel of this.reels) {
+          reel.mode = 'spin';
+          reel.vel = SPIN_SPEED;
+        }
+      }
+      if (w.state === 'stopped') inPseudo = true;
+    });
+    return inPseudo;
+  }
+
   private step(dtMs: number, now: number, scale: number, st: LcdState, peek: (entry: number) => boolean | null): void {
     const spin = this.spin!;
     const [l, c, r] = this.reels as [Reel, Reel, Reel];
     const lead = STOP_MS * scale;
+    const inPseudo = this.stepPseudo(now, lead);
     for (const i of [0, 2]) {
       const reel = this.reels[i]!;
-      if (reel.mode === 'spin' && now >= this.stopAt[i]! - lead) this.stop(reel, this.targets[i]!);
+      if (!inPseudo && reel.mode === 'spin' && now >= this.stopAt[i]! - lead) this.stop(reel, this.targets[i]!);
     }
-    if (this.isReach && this.reachMs < 0 && l.mode === 'stopped' && r.mode === 'stopped') this.reachMs = 0;
+    if (!inPseudo && this.isReach && this.reachMs < 0 && l.mode === 'stopped' && r.mode === 'stopped') this.reachMs = 0;
     if (this.reachMs >= 0) this.reachMs += dtMs;
-    if (c.mode === 'spin') {
+    if (!inPseudo && c.mode === 'spin') {
       const left = (spin.endsAt - now) / scale;
       // リーチの最後の 1.2 秒は減速して、1コマずつ見せる。
       if (this.isReach && left < 1200) c.vel = Math.max(3.5, SPIN_SPEED * (left / 1200));
@@ -129,15 +194,30 @@ export class LcdReels {
         // 当否が分からないうちは回し続ける（次の前進で届く）。
         if (hit !== null) {
           if (hit !== (spin.hit === true)) this.targets = spinTargets(spin.entry, this.isReach, hit);
+          // 疑似連の途中で終わる変動（途中から開いた時など）でも左右は揃える。
+          if (l.mode === 'spin') this.stop(l, this.targets[0]);
+          if (r.mode === 'spin') this.stop(r, this.targets[2]);
           this.stop(c, this.targets[1]);
+          this.final = true;
         }
       }
     }
     for (const reel of this.reels) this.stepReel(reel, dtMs);
-    if (this.reels.every((x) => x.mode === 'stopped')) {
+    if (this.final && this.reels.every((x) => x.mode === 'stopped')) {
       this.spin = null;
+      this.show = null;
       this.reachMs = -1;
     }
+  }
+
+  private setLook(k: LcdLook): void {
+    const u = this.material.uniforms;
+    (u.uScene!.value as Vector4).set(k.sp, k.climax, k.black, k.kakutei);
+    (u.uScene2!.value as Vector3).set(k.kirin, k.group, k.pseudo);
+    const t = k.text;
+    u.uTextRow!.value = t ? t.row : -1;
+    (u.uTextAnim!.value as Vector3).set(t?.mode ?? 0, t ? t.t / 1000 : 0, t?.p ?? 0);
+    (u.uTextColor!.value as Vector3).set(...(t?.color ?? [1, 1, 1]));
   }
 
   private stop(r: Reel, target: number): void {
@@ -176,10 +256,17 @@ function blur(r: Reel): number {
   return r.mode === 'spin' ? Math.min(1, r.vel / SPIN_SPEED) : 0;
 }
 
-function lcdMaterial(atlas: Texture): ShaderMaterial {
+function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): ShaderMaterial {
   return new ShaderMaterial({
     uniforms: {
       uAtlas: { value: atlas },
+      uText: { value: textAtlas },
+      uTextRows: { value: Math.max(1, textRows) },
+      uTextRow: { value: -1 },
+      uTextAnim: { value: new Vector3() },
+      uTextColor: { value: new Vector3(1, 1, 1) },
+      uScene: { value: new Vector4() },
+      uScene2: { value: new Vector3(0, -1, 0) },
       uReel: { value: new Vector3() },
       uBlur: { value: new Vector3() },
       uHolds: { value: new Vector4() },
@@ -194,6 +281,12 @@ function lcdMaterial(atlas: Texture): ShaderMaterial {
       void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: /* glsl */ `
       uniform sampler2D uAtlas;
+      uniform sampler2D uText;
+      uniform float uTextRows, uTextRow;
+      uniform vec3 uTextAnim; // mode, 秒, 進み具合
+      uniform vec3 uTextColor;
+      uniform vec4 uScene;    // SP, 決め, ブラックアウト, 確定
+      uniform vec3 uScene2;   // キリン柄, 群予告の進み具合（-1 は無し）, 疑似連の光
       uniform vec3 uReel;
       uniform vec3 uBlur;
       uniform vec4 uHolds;
@@ -203,6 +296,59 @@ function lcdMaterial(atlas: Texture): ShaderMaterial {
       const float ASPECT = ${(160 / 104).toFixed(4)};
 
       vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
+      float hash1(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
+      vec2 hash2(vec2 p) { return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453); }
+
+      // キリン柄（ボロノイの斑。境目を明るい黄色に）。
+      vec3 kirin(vec2 uv) {
+        vec2 q = uv * vec2(ASPECT, 1.0) * 5.0 + vec2(uTime * 0.15, 0.0);
+        vec2 i = floor(q);
+        vec2 f = fract(q);
+        float d1 = 8.0;
+        float d2 = 8.0;
+        for (int y = -1; y <= 1; y++) {
+          for (int x = -1; x <= 1; x++) {
+            vec2 g = vec2(float(x), float(y));
+            float d = length(g + 0.15 + 0.7 * hash2(i + g) - f);
+            if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) { d2 = d; }
+          }
+        }
+        float spot = smoothstep(0.05, 0.11, d2 - d1);
+        return mix(vec3(1.0, 0.86, 0.42), vec3(0.55, 0.26, 0.07), spot);
+      }
+
+      // テロップ（アトラスの1行）。mode 0 は中央に飛び出し、1 は斜めの帯に乗って右から左へ横切る。
+      vec3 drawText(vec3 col) {
+        if (uTextRow < 0.0) return col;
+        float mode = uTextAnim.x;
+        float t = uTextAnim.y;
+        float p = uTextAnim.z;
+        vec2 c = vec2(0.5, 0.56);
+        float sc = 1.0;
+        float a = 1.0;
+        vec2 q = vUv;
+        if (mode < 0.5) {
+          sc = 1.0 + 0.6 * exp(-t * 14.0);
+          a = min(1.0, t * 10.0) * smoothstep(1.0, 0.85, p);
+        } else {
+          // 帯は少し傾ける。入り（0〜25%）と抜け（80%〜）で横に滑らせる。
+          q = vec2(vUv.x, vUv.y + (vUv.x - 0.5) * 0.18);
+          float inX = 1.0 - smoothstep(0.0, 0.25, p);
+          float outX = smoothstep(0.8, 1.0, p);
+          c.x = 0.5 + 1.2 * inX - 1.2 * outX;
+          float band = 1.0 - smoothstep(0.12, 0.125, abs(q.y - c.y));
+          float edge = 1.0 - smoothstep(0.0, 0.006, abs(abs(q.y - c.y) - 0.123));
+          col = mix(col, mix(vec3(0.02), uTextColor * 0.35, 0.5 + 0.5 * sin(q.x * 60.0 - uTime * 20.0)), band * 0.85);
+          col += uTextColor * edge * 1.2;
+        }
+        // 行は横 8 : 縦 1。液晶の uv は横が ASPECT 倍長いので、縦の幅は w * ASPECT / 8。
+        float w = 0.92 * sc;
+        vec2 tuv = vec2((q.x - c.x) / w + 0.5, (q.y - c.y) / (w * ASPECT / 8.0) + 0.5);
+        if (tuv.x < 0.0 || tuv.x > 1.0 || tuv.y < 0.0 || tuv.y > 1.0) return col;
+        vec4 tx = texture2D(uText, vec2(tuv.x, (uTextRows - 1.0 - uTextRow + tuv.y) / uTextRows));
+        vec3 fill = uTextColor * (1.15 + 0.35 * tuv.y);
+        return mix(col, tx.rgb * fill, tx.a * a);
+      }
 
       vec4 symbol(float s, float lx) {
         float n = mod(floor(s), 9.0);
@@ -267,6 +413,14 @@ function lcdMaterial(atlas: Texture): ShaderMaterial {
         col += rays * max(0.0, 1.0 - r) * vec3(0.10, 0.05, 0.28);
         // リーチ: 赤く脈打つ。
         col = mix(col, vec3(0.45, 0.01, 0.04) * (0.6 + 0.4 * sin(uTime * 12.0)) * (1.2 - r), uReach * 0.8);
+        // SP リーチ: 赤黒の背景に外へ流れる集中線。
+        float speed = smoothstep(0.55, 1.0, sin(ang * 36.0 + hash1(floor(ang * 36.0 / 6.2832 * 6.0)) * 6.0))
+          * smoothstep(0.05, 0.6, r) * (0.6 + 0.4 * fract(r * 3.0 - uTime * 2.5));
+        vec3 spCol = mix(vec3(0.25, 0.0, 0.02), vec3(0.02, 0.0, 0.05), r) + speed * vec3(1.2, 0.45, 0.15);
+        col = mix(col, spCol, uScene.x);
+        // キリン柄・確定の虹（背景を差し替える）。
+        col = mix(col, kirin(vUv) * 0.8, uScene2.x);
+        col = mix(col, hue(ang / 6.2832 + uTime * 0.4 - r * 0.8) * (0.55 + 0.45 * rays), uScene.w);
         // 当たり: 虹。
         col = mix(col, hue(ang / 6.2832 + uTime * 0.6 - r) * (0.45 + 0.55 * rays), uWin);
 
@@ -287,6 +441,28 @@ function lcdMaterial(atlas: Texture): ShaderMaterial {
 
         // 有効ラインの上下を少し暗く（奥行き）。
         col *= 1.0 - 0.45 * smoothstep(0.22, 0.52, abs(vUv.y - 0.52));
+
+        // 群予告: 色とりどりの星が左から右へ群れで横切る。
+        if (uScene2.y >= 0.0) {
+          for (int k = 0; k < 18; k++) {
+            float fk = float(k);
+            float h1 = hash1(fk + 1.0);
+            float h2 = hash1(fk + 31.0);
+            float x = -0.2 + uScene2.y * (1.5 + 0.5 * h1) - 0.3 * h2;
+            float y = 0.2 + 0.7 * h2 + 0.03 * sin(uTime * 9.0 + fk);
+            vec2 d = (vUv - vec2(x, y)) * vec2(ASPECT, 1.0);
+            float sd = star(d, 0.05 + 0.03 * h1, 5.0, 3.0);
+            float fill = 1.0 - smoothstep(-0.002, 0.002, sd);
+            col += hue(h1) * exp(-max(sd, 0.0) * 60.0) * 0.35;
+            col = mix(col, hue(h1) * 1.3 + 0.2, fill);
+          }
+        }
+        // 決め: 縁が脈打つ（約2.4回/秒, spec/43 の3回/秒未満）。疑似連の瞬間は白く光る。
+        col += vec3(1.0, 0.85, 0.5) * uScene.y * (0.3 + 0.3 * sin(uTime * 15.0)) * smoothstep(0.25, 0.8, r);
+        col += vec3(0.9, 0.95, 1.0) * uScene2.z * 0.45;
+        // ブラックアウト（テロップだけ残す）。
+        col *= 1.0 - 0.96 * uScene.z;
+        col = drawText(col);
 
         // 保留（左下に4つ、色＋形）と当該変動の保留（中央下に大きく）。読みやすいよう下端に暗い帯を敷く。
         col *= 1.0 - 0.6 * (1.0 - smoothstep(0.17, 0.22, vUv.y));

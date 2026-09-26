@@ -12,6 +12,8 @@ export type { ResolveOptions, ResolvedCues } from './resolve.ts';
 export { resolveCueSheet } from './resolve.ts';
 export type { CueTargets, SceneCue } from './router.ts';
 export { createCueRouter } from './router.ts';
+export type { ActiveScene, SpinPlan, SpinPlanOptions } from './spin-plan.ts';
+export { EMPTY_SPIN_PLAN, activeScenes, planSpin } from './spin-plan.ts';
 export type { VolumeKey } from './sound-bus.ts';
 export { SoundBus } from './sound-bus.ts';
 export { renderSynth } from './synth.ts';

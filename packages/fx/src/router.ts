@@ -1,8 +1,8 @@
-import type { CameraCue, FlashStyle, ParticleCue, ShakeCue, SoundCue } from '@ph/shared';
+import type { CameraCue, FlashStyle, LcdCue, ParticleCue, ShakeCue, SoundCue } from '@ph/shared';
 import type { CueSink } from './cue-player.ts';
 
-/** 盤面側が受け持つキュー（パーティクル・揺れ・カメラ）。 */
-export type SceneCue = ParticleCue | ShakeCue | CameraCue;
+/** 盤面側が受け持つキュー（パーティクル・揺れ・カメラ・液晶）。 */
+export type SceneCue = ParticleCue | ShakeCue | CameraCue | LcdCue;
 
 export interface CueTargets {
   readonly sound?: { play(cue: SoundCue, offsetMs: number): void };

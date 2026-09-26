@@ -38,3 +38,13 @@ test('malformed cues and undefined sounds throw', () => {
     }),
   ).toThrow(/未定義の音/);
 });
+
+test('lcd cues keep scene, text and color', () => {
+  const sheet = parseCueSheet({
+    pattern: 'x',
+    cues: [{ at: 100, kind: 'lcd', scene: 'telop', ms: 1500, text: 'リーチ', color: '#ff3040' }],
+  });
+  expect(sheet.cues).toEqual([{ at: 100, kind: 'lcd', scene: 'telop', ms: 1500, text: 'リーチ', color: '#ff3040' }]);
+  expect(() => parseCueSheet({ pattern: 'x', cues: [{ at: 0, kind: 'lcd', scene: 'sp', ms: 10, color: 'red' }] })).toThrow();
+  expect(() => parseCueSheet({ pattern: 'x', cues: [{ at: 0, kind: 'lcd', ms: 10 }] })).toThrow();
+});

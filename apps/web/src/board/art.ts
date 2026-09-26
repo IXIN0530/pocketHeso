@@ -291,6 +291,34 @@ export function bakeSymbolAtlas(): HTMLCanvasElement {
   return c;
 }
 
+/** テロップのアトラス（1行1文言。白の塗り＋黒の縁で焼き、色は液晶のシェーダーで乗せる）。 */
+export const TEXT_ROW_W = 1024;
+export const TEXT_ROW_H = 128;
+export function bakeTextAtlas(texts: readonly string[]): HTMLCanvasElement {
+  const [c, ctx] = canvas(TEXT_ROW_W, TEXT_ROW_H * Math.max(1, texts.length));
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  texts.forEach((text, i) => {
+    const y = i * TEXT_ROW_H + TEXT_ROW_H / 2 + 4;
+    let size = 104;
+    const font = (px: number) => `italic 900 ${px}px "Hiragino Sans", "Arial Black", -apple-system, sans-serif`;
+    ctx.font = font(size);
+    // 長い文言は行の幅に収める。
+    const w = ctx.measureText(text).width;
+    if (w > TEXT_ROW_W - 60) {
+      size = Math.floor((size * (TEXT_ROW_W - 60)) / w);
+      ctx.font = font(size);
+    }
+    ctx.lineWidth = 18;
+    ctx.strokeStyle = '#000000';
+    ctx.strokeText(text, TEXT_ROW_W / 2, y);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(text, TEXT_ROW_W / 2, y);
+  });
+  return c;
+}
+
 /** ホールの背景（隣の台の光がぼけて見える感じ）。 */
 export function bakeHall(): HTMLCanvasElement {
   const [c, ctx] = canvas(256, 512);

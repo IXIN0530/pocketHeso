@@ -7,38 +7,85 @@
   position: relative;
 }
 
-/* 予告は盤面の下寄りに重ねる（片手の親指が届く位置）。 */
+/* 予告は盤面の下寄りに重ねる（片手の親指が届く位置）。見た目は赤保留・キリン柄・金保留（spec/23）。 */
 .notice {
   position: absolute;
   left: 50%;
   bottom: 14%;
   transform: translateX(-50%);
   display: grid;
-  gap: 2px;
-  min-width: 60%;
-  padding: 12px 18px;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  min-width: 64%;
+  padding: 10px 18px 10px 12px;
   border: 2px solid rgba(255, 255, 255, 0.85);
   border-radius: 16px;
   color: #fff;
   font-size: 13px;
-  box-shadow: 0 0 24px currentColor;
+  text-align: left;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 0 24px var(--glow);
   animation: pulse 0.9s ease-in-out infinite alternate;
 }
 
-.notice b {
+.noticeText {
+  display: grid;
+  gap: 2px;
+}
+
+.noticeText b {
   font-size: 18px;
 }
 
-.fever {
-  background: linear-gradient(135deg, #ff3a6e, #ff9a2e);
+.noticeText span {
+  white-space: nowrap;
 }
 
+/* 保留の形（液晶の保留と同じ: 赤=4点の星・金=5点の星）。光は親の drop-shadow で付ける。 */
+.noticeIcon {
+  width: 40px;
+  height: 40px;
+  filter: drop-shadow(0 0 6px var(--glow));
+}
+
+.noticeIcon::before {
+  content: '';
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--icon);
+  clip-path: var(--shape);
+}
+
+.fever {
+  --glow: #ff2a3a;
+  --icon: radial-gradient(circle at 40% 35%, #fff 0 8%, #ff5a5a 22%, #c00012 70%);
+  --shape: polygon(50% 0%, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0% 50%, 38% 38%);
+  background: radial-gradient(circle at 20% 50%, #ff3a4a, #8a0010 75%);
+}
+
+/* キリン柄（茶色の斑と黄色の地。タイル状の SVG）。 */
 .rush {
-  background: linear-gradient(135deg, #2e7bff, #8a5cff);
+  --glow: #ffcf5a;
+  --icon: #9a4a12;
+  --shape: circle(45%);
+  background:
+    linear-gradient(90deg, rgba(40, 16, 0, 0.55), rgba(40, 16, 0, 0.1)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' fill='%23f7d68a'/%3E%3Cg fill='%239a4a12'%3E%3Cpath d='M4 6l22-3 8 14-6 18-20 2-7-15z'/%3E%3Cpath d='M40 2l24 4 2 20-16 8-14-10z'/%3E%3Cpath d='M72 4l20 6-2 20-18 4-4-16z'/%3E%3Cpath d='M2 44l24-4 10 16-8 20-22-2z'/%3E%3Cpath d='M42 40l20-2 12 16-6 18-22 4-8-18z'/%3E%3Cpath d='M80 40l14 4v24l-16 4-6-16z'/%3E%3Cpath d='M6 84l20-2 8 12H4z'/%3E%3Cpath d='M40 84l24-4 6 16H38z'/%3E%3Cpath d='M76 80l18 2v14H72z'/%3E%3C/g%3E%3C/svg%3E")
+      0 0 / 64px 64px;
+}
+
+.rush .noticeIcon::before {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Crect width='40' height='40' fill='%23ffe08a'/%3E%3Cg fill='%239a4a12'%3E%3Cpath d='M3 4l12-2 4 9-5 8-10-1z'/%3E%3Cpath d='M23 3l13 3-1 11-10 2-4-9z'/%3E%3Cpath d='M4 24l12-2 5 9-4 8H3z'/%3E%3Cpath d='M24 23l12 1 2 12-12 3-4-9z'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 .bonus {
-  background: linear-gradient(135deg, #d4a017, #ff5ec4);
+  --glow: #ffd24a;
+  --icon: radial-gradient(circle at 40% 35%, #fff 0 8%, #ffe27a 25%, #c98a00 75%);
+  --shape: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  background: radial-gradient(circle at 20% 50%, #d4a017, #6a2a80 80%);
 }
 
 @keyframes pulse {
