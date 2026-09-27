@@ -2,6 +2,8 @@ import { ShaderMaterial, Vector3, Vector4, type Texture } from 'three';
 import type { LotteryHoldColor } from '@ph/core';
 import { HOLD_BREAK_MS, HOLD_CRACK_STEPS_MS, holdBreakScale } from '@ph/fx';
 import type { LcdCue } from '@ph/shared';
+import { HudCanvas } from './hud-canvas.ts';
+import type { HudView } from './jackpot-hud.ts';
 import { NO_LOOK, lcdLook, pseudoWindows, reachAt, type LcdLook } from './lcd-scenes.ts';
 import type { LcdSpin, LcdState } from './lcd-timeline.ts';
 
@@ -57,6 +59,8 @@ export function spinTargets(entry: number, reach: boolean, hit: boolean): [numbe
  */
 export class LcdReels {
   readonly material: ShaderMaterial;
+  /** 大当たり中のラウンド・出玉と結果の告知（D-077）。 */
+  private readonly hud = new HudCanvas();
   private readonly reels: Reel[] = [0, 1, 2].map((i) => ({
     pos: i * 3,
     vel: 0,
@@ -91,7 +95,7 @@ export class LcdReels {
     private readonly patternHot: (pattern: string) => number = () => 0,
     private readonly textRow: (text: string) => number = () => -1,
   ) {
-    this.material = lcdMaterial(atlas, textAtlas, textRows);
+    this.material = lcdMaterial(atlas, textAtlas, textRows, this.hud.texture);
   }
 
   get reach(): boolean {
@@ -115,6 +119,7 @@ export class LcdReels {
     peek: (entry: number) => boolean | null,
     winLevel: number,
     show: SpinShow | null,
+    hud: HudView | null = null,
   ): void {
     this.elapsed += dtMs;
     this.flash = Math.max(0, this.flash - dtMs / 400);
@@ -143,6 +148,10 @@ export class LcdReels {
     u.uFlash!.value = this.flash;
     u.uWin!.value = Math.max(winLevel, st.jackpot ? 0.35 : 0);
     u.uCalm!.value = this.reducedMotion ? 1 : 0;
+    this.hud.calm = this.reducedMotion;
+    this.hud.update(hud);
+    u.uHudOn!.value = this.hud.visible ? 1 : 0;
+    u.uHudDim!.value = this.hud.dim;
   }
 
   private begin(spin: LcdSpin, now: number, show: SpinShow | null): void {
@@ -286,7 +295,7 @@ function blur(r: Reel): number {
   return r.mode === 'spin' ? Math.min(1, r.vel / SPIN_SPEED) : 0;
 }
 
-function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): ShaderMaterial {
+function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: Texture): ShaderMaterial {
   return new ShaderMaterial({
     uniforms: {
       uAtlas: { value: atlas },
@@ -308,6 +317,9 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
       uFlash: { value: 0 },
       uWin: { value: 0 },
       uCalm: { value: 0 },
+      uHud: { value: hud },
+      uHudOn: { value: 0 },
+      uHudDim: { value: 0 },
     },
     vertexShader: /* glsl */ `
       varying vec2 vUv;
@@ -315,6 +327,8 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
     fragmentShader: /* glsl */ `
       uniform sampler2D uAtlas;
       uniform sampler2D uText;
+      uniform sampler2D uHud;       // 大当たり中の表示（D-077, hud-canvas.ts）
+      uniform float uHudOn, uHudDim;
       uniform float uTextRows, uTextRow;
       uniform vec3 uTextAnim; // mode, 秒, 進み具合
       uniform vec3 uTextColor;
@@ -654,6 +668,12 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
         // ブラックアウト（テロップだけ残す）。
         col *= 1.0 - 0.96 * uScene.z;
         col = drawText(col);
+        // 大当たり中のラウンド・出玉と結果の告知（図柄を暗くして重ねる）。
+        if (uHudOn > 0.5) {
+          vec4 hud = texture2D(uHud, vUv);
+          col *= 1.0 - uHudDim;
+          col = mix(col, hud.rgb, hud.a);
+        }
 
         // 保留（左下に4つ、色＋形）と当該変動の保留（中央下に大きく）。読みやすいよう下端に暗い帯を敷く。
         col *= 1.0 - 0.6 * (1.0 - smoothstep(0.17, 0.22, vUv.y));

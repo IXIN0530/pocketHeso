@@ -48,6 +48,14 @@
 - 液晶は `shownLcdState` で見せる色（blink・breaks 付き）に置き換えて描く。reduced-motion では点滅・震え・きらめきを止める（割れる流れは残す）。
 - 留守中リプレイ・演出プレビューは取得時刻が分からないので先バレは鳴らさない。割れる演出は変動開始の時刻から同じに見せる。Debug のプレビューは「保留が割れる」で必ず割れる。
 
+## 大当たり中の液晶（D-077）
+- 液晶の上に 2D Canvas の表示（`hud-canvas.ts`）を重ね、図柄を暗くする。中身は `jackpotHud(LcdState, 表示時刻, 機種の round)` が決める（`jackpot-hud.ts`, Three・DOM なし）。
+- 始めの 2.6秒は「大当たり」「nR」（RUSH 中は「RUSH n連目」）。その後は ROUND n / 全ラウンド・アタッカーに入った玉（1ラウンド count 個、ラウンドの8割で入る）・獲得出玉（(済んだラウンド×count＋入った玉)×payout_per_ball×レート）。RUSH 中の当たりは左上に「RUSH n連目」。
+- 上乗せ（LT）は「上乗せ +nR」を3秒。2ラウンド目からの各ラウンドの始めに `round`、上乗せで `uwanose` を鳴らす。
+- 大当たりの終わり（同じ時刻のモード変更で決める）と RUSH の回数切れで結果を 4.5秒出す（次の変動に重ねる）:
+  RUSH突入（回数・出玉）/ LT突入 / RUSH継続（n連・RUSH の出玉の合計）/ RUSH終了（n連・合計）/ 時短突入 / 大当たり終了（出玉）。音は `rush_in`・`rush_on`・`rush_end`・`bonus_end`。
+- 連チャンは RUSH に入った当たりを1連と数える（Projection に揃えた時は Core の chain + 1、出玉の合計は chainBalls の目安）。倍速では液晶だけ（音は鳴らさない）。
+
 ## レンダラ（`packages/fx`）
 | 型 | 役割 |
 |---|---|

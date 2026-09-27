@@ -3,6 +3,7 @@ import { parseBoard, parseLaunchDirs } from '@ph/core';
 import boardJson from '../../../../resources/boards/default.json';
 import dirsJson from '../../../../resources/boards/launch_dirs.json';
 import patternsJson from '../../../../resources/machines/patterns.json';
+import { machineRound } from '../engine/game-config.ts';
 import { installAudioUnlock } from '../fx/fx-host.ts';
 import { clock } from '../stores/clock.ts';
 import { onShots, onView, useEngine } from '../stores/engine.ts';
@@ -51,9 +52,15 @@ export function BoardCanvas({ active = true }: { active?: boolean }) {
     };
     showYaku(useEngine.getState().projection);
     scene.setSeed(useEngine.getState().seed);
+    const setRound = (id: string) => {
+      const r = machineRound(id);
+      if (r) scene.setRound(r);
+    };
+    setRound(useEngine.getState().machineId);
     const offYaku = useEngine.subscribe((s, prev) => {
       if (s.projection !== prev.projection) showYaku(s.projection);
       if (s.seed !== prev.seed) scene.setSeed(s.seed);
+      if (s.machineId !== prev.machineId) setRound(s.machineId);
     });
     const offPreview = usePreview.subscribe((s, prev) => {
       if (s.request && s.request !== prev.request) scene.playPreview(s.request);

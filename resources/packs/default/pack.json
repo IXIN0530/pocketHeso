@@ -259,6 +259,47 @@
       ]
     },
     {
+      "pattern": "round",
+      "cues": [{ "at": 0, "kind": "sound", "bus": "se", "asset": "hold_up" }]
+    },
+    {
+      "pattern": "uwanose",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "kime" },
+        { "at": 0, "kind": "flash", "style": "rainbow", "ms": 500 },
+        { "at": 0, "kind": "haptic", "pattern": [40, 30, 60] },
+        { "at": 0, "kind": "bloom", "ms": 1500, "strength": 0.6, "min_intensity": 2 },
+        { "at": 250, "kind": "sound", "bus": "voice", "asset": "fanfare" }
+      ]
+    },
+    {
+      "pattern": "rush_in",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "kyuin" },
+        { "at": 0, "kind": "flash", "style": "rainbow", "ms": 600 },
+        { "at": 0, "kind": "haptic", "pattern": [60, 40, 90] },
+        { "at": 0, "kind": "bloom", "ms": 2000, "strength": 0.7, "min_intensity": 2 },
+        { "at": 450, "kind": "sound", "bus": "voice", "asset": "fanfare" }
+      ]
+    },
+    {
+      "pattern": "rush_on",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "kime" },
+        { "at": 0, "kind": "haptic", "pattern": [40, 30, 60] },
+        { "at": 0, "kind": "bloom", "ms": 1500, "strength": 0.6, "min_intensity": 2 },
+        { "at": 300, "kind": "sound", "bus": "voice", "asset": "fanfare" }
+      ]
+    },
+    {
+      "pattern": "rush_end",
+      "cues": [{ "at": 0, "kind": "sound", "bus": "se", "asset": "black" }]
+    },
+    {
+      "pattern": "bonus_end",
+      "cues": [{ "at": 0, "kind": "sound", "bus": "se", "asset": "hold_up" }]
+    },
+    {
       "pattern": "test",
       "cues": [
         { "at": 0, "kind": "sound", "bus": "se", "asset": "pachi" },

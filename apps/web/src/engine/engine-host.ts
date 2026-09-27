@@ -62,6 +62,8 @@ export interface EngineView {
   readonly shots: readonly Shot[];
   /** 演出の分岐に使う（RNGStream(seed, 'presentation', entry), spec/43）。 */
   readonly seed: number;
+  /** 機種（大当たり中の液晶のラウンド・出玉の表示に使う, D-077）。 */
+  readonly machineId: string;
 }
 
 export interface TickResult extends EngineView {
@@ -205,7 +207,7 @@ export class EngineHost {
   }
 
   private view(clockBack: boolean, events: readonly EngineSimEvent[] = []): EngineView {
-    return { projection: this.engine.project(), clockBack, shots: this.shots(events), seed: this.meta.seed };
+    return { projection: this.engine.project(), clockBack, shots: this.shots(events), seed: this.meta.seed, machineId: this.meta.machineId };
   }
 
   /** 今回の前進内で発射して着いた玉（新しい方から SHOT_LIMIT 個。入賞先はセンサーイベント）と、まだ飛んでいる玉。 */

@@ -20,6 +20,8 @@ export interface EngineState {
   readonly restoredFrom: BootResult['restoredFrom'] | null;
   /** 演出の分岐に使う seed（spec/43）。 */
   readonly seed: number;
+  /** 機種（未起動は空）。 */
+  readonly machineId: string;
 }
 
 export const useEngine = create<EngineState>(() => ({
@@ -30,6 +32,7 @@ export const useEngine = create<EngineState>(() => ({
   away: null,
   restoredFrom: null,
   seed: 0,
+  machineId: '',
 }));
 
 let remote: Remote<EngineApi> | null = null;
@@ -69,7 +72,7 @@ export function onView(fn: ViewListener): () => void {
 }
 
 function show(v: EngineView & { readonly events?: readonly EngineSimEvent[] }): void {
-  useEngine.setState({ projection: v.projection, clockBack: v.clockBack, seed: v.seed });
+  useEngine.setState({ projection: v.projection, clockBack: v.clockBack, seed: v.seed, machineId: v.machineId });
   lastShots = v.shots;
   if (v.shots.length > 0) {
     shotListeners.forEach((fn) => fn(v.shots));

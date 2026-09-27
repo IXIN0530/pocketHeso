@@ -1,7 +1,7 @@
 // 液晶の保留・変動・大当たりの再生（spec/40 ホール, spec/21 流れ）。Three に依存しない（テスト用）。
 // Engine のイベント（保留の取得 → 変動開始 → 停止 → 大当たり）を時刻付きでため、盤面の玉と同じ表示時刻で1つずつ反映する。
 // 前進ごとに「全部反映した結果」を Projection と照らし、合わなければ（背面の間・Debug の倍速で取りこぼした時）Projection に揃える。
-import type { EngineSimEvent, HallProjection, JackpotKind, LotteryHoldColor } from '@ph/core';
+import type { EngineSimEvent, HallProjection, JackpotKind, LotteryHoldColor, LotteryMode } from '@ph/core';
 import { holdBreakScale, holdColorAt, planHoldChange, sakibareAt } from '@ph/fx';
 
 export interface LcdHold {
@@ -15,6 +15,8 @@ export interface LcdHold {
   readonly addedAt: number | null;
   /** 灰色で点滅している（変化する保留, D-075）。shownLcdState だけが付ける。 */
   readonly blink?: boolean;
+  /** 玉のレート（大当たりの出玉の数え上げ用。不明・1 は省略）。 */
+  readonly rate?: number;
 }
 
 export interface LcdSpin {
@@ -30,25 +32,66 @@ export interface LcdSpin {
   readonly addedAt: number | null;
   /** 変動開始で保留が割れる（D-075）。shownLcdState が付ける（演出プレビューは指定できる）。 */
   readonly breaks?: boolean;
+  readonly rate?: number;
 }
 
 export interface LcdJackpot {
   readonly entry: number;
   readonly kind: JackpotKind;
+  /** ラウンド数（上乗せ後は合計）。 */
   readonly rounds: number;
+  /** 開始の時刻（Projection から作った時は null）。 */
+  readonly startAt?: number | null;
+  /** 終了予定（Projection から作った時だけ分かる）。 */
+  readonly endsAt?: number | null;
+  /** 当たった保留のレート（出玉の数え上げ用。不明は 1）。 */
+  readonly rate?: number;
+  /** 上乗せ（LT）の時刻と足したラウンド数。 */
+  readonly bonus?: { readonly at: number; readonly add: number } | null;
+}
+
+/** RUSH の連チャン（chain は RUSH に入った当たりを1と数えた当たりの数、balls はその出玉の合計）。 */
+export interface LcdRush {
+  readonly mode: LotteryMode;
+  readonly chain: number;
+  readonly balls: number;
+}
+
+/**
+ * 大当たりの後（または RUSH の回数切れ）の結果の告知（D-077）。
+ * rushIn/ltIn: RUSH・LT 突入 / rushOn: 継続 / rushEnd: 終了 / jitanIn: 時短 / end: 通常へ。
+ */
+export type LcdResultKind = 'rushIn' | 'ltIn' | 'rushOn' | 'rushEnd' | 'jitanIn' | 'end';
+
+export interface LcdResult {
+  readonly at: number;
+  readonly kind: LcdResultKind;
+  /** この大当たりの出玉（回数切れは 0）。 */
+  readonly payout: number;
+  /** RUSH の連チャン数と出玉の合計（RUSH に関わらない時は 0）。 */
+  readonly chain: number;
+  readonly balls: number;
+  /** 次のモードの回転数（分からない・通常は 0）。 */
+  readonly spins: number;
+  /** 大当たりの終わりで決めた結果（同じ時刻のモード変更で決め直す）。 */
+  readonly from: LcdRush | null;
 }
 
 export interface LcdState {
   readonly holds: readonly LcdHold[];
   readonly spin: LcdSpin | null;
   /** 直前に止まった変動（図柄の停止に使う）。 */
-  readonly resolved: { readonly entry: number; readonly hit: boolean } | null;
+  readonly resolved: { readonly entry: number; readonly hit: boolean; readonly rate?: number } | null;
   readonly jackpot: LcdJackpot | null;
+  /** 今のモードと連チャン（省略は通常）。 */
+  readonly rush?: LcdRush;
+  /** 直近の結果の告知（省略・null は無し）。 */
+  readonly result?: LcdResult | null;
 }
 
 type LcdEvent = Extract<
   EngineSimEvent,
-  { k: 'holdAdded' | 'spinStarted' | 'spinResolved' | 'jackpotStarted' | 'uwanose' | 'jackpotEnded' }
+  { k: 'holdAdded' | 'spinStarted' | 'spinResolved' | 'jackpotStarted' | 'uwanose' | 'jackpotEnded' | 'modeChanged' }
 >;
 
 const isLcdEvent = (e: EngineSimEvent): e is LcdEvent =>
@@ -57,7 +100,37 @@ const isLcdEvent = (e: EngineSimEvent): e is LcdEvent =>
   e.k === 'spinResolved' ||
   e.k === 'jackpotStarted' ||
   e.k === 'uwanose' ||
-  e.k === 'jackpotEnded';
+  e.k === 'jackpotEnded' ||
+  e.k === 'modeChanged';
+
+const NORMAL: LcdRush = { mode: 'normal', chain: 0, balls: 0 };
+
+/** RUSH 中か（st/lt。時短は含まない。Core の chain と同じ区切り）。 */
+export function isRush(mode: LotteryMode): boolean {
+  return mode === 'st' || mode === 'lt';
+}
+
+/** 大当たりの終わり（payout）または RUSH の回数切れ（payout null）で、次のモード to の結果と連チャンを決める。 */
+function settle(from: LcdRush, to: LotteryMode, payout: number | null, at: number, spins: number): { rush: LcdRush; result: LcdResult } {
+  const was = isRush(from.mode);
+  const will = isRush(to);
+  const got = payout ?? 0;
+  const base = { at, payout: got, spins, from: payout === null ? null : from };
+  if (will && was && payout !== null) {
+    const rush = { mode: to, chain: from.chain + 1, balls: from.balls + got };
+    const kind = to === 'lt' && from.mode !== 'lt' ? 'ltIn' : 'rushOn';
+    return { rush, result: { ...base, kind, chain: rush.chain, balls: rush.balls } };
+  }
+  if (will && !was) {
+    const rush = { mode: to, chain: 1, balls: got };
+    return { rush, result: { ...base, kind: to === 'lt' ? 'ltIn' : 'rushIn', chain: 1, balls: got } };
+  }
+  if (!will && was) {
+    const chain = payout === null ? from.chain : from.chain + 1;
+    return { rush: { mode: to, chain: 0, balls: 0 }, result: { ...base, kind: 'rushEnd', chain, balls: from.balls + got } };
+  }
+  return { rush: { mode: to, chain: 0, balls: 0 }, result: { ...base, kind: to === 'jitan' ? 'jitanIn' : 'end', chain: 0, balls: 0 } };
+}
 
 const EMPTY: LcdState = { holds: [], spin: null, resolved: null, jackpot: null };
 
@@ -69,7 +142,12 @@ export function stateFromProjection(p: HallProjection): LcdState {
       ? { entry: p.spin.entry, pattern: p.spin.pattern, startAt: null, endsAt: p.spin.endsAt, color: null, hit: null, addedAt: null }
       : null,
     resolved: null,
-    jackpot: p.jackpot ? { entry: p.jackpot.entry, kind: p.jackpot.kind, rounds: p.jackpot.rounds } : null,
+    jackpot: p.jackpot
+      ? { entry: p.jackpot.entry, kind: p.jackpot.kind, rounds: p.jackpot.rounds, startAt: null, endsAt: p.jackpot.endsAt }
+      : null,
+    // Core の chain は RUSH に入った当たりを 0 と数える。chainBalls は RUSH に入った当たりの出玉を含まない（目安）。
+    rush: { mode: p.mode, chain: isRush(p.mode) ? p.chain + 1 : 0, balls: isRush(p.mode) ? p.chainBalls : 0 },
+    result: null,
   };
 }
 
@@ -79,7 +157,16 @@ export function applyLcdEvent(s: LcdState, e: LcdEvent): LcdState {
     case 'holdAdded':
       return {
         ...s,
-        holds: [...s.holds, { entry: e.entry.serial, color: e.entry.color, hit: e.entry.isHit, addedAt: e.at }],
+        holds: [
+          ...s.holds,
+          {
+            entry: e.entry.serial,
+            color: e.entry.color,
+            hit: e.entry.isHit,
+            addedAt: e.at,
+            ...(e.entry.rate !== undefined && e.entry.rate !== 1 ? { rate: e.entry.rate } : {}),
+          },
+        ],
       };
     case 'spinStarted': {
       const i = Math.max(0, s.holds.findIndex((h) => h.entry === e.entry));
@@ -95,17 +182,41 @@ export function applyLcdEvent(s: LcdState, e: LcdEvent): LcdState {
           color: h?.color ?? null,
           hit: h?.hit ?? null,
           addedAt: h?.addedAt ?? null,
+          ...(h?.rate !== undefined ? { rate: h.rate } : {}),
         },
       };
     }
-    case 'spinResolved':
-      return { ...s, spin: null, resolved: { entry: e.entry, hit: e.hit } };
-    case 'jackpotStarted':
-      return { ...s, jackpot: { entry: e.entry, kind: e.kind, rounds: e.rounds } };
+    case 'spinResolved': {
+      const rate = s.spin?.entry === e.entry ? s.spin.rate : undefined;
+      return { ...s, spin: null, resolved: { entry: e.entry, hit: e.hit, ...(rate !== undefined ? { rate } : {}) } };
+    }
+    case 'jackpotStarted': {
+      const rate = s.resolved?.entry === e.entry ? (s.resolved.rate ?? 1) : 1;
+      return { ...s, jackpot: { entry: e.entry, kind: e.kind, rounds: e.rounds, startAt: e.at, endsAt: null, rate, bonus: null }, result: null };
+    }
     case 'uwanose':
-      return s.jackpot ? { ...s, jackpot: { ...s.jackpot, rounds: e.totalRounds } } : s;
-    case 'jackpotEnded':
-      return { ...s, jackpot: null };
+      return s.jackpot ? { ...s, jackpot: { ...s.jackpot, rounds: e.totalRounds, bonus: { at: e.at, add: e.addRounds } } } : s;
+    case 'jackpotEnded': {
+      // モードが変わらない時（通常 → 通常）はモード変更が来ないので、ここで今のモードのまま決めておく。
+      const from = s.rush ?? NORMAL;
+      const { rush, result } = settle(from, from.mode, e.payout, e.at, 0);
+      return { ...s, jackpot: null, rush, result };
+    }
+    case 'modeChanged': {
+      const r = s.result;
+      // 大当たりの終わりと同じ時刻: 次のモードで結果を決め直す。
+      if (r && r.at === e.at && r.from) {
+        const { rush, result } = settle(r.from, e.to, r.payout, e.at, e.stRemaining);
+        return { ...s, rush, result };
+      }
+      const from = s.rush ?? NORMAL;
+      if (isRush(from.mode) && !isRush(e.to)) {
+        // RUSH の回数切れ。
+        const { rush, result } = settle(from, e.to, null, e.at, e.stRemaining);
+        return { ...s, rush, result };
+      }
+      return { ...s, rush: { ...from, mode: e.to } };
+    }
   }
 }
 

@@ -143,6 +143,8 @@ export const playSideCue = sideLane();
 export const playBreakCue = sideLane();
 /** ヘソ入賞の音。何度も鳴るので、保留変化・先バレの続きを消さないよう別の口で鳴らす。 */
 export const playHesoCue = sideLane();
+/** 大当たり中のラウンド・上乗せと結果の告知の音（D-077）。次の変動の演出と重ねて鳴らす。 */
+export const playHudCue = sideLane();
 
 export function stopCue(): void {
   player.stop();

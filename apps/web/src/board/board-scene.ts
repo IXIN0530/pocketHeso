@@ -49,10 +49,22 @@ import {
   type Vec2,
 } from '@ph/core';
 import type { Shot } from '../engine/engine-host.ts';
-import { packTexts, planFor, playBreakCue, playCue, playCues, playHesoCue, playSideCue, setFlashTarget, setSceneTarget } from '../fx/fx-host.ts';
+import {
+  packTexts,
+  planFor,
+  playBreakCue,
+  playCue,
+  playCues,
+  playHesoCue,
+  playHudCue,
+  playSideCue,
+  setFlashTarget,
+  setSceneTarget,
+} from '../fx/fx-host.ts';
 import { PREVIEW_TAIL_MS, type PreviewRequest } from '../stores/preview.ts';
 import { LCD_RECT, bakeBoard, bakeGlare, bakeHall, bakeSoftDot, bakeSymbolAtlas, bakeTextAtlas } from './art.ts';
 import { BallTracks, DISPLAY_LAG_MS, MAX_BALLS, PREROLL_MS } from './ball-tracks.ts';
+import { DEFAULT_ROUND, jackpotHud, resultCue, type HudView, type JackpotRound } from './jackpot-hud.ts';
 import { CAB, Cabinet, bakeCabinetEnv, ledTube } from './cabinet.ts';
 import { summarize, type FrameStats } from './frame-stats.ts';
 import { LcdReels, type SpinShow } from './lcd.ts';
@@ -140,6 +152,9 @@ export class BoardScene {
   private readonly lcd: LcdReels;
   private readonly lcdTimeline = new LcdTimeline();
   private lastJackpot = -1;
+  /** 大当たり中の表示で鳴らした音（ラウンド・上乗せ・結果の告知, D-077）。 */
+  private hudHeard = { round: '', bonus: -1, result: -1 };
+  private round: JackpotRound = DEFAULT_ROUND;
   /** 前のフレームで見せた保留の色（番号ごと。保留変化の音・光を鳴らす判定, P7-T4）。 */
   private shownColors = new Map<number, LotteryHoldColor>();
   /** 先バレを済ませた保留の番号（D-074）。 */
@@ -308,6 +323,37 @@ export class BoardScene {
     this.lcdTimeline.push(projection, events);
   }
 
+  /** 機種のラウンドの中身（大当たり中のラウンド・出玉の表示, D-077）。 */
+  setRound(round: JackpotRound): void {
+    this.round = round;
+  }
+
+  /**
+   * 大当たり中の表示に合わせて鳴らす: 2ラウンド目からの各ラウンドの始め（round）・上乗せ（uwanose）・結果の告知（rush_in など）。
+   * Debug の倍速では鳴らさない。
+   */
+  private noteHud(st: LcdState, hud: HudView | null, scale: number): void {
+    const heard = this.hudHeard;
+    const j = st.jackpot;
+    const roundKey = j && hud?.k === 'round' ? `${j.entry}:${hud.round}` : '';
+    const newRound = roundKey !== '' && roundKey !== heard.round && heard.round.startsWith(`${j!.entry}:`);
+    heard.round = roundKey || heard.round;
+    const bonusAt = j?.bonus?.at ?? -1;
+    const newBonus = hud?.k === 'round' && hud.bonus !== null && bonusAt !== heard.bonus;
+    if (hud?.k === 'round' && hud.bonus !== null) heard.bonus = bonusAt;
+    const resultAt = hud?.k === 'result' ? st.result!.at : -1;
+    const newResult = resultAt >= 0 && resultAt !== heard.result;
+    if (resultAt >= 0) heard.result = resultAt;
+    if (scale !== 1 || !hud) return;
+    const serial = j?.entry ?? 0;
+    if (newBonus) playHudCue('uwanose', this.seed, serial);
+    else if (newRound) playHudCue('round', this.seed, serial);
+    if (newResult && hud.k === 'result' && hud.t < 1000) {
+      this.lcd.pulse();
+      playHudCue(resultCue(hud.kind), this.seed, 0);
+    }
+  }
+
   /** 演出の分岐に使う seed（Engine の GameMeta, spec/43）。 */
   setSeed(seed: number): void {
     this.seed = seed;
@@ -434,7 +480,9 @@ export class BoardScene {
     this.noteSakibare(lcdState, lcdNow, lcdScale);
     this.noteHoldChanges(shown, lcdScale);
     this.lcd.reducedMotion = this.flashLayer.reducedMotion;
-    this.lcd.update(dt, lcdNow, lcdScale, shown, (e) => this.lcdTimeline.peekResult(e), winLevel, this.show);
+    const hud = jackpotHud(lcdState, lcdNow, this.round);
+    this.noteHud(lcdState, hud, lcdScale);
+    this.lcd.update(dt, lcdNow, lcdScale, shown, (e) => this.lcdTimeline.peekResult(e), winLevel, this.show, hud);
     this.updateLamps(sec, winLevel, white);
     this.updateCamera(clockNow);
     // 保留の色が広がる光（wash）の起点は画面上の液晶の中心。
@@ -482,7 +530,7 @@ export class BoardScene {
       return { holds: [], spin, resolved: null, jackpot: null };
     }
     if (t < ms + PREVIEW_TAIL_MS) {
-      const jackpot = pv.hit ? { entry: pv.serial, kind: pv.kind ?? 'kakuhen', rounds: pv.rounds ?? 10 } : null;
+      const jackpot = pv.hit ? { entry: pv.serial, kind: pv.kind ?? 'kakuhen', rounds: pv.rounds ?? 10, startAt: pv.start + ms } : null;
       return { holds: [], spin: null, resolved: { entry: pv.serial, hit: pv.hit }, jackpot };
     }
     this.preview = null;

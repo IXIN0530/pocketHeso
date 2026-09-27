@@ -14,6 +14,20 @@ const MACHINES: Readonly<Record<string, unknown>> = {
 };
 
 const ECONOMY = parseEconomy(economyJson);
+const rounds = new Map<string, { count: number; payoutPerBall: number; msPerRound: number }>();
+
+/** 機種のラウンドの中身（大当たり中の液晶の表示, D-077）。知らない機種は null。 */
+export function machineRound(machineId: string): { count: number; payoutPerBall: number; msPerRound: number } | null {
+  const machine = MACHINES[machineId];
+  if (machine === undefined) return null;
+  let r = rounds.get(machineId);
+  if (!r) {
+    const spec = parseMachine(machine);
+    r = { count: spec.roundCount, payoutPerBall: spec.payoutPerBall, msPerRound: spec.msPerRound };
+    rounds.set(machineId, r);
+  }
+  return r;
+}
 const PATTERNS = parsePatterns(patternsJson);
 
 export function engineConfig(meta: GameMeta, atlas: ArrayBuffer): EngineConfig {
