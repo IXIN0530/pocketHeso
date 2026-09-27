@@ -5,7 +5,7 @@ import { parseMachineText, parsePatternsText } from './machine.ts';
 import { parseEconomy } from './economy-config.ts';
 import { IdleEconomy } from './economy-state.ts';
 import type { Action, Grant, SimEvent } from './engine.ts';
-import { Engine } from './engine.ts';
+import { Engine, RESERVE_SERIAL_BASE } from './engine.ts';
 
 const H = 3600000;
 
@@ -151,7 +151,9 @@ test('レート4: 1発4玉・出玉×4・大当たりフィーバー×4（D-050�
   );
   let inJackpot = false;
   let rounds = 0;
+  let jackpotRate = 4;
   let sawFever = false;
+  let sawReserveJackpot = false;
   const all: SimEvent[] = [];
   for (let t = 1000; t <= 6 * H; t = t + 1000) {
     for (const e of eng.advance(t)) {
@@ -159,17 +161,23 @@ test('レート4: 1発4玉・出玉×4・大当たりフィーバー×4（D-050�
       if (e.k === 'jackpotStarted') {
         inJackpot = true;
         rounds = e.rounds + (e.bonusRounds ?? 0);
+        // 自動保留（D-079）は無料のため rate1。大当たりの出玉・フィーバーも rate1。
+        jackpotRate = e.entry >= RESERVE_SERIAL_BASE ? 1 : 4;
+        if (jackpotRate === 1) {
+          sawReserveJackpot = true;
+        }
       } else if (e.k === 'jackpotEnded') {
         inJackpot = false;
-        expect(e.payout).toBe(rounds * 10 * 15 * 4);
+        expect(e.payout).toBe(rounds * 10 * 15 * jackpotRate);
       }
     }
     if (inJackpot) {
-      expect(econ.getJackpotFeverMult()).toBe(5);
+      expect(econ.getJackpotFeverMult()).toBe(jackpotRate === 1 ? 4.5 : 5);
       sawFever = true;
     }
   }
   expect(sawFever).toBe(true);
+  expect(sawReserveJackpot).toBe(true);
   const fired = all.filter((e) => e.k === 'fired');
   expect(fired.length).toBeGreaterThan(1000);
   expect(fired.every((e) => e.k === 'fired' && e.rate === 4)).toBe(true);

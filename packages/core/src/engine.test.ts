@@ -2,10 +2,10 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import { expect, test } from 'vitest';
 import type { MachineSpec, PatternTable } from './machine.ts';
-import { parseMachineText, parsePatternsText } from './machine.ts';
+import { jackpotThresholdU32, parseMachineText, parsePatternsText } from './machine.ts';
 import { atlasKeyForBall, decodeAtlasEntry } from './atlas.ts';
 import type { Action, Grant, SimEvent } from './engine.ts';
-import { Engine } from './engine.ts';
+import { Engine, RESERVE_SERIAL_BASE } from './engine.ts';
 import type { EconomyPort } from './economy.ts';
 
 function loadMachine(): { spec: MachineSpec; patterns: PatternTable } {
@@ -78,6 +78,10 @@ function expectTimeOrdered(events: readonly SimEvent[]): void {
     const cur = events[i] as SimEvent;
     expect(cur.at).toBeGreaterThanOrEqual(prev.at);
     if (cur.at === prev.at) {
+      // 自動保留の holdAdded は変動開始の後など同刻のどこにでも出る（D-079）。
+      if (cur.k === 'holdAdded' || cur.k === 'holdOverflow') {
+        continue;
+      }
       expect(orderIndex(cur)).toBeGreaterThanOrEqual(orderIndex(prev));
     }
   }
@@ -413,3 +417,69 @@ test(
     expectTimeOrdered(first.slice(0, 2000));
   },
 );
+
+test('電サポ中は発射なしでも保留が上限に保たれる（賞球なし・予約域の通し番号）', () => {
+  const base = loadMachine();
+  const atlas = loadAtlas();
+  const seed = 11;
+  const spec: MachineSpec = {
+    ...base.spec,
+    normal: { jackpot1In: 2, thresholdU32: jackpotThresholdU32(2), stSpins: 0 },
+    st: { jackpot1In: 1000000000, thresholdU32: jackpotThresholdU32(1000000000), stSpins: 20 },
+    jackpotSplit: [{ kind: 'kakuhen', weight: 1, weightSt: 1, rounds: 1, next: 'st' }],
+  };
+  const patterns: PatternTable = [{ id: 'normal_short', ms: 5000, hitW: 1, missW: 1, hot: 0 }];
+  const eng = new Engine({ seed, spec, patterns, atlas, initialBalls: 100000 }, [], [
+    { t: 0, k: 'auto', share: 1, rate: 1 },
+  ]);
+  let inSt = false;
+  for (let i = 0; i < 40 && !inSt; i = i + 1) {
+    eng.advance(eng.nowMs + 5000);
+    const p = eng.project();
+    inSt = p.mode === 'st' && p.jackpot === undefined;
+  }
+  expect(inSt).toBe(true);
+  // 発射を止め、飛行中の玉を流してから基線を取る。
+  eng.appendAction({ t: eng.nowMs, k: 'auto', share: 0, rate: 1 });
+  eng.advance(eng.nowMs + 10000);
+  expect(eng.inFlight().length).toBe(0);
+  expect(eng.project().mode).toBe('st');
+  const balls0 = eng.project().balls;
+  const spins0 = eng.project().totals.spins;
+  const after: SimEvent[] = [];
+  // 予約番号の続きは snapshot/restore でも一致する。
+  const snap0 = eng.snapshot();
+  const head1 = eng.advance(eng.nowMs + 5000);
+  const snap1 = eng.snapshot();
+  const resumed = Engine.restore(snap0, { seed, spec, patterns, atlas });
+  expect(resumed.advance(snap0.nowMs + 5000)).toEqual(head1);
+  expect(resumed.snapshot()).toEqual(snap1);
+  for (let j = 0; j < head1.length; j = j + 1) {
+    after.push(head1[j] as SimEvent);
+  }
+  let backToNormal = false;
+  for (let i = 0; i < 30 && !backToNormal; i = i + 1) {
+    const step = eng.advance(eng.nowMs + 5000);
+    for (let j = 0; j < step.length; j = j + 1) {
+      after.push(step[j] as SimEvent);
+    }
+    const p = eng.project();
+    if (p.mode === 'st' || p.mode === 'lt') {
+      expect(p.holds.length).toBe(spec.holdMax);
+    }
+    backToNormal = p.mode === 'normal' && p.spin === undefined && p.jackpot === undefined;
+  }
+  expect(backToNormal).toBe(true);
+  expect(after.filter((e) => e.k === 'fired').length).toBe(0);
+  const added = after.filter((e) => e.k === 'holdAdded');
+  expect(added.length).toBeGreaterThan(0);
+  for (let i = 0; i < added.length; i = i + 1) {
+    const e = added[i] as { k: 'holdAdded'; entry: { serial: number; hesoPayoutBalls: number } };
+    expect(e.entry.serial).toBeGreaterThanOrEqual(RESERVE_SERIAL_BASE);
+    expect(e.entry.hesoPayoutBalls).toBe(0);
+  }
+  expect(eng.project().totals.spins - spins0).toBeGreaterThanOrEqual(5);
+  // 発射も賞球もないので玉は減らない（大当たりの払い出しで増えることはある）。
+  expect(eng.project().balls).toBeGreaterThanOrEqual(balls0);
+  expectTimeOrdered(after);
+});

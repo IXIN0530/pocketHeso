@@ -175,6 +175,8 @@ export interface EngineSnapshot {
   readonly away: AwayTrackerSnapshot;
   /** 閉店の記録（古い複写には無い）。 */
   readonly closes?: readonly CloseRecord[] | undefined;
+  /** 次の自動保留の通し番号（古い複写には無い。無い時はRESERVE_SERIAL_BASEから）。 */
+  readonly nextReserve?: number | undefined;
 }
 
 /** 留守集計の複写（awayFromがnullなら留守中でない）。 */
@@ -259,6 +261,9 @@ export const FIRE_INTERVAL_MS = 600;
 
 /** ボーナス保留の通し番号の基数（発射玉と衝突しないよう1e9からnoticeIdを足す）。 */
 export const BONUS_SERIAL_BASE = 1000000000;
+
+/** 自動保留（電サポ）の通し番号の基数（発射玉・ボーナス保留と衝突しないよう2e9から）。 */
+export const RESERVE_SERIAL_BASE = 2000000000;
 
 /** 2^32（予告の当否しきい値用。`**`禁止のため数値リテラル）。 */
 const UINT32_RANGE = 4294967296;
@@ -453,6 +458,7 @@ export class Engine {
   private queue: HoldQueue;
   private spins: SpinMachine;
   private pendingState: PendingSensor[];
+  private nextReserveState: number;
   private grantsState: Grant[];
   private grantIdxState: number;
   private actionsState: Action[];
@@ -515,6 +521,7 @@ export class Engine {
     this.queue = new HoldQueue(cfg.spec.holdMax);
     this.spins = new SpinMachine(cfg.spec, cfg.patterns, { mode: 'normal', stRemaining: 0, nowMs: startMs });
     this.pendingState = [];
+    this.nextReserveState = RESERVE_SERIAL_BASE;
     this.grantsState = [];
     this.grantIdxState = 0;
     this.actionsState = [];
@@ -1373,6 +1380,36 @@ export class Engine {
     }
   }
 
+  /** 電サポ中か（jitan/st/lt。normalは対象外）。 */
+  private isSupportMode(): boolean {
+    const m = this.spins.mode;
+    return m === 'jitan' || m === 'st' || m === 'lt';
+  }
+
+  /** 電サポ中の自動保留（玉を打たずに保留を上限まで足す。賞球なし・rate1の取得時判定）。 */
+  private fillReserveHolds(at: SimTime, out: SimEvent[]): void {
+    if (!this.isSupportMode()) {
+      return;
+    }
+    this.syncHoldMax();
+    while (!this.queue.isFull()) {
+      const serial = this.nextReserveState;
+      if (serial >= MAX_SAFE_MS) {
+        throw new Error('invalid engine: reserve serial out of range');
+      }
+      this.nextReserveState = serial + 1;
+      const mode = this.spins.mode;
+      const drawn = drawHold(this.spec, this.patterns, this.seed, mode, serial, 1);
+      const entry: HoldEntry = { ...drawn, hesoPayoutBalls: 0 };
+      this.noteAwayHot(entry.serial, entry.hot);
+      if (this.queue.tryAdd(entry)) {
+        out.push({ k: 'holdAdded', entry, at });
+      } else {
+        break;
+      }
+    }
+  }
+
   /** 同時刻の変動・大当たり・開始（resolve→jackpot*（uwanose含む）→spinStarted→modeの順）。 */
   private applySpinAt(at: SimTime, out: SimEvent[]): void {
     let deferredMode: SimEvent | null = null;
@@ -1447,6 +1484,7 @@ export class Engine {
         }
       }
     }
+    this.fillReserveHolds(at, out);
     if (!this.spins.isSpinning && !this.spins.isInJackpot && this.queue.size > 0) {
       const holdCount = this.queue.size;
       const entry = this.queue.takeFirst();
@@ -1471,6 +1509,7 @@ export class Engine {
         };
       }
     }
+    this.fillReserveHolds(at, out);
     if (deferredMode !== null) {
       out.push(deferredMode);
     }
@@ -1527,6 +1566,7 @@ export class Engine {
       noticeSeq: this.noticeSeqState,
       noticeInFgMs: this.noticeInFgMsState,
       activeNotice: activeCopy,
+      nextReserve: this.nextReserveState,
       away: {
         awayFrom: this.awayFromState,
         awayBalls: this.awayBallsState,
@@ -1667,6 +1707,14 @@ export class Engine {
     eng.noticeSeqState = snap.noticeSeq;
     eng.noticeInFgMsState = snap.noticeInFgMs;
     eng.activeNoticeState = snap.activeNotice === null ? null : { ...snap.activeNotice };
+    if (snap.nextReserve === undefined) {
+      eng.nextReserveState = RESERVE_SERIAL_BASE;
+    } else {
+      if (Math.floor(snap.nextReserve) !== snap.nextReserve || snap.nextReserve < 0 || snap.nextReserve >= MAX_SAFE_MS) {
+        throw new Error('invalid engine: snap.nextReserve must be a non-negative int in range');
+      }
+      eng.nextReserveState = snap.nextReserve;
+    }
     eng.awayFromState = away.awayFrom;
     eng.awayBallsState = away.awayBalls;
     eng.awayFiredState = away.awayFired;
