@@ -8,14 +8,14 @@ export { CuePlayer, cueSpanMs } from './cue-player.ts';
 export { FADE_MAX_ALPHA, FLASH_MAX_ALPHA, FLASH_MAX_PER_SEC, FLASH_RAMP_MS, FlashLimiter, flashAlpha } from './flash.ts';
 export { FlashLayer } from './flash-layer.ts';
 export { Haptics } from './haptics.ts';
-export type { HoldChangeClock, HoldChangePlan, HoldChangeStep, HoldChangeTiming } from './hold-change.ts';
+export type { HoldChangePlan } from './hold-change.ts';
 export {
-  HOLD_CHANGE_DELAY_MS,
+  HOLD_BREAK_MS,
+  HOLD_CRACK_CUE,
   HOLD_RANKED,
   SAKIBARE_CUE,
   SAKIBARE_DELAY_MS,
   holdChangeCue,
-  holdChangeTimes,
   holdColorAt,
   holdRank,
   planHoldChange,

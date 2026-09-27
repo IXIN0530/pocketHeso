@@ -38,7 +38,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FlashLayer, SAKIBARE_CUE, holdChangeCue, holdRank, type SceneCue } from '@ph/fx';
+import { FlashLayer, HOLD_BREAK_MS, HOLD_CRACK_CUE, SAKIBARE_CUE, holdChangeCue, holdRank, type SceneCue } from '@ph/fx';
 import {
   BALL_RADIUS_MM,
   type Board,
@@ -49,7 +49,7 @@ import {
   type Vec2,
 } from '@ph/core';
 import type { Shot } from '../engine/engine-host.ts';
-import { packTexts, planFor, playCue, playCues, playHesoCue, playSideCue, setFlashTarget, setSceneTarget } from '../fx/fx-host.ts';
+import { packTexts, planFor, playBreakCue, playCue, playCues, playHesoCue, playSideCue, setFlashTarget, setSceneTarget } from '../fx/fx-host.ts';
 import { PREVIEW_TAIL_MS, type PreviewRequest } from '../stores/preview.ts';
 import { LCD_RECT, bakeBoard, bakeGlare, bakeHall, bakeSoftDot, bakeSymbolAtlas, bakeTextAtlas } from './art.ts';
 import { BallTracks, DISPLAY_LAG_MS, MAX_BALLS, PREROLL_MS } from './ball-tracks.ts';
@@ -151,6 +151,7 @@ export class BoardScene {
   private cueShake = { until: 0, amp: 0 };
   private cueCam = { from: 0, ms: 0 };
   private readonly lcdCenter = new Vector3();
+  private readonly scratch = new Vector3();
   private readonly ballMeshes: Mesh[] = [];
   private readonly ballShadows: InstancedMesh;
   private readonly yaku: Yaku[] = [];
@@ -416,7 +417,9 @@ export class BoardScene {
       lcdNow = clockNow;
       lcdScale = 1;
     }
-    this.startShow(lcdState, lcdNow, lcdScale);
+    // 見せる色（保留変化）。割れる変動は図柄と演出の起点を割れた後へずらす（D-075）。
+    const shown = shownLcdState(lcdState, this.seed, lcdNow);
+    this.startShow(shown, lcdNow, lcdScale);
     const jackpot = lcdState.jackpot?.entry ?? -1;
     if (jackpot !== this.lastJackpot) {
       this.lastJackpot = jackpot;
@@ -428,13 +431,15 @@ export class BoardScene {
     this.hesoFlash = Math.max(0, this.hesoFlash - dt / 500);
     this.updateBalls();
     this.updateYakumono(display, winLevel);
-    const shown = shownLcdState(lcdState, this.seed, lcdNow);
     this.noteSakibare(lcdState, lcdNow, lcdScale);
     this.noteHoldChanges(shown, lcdScale);
     this.lcd.reducedMotion = this.flashLayer.reducedMotion;
     this.lcd.update(dt, lcdNow, lcdScale, shown, (e) => this.lcdTimeline.peekResult(e), winLevel, this.show);
     this.updateLamps(sec, winLevel, white);
     this.updateCamera(clockNow);
+    // 保留の色が広がる光（wash）の起点は画面上の液晶の中心。
+    this.scratch.copy(this.lcdCenter).project(this.camera);
+    this.flashLayer.origin.set((this.scratch.x + 1) / 2, (this.scratch.y + 1) / 2);
 
     this.rainbow.visible = winning;
     if (winning) {
@@ -472,7 +477,7 @@ export class BoardScene {
         color: pv.color,
         hit: pv.hit,
         addedAt: null,
-        shiftAt: null,
+        ...(pv.breaks ? { breaks: true } : {}),
       };
       return { holds: [], spin, resolved: null, jackpot: null };
     }
@@ -487,20 +492,24 @@ export class BoardScene {
   /**
    * 変動が始まったら演出を決める（分岐は RNGStream(seed, 'presentation', entry)、尺は実際の変動時間, D-067）。
    * 液晶のシーンは LcdReels が描き、音・光・振動・揺れ・カメラは CuePlayer が実時間で鳴らす（Debug の倍速では鳴らさない）。
+   * 保留が割れる変動（D-075）は hold_crack を鳴らし、図柄と演出は割れた後（HOLD_BREAK_MS.reels）から残りの尺で流す。
    */
   private startShow(st: LcdState, now: number, scale: number): void {
     const spin = st.spin;
     if (!spin || spin.entry === this.show?.entry) return;
     const patternMs = this.patterns(spin.pattern)?.ms ?? spin.endsAt - (spin.startAt ?? now);
     // Projection から作った変動は開始時刻が分からないので、パターンの尺から逆算する。
-    const origin = spin.startAt ?? spin.endsAt - patternMs;
+    const start = spin.startAt ?? spin.endsAt - patternMs;
+    const origin = spin.breaks ? Math.min(start + HOLD_BREAK_MS.reels, spin.endsAt - 1) : start;
     const plan = planFor(spin.pattern, this.seed, spin.entry, patternMs, spin.endsAt - origin);
     this.show = { entry: spin.entry, origin, lcd: plan.lcd };
-    if (scale === 1) playCues(plan.cues, now - origin);
+    if (scale !== 1) return;
+    playCues(plan.cues, now - origin);
+    if (spin.breaks && now - start < HOLD_BREAK_MS.reveal) playBreakCue(HOLD_CRACK_CUE, this.seed, spin.entry, now - start);
   }
 
   /**
-   * 見せる色が上がった保留を光らせ、パックの hold_<色> を鳴らす（保留変化, P7-T4）。
+   * 見せる色が上がった保留（割れて最終色が出た時, D-075）を光らせ、パックの hold_<色> を鳴らす。
    * Debug の倍速では液晶だけ（音・光は鳴らさない, D-067）。
    */
   private noteHoldChanges(st: LcdState, scale: number): void {
@@ -510,7 +519,7 @@ export class BoardScene {
       const prev = this.shownColors.get(entry);
       if (prev !== undefined && holdRank(color) > holdRank(prev)) {
         this.lcd.pulse();
-        if (scale === 1) playSideCue(holdChangeCue(color), this.seed, entry);
+        if (scale === 1) playBreakCue(holdChangeCue(color), this.seed, entry);
       }
       next.set(entry, color);
     };

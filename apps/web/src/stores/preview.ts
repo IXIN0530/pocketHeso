@@ -26,6 +26,8 @@ export interface PreviewRequest {
   readonly durationMs?: number | undefined;
   readonly kind?: JackpotKind | undefined;
   readonly rounds?: number | undefined;
+  /** 変動開始で保留が割れる演出を必ず見せる（Debug。省略時は通し番号の見せ方どおり, D-075）。 */
+  readonly breaks?: boolean | undefined;
   /** 留守中リプレイの当たりの時刻（ホールに「リプレイ」と出す）。 */
   readonly replayAt?: number | undefined;
 }

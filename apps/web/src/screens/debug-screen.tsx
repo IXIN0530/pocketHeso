@@ -59,6 +59,7 @@ function describePicks(pattern: string, picks: readonly number[]): string {
 export default function DebugScreen() {
   const { projection, restoredFrom, seed } = useEngine();
   const [previewHit, setPreviewHit] = useState(false);
+  const [previewBreak, setPreviewBreak] = useState(false);
   const [info, setInfo] = useState<DebugInfo | null>(null);
   const [atlas, setAtlas] = useState<AtlasVerifyResult | string | null>(null);
   const [dump, setDump] = useState<string | null>(null);
@@ -170,6 +171,9 @@ export default function DebugScreen() {
         <Switch checked={previewHit} onChange={setPreviewHit}>
           当たりで止める（確定は常に当たり）
         </Switch>
+        <Switch checked={previewBreak} onChange={setPreviewBreak}>
+          保留が割れる（灰色の玉から割れて色が出る）
+        </Switch>
         <div className={styles.row}>
           {PREVIEWS.map((p) => (
             <button
@@ -180,7 +184,7 @@ export default function DebugScreen() {
                 sound.unlock();
                 const serial = PREVIEW_SERIAL_BASE + previewCount++;
                 const plan = planFor(p.pattern, seed, serial, 1, 1);
-                requestPreview({ pattern: p.pattern, hit: p.alwaysHit === true || previewHit, serial, color: p.color });
+                requestPreview({ pattern: p.pattern, hit: p.alwaysHit === true || previewHit, serial, color: p.color, breaks: previewBreak });
                 setMessage(`${p.label} #${serial - PREVIEW_SERIAL_BASE}: ${describePicks(p.pattern, plan.picks)}`);
               }}
             >

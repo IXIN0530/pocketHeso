@@ -17,7 +17,11 @@
     "hold_gold": { "synth": { "wave": "sawtooth", "hz": [600, 2600], "ms": 600, "gain": 0.35 } },
     "heso_pi": { "synth": { "wave": "sine", "hz": [1175, 1175], "ms": 70, "gain": 0.14 } },
     "heso_ron": { "synth": { "wave": "sine", "hz": [1568, 1568], "ms": 220, "gain": 0.12 } },
-    "sakibare": { "synth": { "wave": "square", "hz": [2000, 3200], "ms": 110, "gain": 0.3 } }
+    "sakibare": { "synth": { "wave": "square", "hz": [2000, 3200], "ms": 110, "gain": 0.3 } },
+    "hold_morph": { "synth": { "wave": "triangle", "hz": [220, 660], "ms": 450, "gain": 0.22 } },
+    "crack": { "synth": { "wave": "square", "hz": [2600, 1400], "ms": 35, "gain": 0.16 } },
+    "crack_big": { "synth": { "wave": "sawtooth", "hz": [1800, 500], "ms": 120, "gain": 0.22 } },
+    "shatter": { "synth": { "wave": "sawtooth", "hz": [3800, 700], "ms": 260, "gain": 0.3 } }
   },
   "sheets": [
     {
@@ -165,31 +169,59 @@
       ]
     },
     {
+      "pattern": "hold_crack",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "hold_morph" },
+        { "at": 650, "kind": "sound", "bus": "se", "asset": "crack" },
+        { "at": 650, "kind": "haptic", "pattern": [12] },
+        { "at": 930, "kind": "sound", "bus": "se", "asset": "crack" },
+        { "at": 930, "kind": "haptic", "pattern": [12] },
+        { "at": 1130, "kind": "sound", "bus": "se", "asset": "crack" },
+        { "at": 1130, "kind": "haptic", "pattern": [15] },
+        { "at": 1270, "kind": "sound", "bus": "se", "asset": "crack" },
+        { "at": 1270, "kind": "haptic", "pattern": [15] },
+        { "at": 1370, "kind": "sound", "bus": "se", "asset": "crack_big" },
+        { "at": 1370, "kind": "haptic", "pattern": [25] },
+        { "at": 1370, "kind": "shake", "ms": 130, "amp": 0.12, "min_intensity": 2 }
+      ]
+    },
+    {
       "pattern": "hold_blue",
-      "cues": [{ "at": 0, "kind": "sound", "bus": "se", "asset": "hold_up" }]
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "shatter" },
+        { "at": 60, "kind": "sound", "bus": "se", "asset": "hold_up" },
+        { "at": 0, "kind": "flash", "style": "wash_blue", "ms": 1100 },
+        { "at": 0, "kind": "haptic", "pattern": [30] }
+      ]
     },
     {
       "pattern": "hold_green",
       "cues": [
-        { "at": 0, "kind": "sound", "bus": "se", "asset": "hold_up" },
-        { "at": 0, "kind": "haptic", "pattern": [20] }
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "shatter" },
+        { "at": 60, "kind": "sound", "bus": "se", "asset": "hold_up" },
+        { "at": 0, "kind": "flash", "style": "wash_green", "ms": 1100 },
+        { "at": 0, "kind": "haptic", "pattern": [40] }
       ]
     },
     {
       "pattern": "hold_red",
       "cues": [
-        { "at": 0, "kind": "sound", "bus": "se", "asset": "hold_red" },
-        { "at": 0, "kind": "flash", "style": "white", "ms": 120, "min_intensity": 2 },
-        { "at": 0, "kind": "haptic", "pattern": [30, 20, 30] }
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "shatter" },
+        { "at": 60, "kind": "sound", "bus": "se", "asset": "hold_red" },
+        { "at": 0, "kind": "flash", "style": "wash_red", "ms": 1300 },
+        { "at": 0, "kind": "haptic", "pattern": [40, 20, 40] },
+        { "at": 0, "kind": "shake", "ms": 250, "amp": 0.2, "min_intensity": 2 }
       ]
     },
     {
       "pattern": "hold_gold",
       "cues": [
-        { "at": 0, "kind": "sound", "bus": "se", "asset": "hold_gold" },
-        { "at": 0, "kind": "flash", "style": "rainbow", "ms": 500 },
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "shatter" },
+        { "at": 60, "kind": "sound", "bus": "se", "asset": "hold_gold" },
+        { "at": 0, "kind": "flash", "style": "wash_gold", "ms": 1500 },
         { "at": 0, "kind": "haptic", "pattern": [60, 30, 90] },
-        { "at": 0, "kind": "bloom", "ms": 900, "strength": 0.5, "min_intensity": 2 }
+        { "at": 0, "kind": "shake", "ms": 350, "amp": 0.25, "min_intensity": 2 },
+        { "at": 0, "kind": "bloom", "ms": 1200, "strength": 0.5, "min_intensity": 2 }
       ]
     },
     {

@@ -1,5 +1,6 @@
 import { ShaderMaterial, Vector3, Vector4, type Texture } from 'three';
 import type { LotteryHoldColor } from '@ph/core';
+import { HOLD_BREAK_MS } from '@ph/fx';
 import type { LcdCue } from '@ph/shared';
 import { NO_LOOK, lcdLook, pseudoWindows, reachAt, type LcdLook } from './lcd-scenes.ts';
 import type { LcdSpin, LcdState } from './lcd-timeline.ts';
@@ -51,7 +52,8 @@ export function spinTargets(entry: number, reach: boolean, hit: boolean): [numbe
  * 変動の開始で回し、左 → 右 → 中の順に止める。中は変動の終了時刻に止まる。リーチ（パターンの hot ≥ 1）は左右を
  * シートの reach の時刻（無ければ早め）に揃え、中を終了まで回して最後の 1.2 秒で減速する。疑似連の区間は3列をいったん
  * 止めて回し直す。SP・決め・群予告・テロップなどはシートの lcd キューをシェーダーで描く（図形・テキスト・パーティクルのみ）。
- * 保留は色＋形で4つまで、当該変動の保留は中央下に大きく出す。
+ * 保留は色＋形で4つまで、当該変動の保留は中央下に大きく出す。変化する保留は灰色で点滅し、変動開始で液晶の中央へ動いて
+ * 大きな玉になり、ひびが入って割れ、中から最終色の保留が出て色が広がる（HOLD_BREAK_MS, D-075）。図柄はその後に回り始める。
  */
 export class LcdReels {
   readonly material: ShaderMaterial;
@@ -79,6 +81,8 @@ export class LcdReels {
   private pseudo: { from: number; to: number; state: 'wait' | 'stopped' | 'done' }[] = [];
   /** 中の図柄を最後に止めた（疑似連の停止と区別する）。 */
   private final = false;
+  /** 図柄が回り始めるのを待っている（保留が割れる間, D-075）。 */
+  private pending = false;
 
   constructor(
     atlas: Texture,
@@ -127,7 +131,11 @@ export class LcdReels {
     (u.uBlur!.value as Vector3).set(blur(this.reels[0]!), blur(this.reels[1]!), blur(this.reels[2]!));
     const h = st.holds.map((x) => HOLD_CODE[x.color]);
     (u.uHolds!.value as Vector4).set(h[0] ?? 0, h[1] ?? 0, h[2] ?? 0, h[3] ?? 0);
+    const bk = st.holds.map((x) => (x.blink ? 1 : 0));
+    (u.uBlink!.value as Vector4).set(bk[0] ?? 0, bk[1] ?? 0, bk[2] ?? 0, bk[3] ?? 0);
     u.uCur!.value = st.spin?.color ? HOLD_CODE[st.spin.color] : 0;
+    const bt = st.spin?.breaks && st.spin.startAt !== null ? now - st.spin.startAt : -1;
+    u.uBrk!.value = bt >= 0 && bt < HOLD_BREAK_MS.end ? bt / 1000 : -1;
     u.uTime!.value = this.elapsed / 1000;
     u.uReach!.value = this.reachMs >= 0 ? Math.min(1, this.reachMs / 300) : 0;
     u.uFlash!.value = this.flash;
@@ -155,6 +163,9 @@ export class LcdReels {
       to: this.spinStart + w.to,
       state: this.spinStart + w.to <= now ? ('done' as const) : ('wait' as const),
     }));
+    // 保留が割れる変動は、演出の起点（図柄が回り始める時刻）まで前の出目のまま待つ。
+    this.pending = now < this.spinStart;
+    if (this.pending) return;
     for (const reel of this.reels) {
       reel.mode = 'spin';
       reel.vel = SPIN_SPEED;
@@ -183,6 +194,15 @@ export class LcdReels {
   }
 
   private step(dtMs: number, now: number, scale: number, st: LcdState, peek: (entry: number) => boolean | null): void {
+    if (this.pending) {
+      for (const reel of this.reels) this.stepReel(reel, dtMs);
+      if (now < this.spinStart) return;
+      this.pending = false;
+      for (const reel of this.reels) {
+        reel.mode = 'spin';
+        reel.vel = SPIN_SPEED;
+      }
+    }
     const spin = this.spin!;
     const [l, c, r] = this.reels as [Reel, Reel, Reel];
     const lead = STOP_MS * scale;
@@ -278,7 +298,9 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
       uReel: { value: new Vector3() },
       uBlur: { value: new Vector3() },
       uHolds: { value: new Vector4() },
+      uBlink: { value: new Vector4() },
       uCur: { value: 0 },
+      uBrk: { value: -1 },
       uTime: { value: 0 },
       uReach: { value: 0 },
       uFlash: { value: 0 },
@@ -299,10 +321,17 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
       uniform vec3 uReel;
       uniform vec3 uBlur;
       uniform vec4 uHolds;
+      uniform vec4 uBlink;    // 灰色で点滅する保留（変化する保留, D-075）
       uniform float uCur, uTime, uReach, uFlash, uWin, uCalm;
+      uniform float uBrk;     // 保留が割れる演出の経過秒（-1 は無し）
       varying vec2 vUv;
       const float SYM_H = 0.46;
       const float ASPECT = ${(160 / 104).toFixed(4)};
+      const float B_GROW = ${(HOLD_BREAK_MS.grow / 1000).toFixed(3)};
+      const float B_CRACK = ${(HOLD_BREAK_MS.crack / 1000).toFixed(3)};
+      const float B_REVEAL = ${(HOLD_BREAK_MS.reveal / 1000).toFixed(3)};
+      const float B_REELS = ${(HOLD_BREAK_MS.reels / 1000).toFixed(3)};
+      const float B_END = ${(HOLD_BREAK_MS.end / 1000).toFixed(3)};
 
       vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
       float hash1(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
@@ -396,9 +425,13 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
         return star(d, size * 1.1, 5.0, 3.0);
       }
 
+      // 点滅の明るさ（phase は回数）。reduced-motion は点けたまま。
+      float blinkAt(float phase) { return mix(smoothstep(-0.4, 0.4, sin(phase * 6.2832)), 0.6, uCalm); }
+
       // 保留1つを重ねる（空きは暗い輪だけ）。面取りした金属の板として陰影をつけ、ハイライトが斜めに流れる。
       // 赤・金は点滅して後光が脈打つ（2.0/2.4回/秒, spec/43 の3回/秒未満）。reduced-motion（uCalm）では点滅と流れを止める。
-      vec3 drawHold(vec3 col, vec2 c, float code, float size) {
+      // bk は灰色の変化保留のチカチカ（2.0回/秒で明滅し、白い後光が脈打つ）。
+      vec3 drawHold(vec3 col, vec2 c, float code, float size, float bk) {
         vec2 d = (vUv - c) * vec2(ASPECT, 1.0);
         if (code < 0.5) {
           float ring = 1.0 - smoothstep(0.0, 0.004, abs(length(d) - size * 0.6));
@@ -415,6 +448,8 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
         // 後光（赤・金は大きく、点滅に合わせて脈打つ）。
         float glow = exp(-max(sd, 0.0) * mix(90.0, 45.0, hot)) * mix(0.3, 0.12 + 0.8 * blink, hot);
         col += base * glow * 0.6;
+        float chika = blinkAt(t * 2.0);
+        col += vec3(0.85, 0.92, 1.0) * exp(-max(sd, 0.0) * 50.0) * bk * (0.25 + 0.7 * chika);
         if (fill <= 0.0) return col;
 
         // 面取りの法線: 縁の bevel 幅だけ外へ傾く（距離の勾配の向き）。
@@ -443,7 +478,110 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
           metal += vec3(1.0, 0.95, 0.7) * cross * mix(0.9, 0.3 + 1.0 * tw, 1.0 - uCalm);
         }
         metal *= mix(1.0, 0.4 + 0.8 * blink, hot);
+        metal *= mix(1.0, 0.55 + 0.8 * chika, bk);
         return mix(col, metal, fill);
+      }
+
+      // ひびの網（ボロノイの境目までの距離）。q は玉の上の座標（半径1）。
+      float crackNet(vec2 q) {
+        vec2 p = q * 2.4 + vec2(3.1, 7.7);
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        float d1 = 8.0;
+        float d2 = 8.0;
+        for (int y = -1; y <= 1; y++) {
+          for (int x = -1; x <= 1; x++) {
+            vec2 g = vec2(float(x), float(y));
+            float d = length(g + hash2(i + g) - f);
+            if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) { d2 = d; }
+          }
+        }
+        return d2 - d1;
+      }
+
+      // 変化保留が割れる（D-075）。t は変動開始からの秒、code は見せる色（割れるまでは白）。
+      // 左下の保留が中央へ動いて大きなパチンコ玉になり、点滅が 2.0 → 2.9 回/秒へ速くなりながらひびが広がり、
+      // 割れると殻が飛び散って中から最終色の保留が出て、保留の色が中心から液晶いっぱいに広がる。
+      vec3 drawBreak(vec3 col, float t, float code) {
+        float g = smoothstep(0.0, B_GROW, t);
+        // 周りを暗くして玉に目を向ける（割れてから図柄が回り始めるまでに戻す）。
+        col *= 1.0 - 0.6 * g * (1.0 - smoothstep(B_REVEAL, B_REELS, t));
+        if (t < B_REVEAL) {
+          float c = smoothstep(B_CRACK, B_REVEAL, t);
+          float u = max(t - B_CRACK, 0.0);
+          float bl = blinkAt(2.0 * t + 0.45 * u * u / (B_REVEAL - B_CRACK));
+          vec2 ctr = mix(vec2(0.075, 0.095), vec2(0.5, 0.52), g);
+          ctr.y += sin(g * 3.14159) * 0.06;
+          // 割れる直前は小刻みに震える。
+          ctr += (hash2(vec2(floor(t * 40.0), 1.0)) - 0.5) * 0.012 * c * c * (1.0 - uCalm);
+          float R = mix(0.032, 0.2, g);
+          vec2 q = (vUv - ctr) * vec2(ASPECT, 1.0) / R;
+          float r = length(q);
+          col += vec3(0.85, 0.9, 1.0) * exp(-max(r - 1.0, 0.0) * 4.0) * (0.1 + 0.3 * bl + 0.45 * c);
+          float aa = 0.004 / R;
+          float fill = 1.0 - smoothstep(1.0 - aa, 1.0 + aa, r);
+          if (fill <= 0.0) return col;
+          // クロームの玉: 上は明るい空、赤道の少し下に暗い帯、下は照り返し、左上にハイライト。
+          vec3 n = vec3(q, sqrt(max(0.0, 1.0 - r * r)));
+          float v = n.y;
+          vec3 ball = vec3(0.78, 0.8, 0.86) * (0.35 + 0.8 * smoothstep(-0.25, 0.75, v));
+          ball *= 1.0 - 0.45 * exp(-(v + 0.12) * (v + 0.12) * 40.0);
+          ball += vec3(0.5, 0.52, 0.58) * smoothstep(-0.5, -0.95, v);
+          ball += vec3(1.0) * pow(max(dot(n, normalize(vec3(-0.4, 0.55, 1.0))), 0.0), 40.0) * 1.4;
+          ball *= 1.0 - 0.35 * pow(r, 6.0);
+          ball *= 0.7 + 0.5 * bl;
+          // ひび: 左上の一点からギザギザの太いひびが6本伸び、後半は細かい網が広がる。太くなるほど奥から光が漏れる。
+          vec2 pq = q - vec2(-0.25, 0.3);
+          float pr = length(pq);
+          float pa = atan(pq.y, pq.x);
+          float w = 0.015 + 0.05 * c;
+          float main = 8.0;
+          for (int k = 0; k < 6; k++) {
+            float fk = float(k);
+            float a = fk * 1.047 + 0.4 * hash1(fk + 3.0) + 0.12 * sin(pr * 9.0 + fk * 3.0) + 0.06 * sin(pr * 23.0 + fk);
+            float da = abs(mod(pa - a + 3.14159, 6.28318) - 3.14159) * pr;
+            float len = c * 2.4 * (0.6 + 0.4 * hash1(fk + 11.0));
+            main = min(main, da + 8.0 * step(len, pr));
+          }
+          float net = crackNet(q) + 8.0 * step(smoothstep(0.45, 1.0, c) * 1.9, pr);
+          float e = min(main * 1.4, net);
+          float m = step(0.001, c);
+          vec3 leak = vec3(1.0, 0.96, 0.85) * (0.6 + 1.2 * c);
+          ball = mix(ball, leak, (1.0 - smoothstep(w * 0.5, w, e)) * m);
+          ball += vec3(1.0, 0.96, 0.85) * (1.0 - smoothstep(0.0, w * 3.0, e)) * m * 0.25 * c;
+          return mix(col, ball, fill);
+        }
+        float s = t - B_REVEAL;
+        vec3 hc = holdColor(code) / 1.3;
+        vec2 ctr = vec2(0.5, 0.52);
+        vec2 d = (vUv - ctr) * vec2(ASPECT, 1.0);
+        float r = length(d);
+        // 保留の色が中心からぶわっと広がる（輪・その内側の薄い光・きらめき）。
+        float Rw = s * 1.3;
+        float fade = 1.0 - smoothstep(0.25, 1.0, s);
+        float x = (r - Rw) * 9.0;
+        col += hc * (exp(-x * x) * 0.9 + (1.0 - smoothstep(0.0, max(Rw, 0.001), r)) * 0.35) * fade;
+        vec2 gp = vUv * vec2(ASPECT, 1.0) * 14.0;
+        vec2 h = hash2(floor(gp));
+        float tw = mix(0.5 + 0.5 * sin(uTime * 7.0 + h.x * 30.0), 0.7, uCalm);
+        float spark = exp(-length(fract(gp) - 0.2 - 0.6 * h) * 22.0) * step(0.55, h.x);
+        vec3 sc = code > 4.5 ? hue(h.y + uTime * 0.3) : mix(hc, vec3(1.0), 0.5);
+        col += sc * spark * tw * (1.0 - smoothstep(Rw - 0.1, Rw, r)) * fade * 1.4;
+        // 割れた瞬間の白い光。
+        col += vec3(1.0) * exp(-s * 12.0) * mix(0.35, 0.15, uCalm);
+        // 殻のかけらが外へ広がって消える。
+        vec2 q = d / (0.2 * (1.0 + s * 3.0));
+        float rq = length(q);
+        if (rq < 1.0 && s < 0.4) {
+          float gap = 0.03 + s * 0.5;
+          float shard = smoothstep(gap, gap + 0.02, crackNet(q)) * (1.0 - smoothstep(0.1, 0.4, s)) * (1.0 - smoothstep(0.9, 1.0, rq));
+          col = mix(col, vec3(0.8, 0.82, 0.88) * (0.6 + 0.5 * hash2(floor(q * 2.4 + vec2(3.1, 7.7))).x), shard);
+        }
+        // 中から最終色の保留が弾むように出て、図柄が回り始めたら当該保留の位置へ戻る。
+        float k = clamp(s / 0.3, 0.0, 1.0);
+        float pop = 1.0 - (1.0 - k) * (1.0 - k) * (1.0 - k) + 0.18 * sin(clamp(s / 0.45, 0.0, 1.0) * 3.14159);
+        float mv = smoothstep(B_REELS - 0.1, B_END, t);
+        return drawHold(col, mix(ctr, vec2(0.5, 0.1), mv), code, max(mix(0.16, 0.058, mv) * pop, 0.001), 0.0);
       }
 
       void main() {
@@ -511,11 +649,12 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
 
         // 保留（左下に4つ、色＋形）と当該変動の保留（中央下に大きく）。読みやすいよう下端に暗い帯を敷く。
         col *= 1.0 - 0.6 * (1.0 - smoothstep(0.17, 0.22, vUv.y));
-        col = drawHold(col, vec2(0.075, 0.095), uHolds.x, 0.04);
-        col = drawHold(col, vec2(0.15, 0.095), uHolds.y, 0.04);
-        col = drawHold(col, vec2(0.225, 0.095), uHolds.z, 0.04);
-        col = drawHold(col, vec2(0.3, 0.095), uHolds.w, 0.04);
-        if (uCur > 0.5) col = drawHold(col, vec2(0.5, 0.1), uCur, 0.058);
+        col = drawHold(col, vec2(0.075, 0.095), uHolds.x, 0.04, uBlink.x);
+        col = drawHold(col, vec2(0.15, 0.095), uHolds.y, 0.04, uBlink.y);
+        col = drawHold(col, vec2(0.225, 0.095), uHolds.z, 0.04, uBlink.z);
+        col = drawHold(col, vec2(0.3, 0.095), uHolds.w, 0.04, uBlink.w);
+        if (uBrk >= 0.0) col = drawBreak(col, uBrk, uCur);
+        else if (uCur > 0.5) col = drawHold(col, vec2(0.5, 0.1), uCur, 0.058, 0.0);
 
         // 走査線と周辺減光（液晶らしさ）。
         col *= 0.93 + 0.07 * sin(vUv.y * 420.0);

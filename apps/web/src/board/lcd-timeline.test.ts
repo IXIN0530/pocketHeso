@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { readFileSync } from 'node:fs';
 import type { ClaimRecord } from '@ph/claims';
 import type { HoldEntry, LotteryHoldColor } from '@ph/core';
-import { HOLD_CHANGE_DELAY_MS, SAKIBARE_CUE, SAKIBARE_DELAY_MS, holdRank, planHoldChange } from '@ph/fx';
+import { HOLD_BREAK_MS, HOLD_CRACK_CUE, SAKIBARE_CUE, SAKIBARE_DELAY_MS, planHoldChange } from '@ph/fx';
 import { expect, test } from 'vitest';
 import packJson from '../../../../resources/packs/default/pack.json';
 import { EngineHost, type TickResult } from '../engine/engine-host.ts';
@@ -139,64 +139,68 @@ function findSerial(seed: number, final: LotteryHoldColor, ok: (p: ReturnType<ty
   throw new Error('not found');
 }
 
-test('保留変化: 前の保留の消化で変わる保留は、消化の少し後に最終色になり、途中で最終色を超えない', () => {
+test('保留変化: 変化する保留は灰色で点滅して出て、消化されても灰色のまま、自分の変動で割れて最終色になる', () => {
   const seed = 99;
-  const serial = findSerial(seed, 'red', (p) => p.steps.length === 1 && p.steps[0]!.timing === 'shift');
-  const plan = planHoldChange(seed, serial, 'red');
+  const serial = findSerial(seed, 'red', (p) => p.change && !p.sakibare);
+  const plain = findSerial(seed, 'blue', (p) => !p.change);
   let s: LcdState = { holds: [], spin: null, resolved: null, jackpot: null };
-  s = applyLcdEvent(s, { k: 'holdAdded', entry: hold(1, 'white'), at: 1000 });
+  s = applyLcdEvent(s, { k: 'holdAdded', entry: hold(plain, 'blue'), at: 1000 });
   s = applyLcdEvent(s, { k: 'holdAdded', entry: hold(serial, 'red'), at: 2000 });
-  expect(shownLcdState(s, seed, 50000).holds[1]!.color).toBe(plan.start);
-  s = applyLcdEvent(s, { k: 'spinStarted', entry: 1, at: 60000, pattern: 'normal_short', endsAt: 65000 });
-  expect(s.holds[0]!.shiftAt).toBe(60000);
-  expect(shownLcdState(s, seed, 60000 + HOLD_CHANGE_DELAY_MS.shift - 1).holds[0]!.color).toBe(plan.start);
-  expect(shownLcdState(s, seed, 60000 + HOLD_CHANGE_DELAY_MS.shift).holds[0]!.color).toBe('red');
-  // 変動に移っても最終色のまま。
+  const a = shownLcdState(s, seed, 2000);
+  expect(a.holds.map((h) => [h.color, h.blink ?? false])).toEqual([['blue', false], ['white', true]]);
+  s = applyLcdEvent(s, { k: 'spinStarted', entry: plain, at: 60000, pattern: 'normal_short', endsAt: 65000 });
+  expect(shownLcdState(s, seed, 64000).spin!.breaks).toBeUndefined();
+  expect(shownLcdState(s, seed, 64000).holds[0]).toMatchObject({ color: 'white', blink: true });
   s = applyLcdEvent(s, { k: 'spinStarted', entry: serial, at: 65000, pattern: 'normal_short', endsAt: 70000 });
-  expect(shownLcdState(s, seed, 65000).spin!.color).toBe('red');
+  expect(shownLcdState(s, seed, 65000).spin).toMatchObject({ color: 'white', breaks: true });
+  expect(shownLcdState(s, seed, 65000 + HOLD_BREAK_MS.reveal - 1).spin!.color).toBe('white');
+  expect(shownLcdState(s, seed, 65000 + HOLD_BREAK_MS.reveal).spin!.color).toBe('red');
 });
 
-test('保留変化: 変動開始で変わる保留は、リプレイ（取得時刻が不明）でも同じ時刻に同じ色になる', () => {
+test('保留変化: リプレイ（取得時刻が不明）でも同じ時刻に割れて同じ色になる', () => {
   const seed = 7;
-  const serial = findSerial(seed, 'gold', (p) => p.steps.some((x) => x.timing === 'spin'));
+  const serial = findSerial(seed, 'gold', (p) => p.change);
   let live: LcdState = { holds: [], spin: null, resolved: null, jackpot: null };
   live = applyLcdEvent(live, { k: 'holdAdded', entry: hold(serial, 'gold'), at: 1000 });
   live = applyLcdEvent(live, { k: 'spinStarted', entry: serial, at: 9000, pattern: 'sp_reach', endsAt: 54000 });
   const replay: LcdState = {
     holds: [],
-    spin: { entry: serial, pattern: 'sp_reach', startAt: 9000, endsAt: 54000, color: 'gold', hit: true, addedAt: null, shiftAt: null },
+    spin: { entry: serial, pattern: 'sp_reach', startAt: 9000, endsAt: 54000, color: 'gold', hit: true, addedAt: null },
     resolved: null,
     jackpot: null,
   };
-  for (const t of [9000, 9000 + HOLD_CHANGE_DELAY_MS.spin - 1, 9000 + HOLD_CHANGE_DELAY_MS.spin, 20000]) {
-    expect(shownLcdState(replay, seed, t).spin!.color).toBe(shownLcdState(live, seed, t).spin!.color);
+  for (const t of [9000, 9000 + HOLD_BREAK_MS.reveal - 1, 9000 + HOLD_BREAK_MS.reveal, 20000]) {
+    const r = shownLcdState(replay, seed, t).spin!;
+    const l = shownLcdState(live, seed, t).spin!;
+    expect([r.color, r.breaks]).toEqual([l.color, l.breaks]);
   }
-  expect(holdRank(shownLcdState(live, seed, 9000).spin!.color!)).toBeLessThan(holdRank('gold'));
-  expect(shownLcdState(live, seed, 9000 + HOLD_CHANGE_DELAY_MS.spin).spin!.color).toBe('gold');
+  expect(shownLcdState(live, seed, 9000).spin!.color).toBe('white');
+  expect(shownLcdState(live, seed, 9000 + HOLD_BREAK_MS.reveal).spin!.color).toBe('gold');
 });
 
-test('保留変化: Projection から作った保留は最終色のまま・パックに hold_<色> の演出がある', () => {
+test('保留変化: Projection から作った保留は最終色のまま・パックに hold_crack と hold_<色> の演出がある', () => {
   const s = stateFromProjection({ holds: ['gold', 'red'], spin: undefined, jackpot: undefined } as never);
   expect(shownLcdState(s, 1, 0)).toBe(s);
   const names = packJson.sheets.map((x) => x.pattern);
   for (const c of ['blue', 'green', 'red', 'gold']) expect(names).toContain('hold_' + c);
+  expect(names).toContain(HOLD_CRACK_CUE);
 });
 
-test('先バレ: 玉が入ってすぐ鳴り、保留は白で出て取得時の変化で最終色へ。変動に移っても同じ時刻・リプレイでは鳴らない', () => {
+test('先バレ: 玉が入ってすぐ鳴り、保留は灰色で点滅して出る。変動に移っても同じ時刻・リプレイでは鳴らない', () => {
   const seed = 5;
   const serial = findSerial(seed, 'green', (p) => p.sakibare);
-  const other = findSerial(seed, 'red', (p) => !p.sakibare);
+  const other = findSerial(seed, 'red', (p) => !p.change);
   let s: LcdState = { holds: [], spin: null, resolved: null, jackpot: null };
   s = applyLcdEvent(s, { k: 'holdAdded', entry: hold(other, 'red'), at: 500 });
   s = applyLcdEvent(s, { k: 'holdAdded', entry: hold(serial, 'green'), at: 1000 });
   expect(sakibareTimes(s, seed)).toEqual([{ entry: serial, at: 1000 + SAKIBARE_DELAY_MS }]);
-  expect(shownLcdState(s, seed, 1000 + SAKIBARE_DELAY_MS).holds[1]!.color).toBe('white');
-  expect(shownLcdState(s, seed, 1000 + HOLD_CHANGE_DELAY_MS.acquire).holds[1]!.color).toBe('green');
+  expect(shownLcdState(s, seed, 1000).holds[1]).toMatchObject({ color: 'white', blink: true });
+  expect(shownLcdState(s, seed, 1e9).holds[1]).toMatchObject({ color: 'white', blink: true });
   s = applyLcdEvent(s, { k: 'spinStarted', entry: other, at: 3000, pattern: 'normal_short', endsAt: 8000 });
   s = applyLcdEvent(s, { k: 'spinStarted', entry: serial, at: 8000, pattern: 'normal_short', endsAt: 13000 });
   expect(sakibareTimes(s, seed)).toEqual([{ entry: serial, at: 1000 + SAKIBARE_DELAY_MS }]);
-  const replay: LcdState = { ...s, spin: { ...s.spin!, addedAt: null, shiftAt: null } };
+  const replay: LcdState = { ...s, spin: { ...s.spin!, addedAt: null } };
   expect(sakibareTimes(replay, seed)).toEqual([]);
-  expect(shownLcdState(replay, seed, 8000).spin!.color).toBe('green');
+  expect(shownLcdState(replay, seed, 8000 + HOLD_BREAK_MS.reveal).spin!.color).toBe('green');
   expect(packJson.sheets.map((x) => x.pattern)).toContain(SAKIBARE_CUE);
 });

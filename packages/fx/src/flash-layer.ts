@@ -5,6 +5,8 @@ import {
   PlaneGeometry,
   Scene,
   ShaderMaterial,
+  Vector2,
+  Vector3,
   type WebGLRenderer,
 } from 'three';
 import type { FlashStyle } from '@ph/shared';
@@ -21,14 +23,41 @@ const FRAG = /* glsl */ `
 uniform float uAlpha;
 uniform float uRainbow;
 uniform float uTime;
+uniform float uWash;     // 0 は全面、1 は起点から広がる輪（wash_<色>）
+uniform float uProg;     // 輪の進み具合（0〜1）
+uniform vec3 uWashColor;
+uniform vec2 uOrigin;    // 起点（画面の uv）
+uniform float uAspect;   // 画面の横 / 縦
 varying vec2 vUv;
 vec3 hue(float h) {
   return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
 }
+vec2 hash2(vec2 p) { return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453); }
 void main() {
   vec3 c = mix(vec3(1.0), hue(vUv.y * 0.8 + vUv.x * 0.2 + uTime * 0.5), uRainbow);
+  if (uWash > 0.5) {
+    // 起点から輪が画面の外まで広がり、内側は薄く色づいて、きらめきが舞う（金は虹色のきらめき）。
+    vec2 d = (vUv - uOrigin) * vec2(uAspect, 1.0);
+    float r = length(d);
+    float R = uProg * 1.8;
+    float x = (r - R) * 5.0;
+    float inside = 1.0 - smoothstep(R * 0.6, R, r);
+    vec2 gp = vUv * vec2(uAspect, 1.0) * 18.0;
+    vec2 h = hash2(floor(gp));
+    float spark = exp(-length(fract(gp) - 0.2 - 0.6 * h) * 16.0) * step(0.6, h.x) * (0.5 + 0.5 * sin(uTime * 6.0 + h.y * 40.0));
+    vec3 sc = mix(mix(uWashColor, vec3(1.0), 0.5), hue(h.y + uTime * 0.3), uRainbow);
+    c = uWashColor * (exp(-x * x) * 1.6 + inside * 0.5) + sc * spark * inside * 1.5;
+  }
   gl_FragColor = vec4(c * uAlpha, 1.0);
 }`;
+
+/** wash_<色> の色（加算なので少し淡く）。 */
+const WASH: Partial<Record<FlashStyle, readonly [number, number, number]>> = {
+  wash_blue: [0.25, 0.55, 1.0],
+  wash_green: [0.2, 1.0, 0.45],
+  wash_red: [1.0, 0.15, 0.2],
+  wash_gold: [1.0, 0.78, 0.25],
+};
 
 interface Active {
   readonly style: FlashStyle;
@@ -50,12 +79,24 @@ export class FlashLayer {
   private bloomUntil = -Infinity;
   private bloomValue = 0;
   reducedMotion = false;
+  /** wash の起点（画面の uv。盤面が液晶の中心を毎フレーム入れる）。 */
+  readonly origin = new Vector2(0.5, 0.5);
+  private readonly size = new Vector2();
 
   constructor() {
     this.material = new ShaderMaterial({
       vertexShader: VERT,
       fragmentShader: FRAG,
-      uniforms: { uAlpha: { value: 0 }, uRainbow: { value: 0 }, uTime: { value: 0 } },
+      uniforms: {
+        uAlpha: { value: 0 },
+        uRainbow: { value: 0 },
+        uTime: { value: 0 },
+        uWash: { value: 0 },
+        uProg: { value: 0 },
+        uWashColor: { value: new Vector3() },
+        uOrigin: { value: this.origin },
+        uAspect: { value: 1 },
+      },
       blending: AdditiveBlending,
       transparent: true,
       depthTest: false,
@@ -99,8 +140,16 @@ export class FlashLayer {
     }
     const u = this.material.uniforms;
     u.uAlpha!.value = alpha;
-    u.uRainbow!.value = a.style === 'rainbow' ? 1 : 0;
+    const wash = WASH[a.style];
+    u.uRainbow!.value = a.style === 'rainbow' || a.style === 'wash_gold' ? 1 : 0;
     u.uTime!.value = nowMs / 1000;
+    u.uWash!.value = wash ? 1 : 0;
+    if (wash) {
+      (u.uWashColor!.value as Vector3).set(...wash);
+      u.uProg!.value = Math.min(1, (nowMs - a.start) / a.ms);
+      renderer.getDrawingBufferSize(this.size);
+      u.uAspect!.value = this.size.x / Math.max(1, this.size.y);
+    }
     const autoClear = renderer.autoClear;
     renderer.autoClear = false;
     renderer.render(this.scene, this.camera);

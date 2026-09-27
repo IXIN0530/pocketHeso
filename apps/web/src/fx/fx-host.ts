@@ -115,26 +115,28 @@ export function playCues(cues: readonly Cue[], startedAgoMs = 0): void {
   tick();
 }
 
-/** 変動の演出と重ねて鳴らす短い演出の再生口。変動の演出は止めない（同じ口の前の演出は上書き）。 */
-function sideLane(): (pattern: string, seed: number, serial: number) => boolean {
+/** 変動の演出と重ねて鳴らす短い演出の再生口。変動の演出は止めない（同じ口の前の演出は上書き）。startedAgoMs > 0 なら途中から。 */
+function sideLane(): (pattern: string, seed: number, serial: number, startedAgoMs?: number) => boolean {
   const p = new CuePlayer(route);
   let id = 0;
   const step = () => {
     p.update(performance.now());
     id = p.done ? 0 : requestAnimationFrame(step);
   };
-  return (pattern, seed, serial) => {
+  return (pattern, seed, serial, startedAgoMs = 0) => {
     const sheet = sheets.get(pattern);
     if (!sheet) return false;
-    p.start(resolveCueSheet(sheet, { seed, serial, intensity: INTENSITY }).cues, performance.now());
+    p.start(resolveCueSheet(sheet, { seed, serial, intensity: INTENSITY }).cues, performance.now() - startedAgoMs);
     if (id) cancelAnimationFrame(id);
     step();
     return true;
   };
 }
 
-/** パックの演出（保留変化・先バレ）を変動の演出と重ねて今から鳴らす（分岐は RNGStream(seed, 'presentation', serial)）。 */
+/** パックの演出（先バレ）を変動の演出と重ねて今から鳴らす（分岐は RNGStream(seed, 'presentation', serial)）。 */
 export const playSideCue = sideLane();
+/** 保留が割れる演出（hold_crack → 割れた時の hold_<色>, D-075）。取得直後の変動でも先バレに消されないよう別の口で鳴らす。 */
+export const playBreakCue = sideLane();
 /** ヘソ入賞の音。何度も鳴るので、保留変化・先バレの続きを消さないよう別の口で鳴らす。 */
 export const playHesoCue = sideLane();
 
