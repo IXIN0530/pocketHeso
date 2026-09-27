@@ -8,14 +8,15 @@ import {
   drawHold,
   hesoPayoutBalls,
   holdColorWeights,
+  holdHot,
   jackpotPayoutBalls,
   modeOf,
   splitWeights,
 } from './lottery.ts';
 import { RNGStream } from './rng.ts';
 
-/** カイ二乗の上側1%点（自由度3の標準表）。 */
-const CHI2_CRIT_DF3_1PCT = 11.345;
+/** カイ二乗の上側0.1%点（自由度4の標準表。固定 seed で5セルを4回検定するので1%点だと裾に入りやすい）。 */
+const CHI2_CRIT_DF4 = 18.467;
 
 function loadMachine(): { spec: MachineSpec; patterns: PatternTable } {
   const spec = parseMachineText(readFileSync('../../resources/machines/light-middle-01.json', 'utf8'));
@@ -34,8 +35,17 @@ function chiSquare(observed: readonly number[], expected: readonly number[]): nu
   return s;
 }
 
+/** 重み列を件数 total の期待度数にする。 */
+function expectedCounts(weights: readonly number[], total: number): number[] {
+  let sum = 0;
+  for (const w of weights) {
+    sum = sum + w;
+  }
+  return weights.map((w) => (total * w) / sum);
+}
+
 test(
-  '100万取得で当選率が 1/199.8 ±3σ（ST も同様）・色と振分けも重みどおり',
+  '100万取得で当選率が 1/199.8 ±3σ（ST も同様）・色（モード別の表）と振分けも重みどおり',
   { timeout: 180000 },
   () => {
     const { spec, patterns } = loadMachine();
@@ -59,16 +69,8 @@ test(
     let badHitPattern = 0;
     let badMissPattern = 0;
     let badMissBranch = 0;
-    let whiteHits = 0;
-    let goldMiss = 0;
-    let hitBlue = 0;
-    let hitGreen = 0;
-    let hitRed = 0;
-    let hitGold = 0;
-    let missBlue = 0;
-    let missGreen = 0;
-    let missRed = 0;
-    let missWhite = 0;
+    const hitColors = [0, 0, 0, 0, 0];
+    const missColors = [0, 0, 0, 0, 0];
     for (let s = 0; s < n; s = s + 1) {
       const e = drawHold(spec, patterns, 20260925, 'normal', s, 1);
       if (e.isHit) {
@@ -86,17 +88,8 @@ test(
         if (e.patternIndex === shortIdx) {
           badHitPattern = badHitPattern + 1;
         }
-        if (e.color === 'blue') {
-          hitBlue = hitBlue + 1;
-        } else if (e.color === 'green') {
-          hitGreen = hitGreen + 1;
-        } else if (e.color === 'red') {
-          hitRed = hitRed + 1;
-        } else if (e.color === 'gold') {
-          hitGold = hitGold + 1;
-        } else {
-          whiteHits = whiteHits + 1;
-        }
+        const ci = LOTTERY_HOLD_COLORS.indexOf(e.color);
+        hitColors[ci] = (hitColors[ci] as number) + 1;
       } else {
         if (e.branchIndex !== null) {
           badMissBranch = badMissBranch + 1;
@@ -104,17 +97,8 @@ test(
         if (e.patternIndex === kakuteiIdx) {
           badMissPattern = badMissPattern + 1;
         }
-        if (e.color === 'blue') {
-          missBlue = missBlue + 1;
-        } else if (e.color === 'green') {
-          missGreen = missGreen + 1;
-        } else if (e.color === 'red') {
-          missRed = missRed + 1;
-        } else if (e.color === 'white') {
-          missWhite = missWhite + 1;
-        } else {
-          goldMiss = goldMiss + 1;
-        }
+        const ci = LOTTERY_HOLD_COLORS.indexOf(e.color);
+        missColors[ci] = (missColors[ci] as number) + 1;
       }
     }
 
@@ -128,24 +112,25 @@ test(
     expect(kakuhen).toBeGreaterThanOrEqual(Math.ceil(hits / 2 - 3 * sdSplit));
     expect(kakuhen).toBeLessThanOrEqual(Math.floor(hits / 2 + 3 * sdSplit));
 
-    expect(chiSquare([hitBlue, hitGreen, hitRed, hitGold], [hits * 0.1, hits * 0.2, hits * 0.5, hits * 0.2])).toBeLessThan(
-      CHI2_CRIT_DF3_1PCT,
-    );
     const miss = n - hits;
-    expect(
-      chiSquare([missBlue, missGreen, missRed, missWhite], [miss * 0.9, miss * 0.07, miss * 0.025, miss * 0.005]),
-    ).toBeLessThan(CHI2_CRIT_DF3_1PCT);
+    expect(chiSquare(hitColors, expectedCounts(holdColorWeights(spec, 'normal', true), hits))).toBeLessThan(CHI2_CRIT_DF4);
+    expect(chiSquare(missColors, expectedCounts(holdColorWeights(spec, 'normal', false), miss))).toBeLessThan(CHI2_CRIT_DF4);
 
     expect(badHitPattern).toBe(0);
     expect(badMissPattern).toBe(0);
     expect(badMissBranch).toBe(0);
-    expect(whiteHits).toBe(0);
-    expect(goldMiss).toBe(0);
 
     let stHits = 0;
+    const stHitColors = [0, 0, 0, 0, 0];
+    const stMissColors = [0, 0, 0, 0, 0];
     for (let s = 0; s < n; s = s + 1) {
-      if (drawHold(spec, patterns, 987654321, 'st', s, 1).isHit) {
+      const e = drawHold(spec, patterns, 987654321, 'st', s, 1);
+      const ci = LOTTERY_HOLD_COLORS.indexOf(e.color);
+      if (e.isHit) {
         stHits = stHits + 1;
+        stHitColors[ci] = (stHitColors[ci] as number) + 1;
+      } else {
+        stMissColors[ci] = (stMissColors[ci] as number) + 1;
       }
     }
     const pS = 1 / 39.9;
@@ -153,6 +138,10 @@ test(
     const sdS = Math.sqrt(n * pS * (1 - pS));
     expect(stHits).toBeGreaterThanOrEqual(Math.ceil(expS - 3 * sdS));
     expect(stHits).toBeLessThanOrEqual(Math.floor(expS + 3 * sdS));
+    expect(chiSquare(stHitColors, expectedCounts(holdColorWeights(spec, 'st', true), stHits))).toBeLessThan(CHI2_CRIT_DF4);
+    expect(chiSquare(stMissColors, expectedCounts(holdColorWeights(spec, 'st', false), n - stHits))).toBeLessThan(
+      CHI2_CRIT_DF4,
+    );
   },
 );
 
@@ -170,7 +159,7 @@ test('取得時判定が各ストリームの手計算と一致しモード別�
       expect(e.serial).toBe(serial);
       const pw = patterns.map((p) => (e.isHit ? p.hitW : p.missW));
       expect(e.patternIndex).toBe(new RNGStream(seed, 'pattern', serial).pick(pw));
-      const cw = holdColorWeights(spec, e.isHit);
+      const cw = holdColorWeights(spec, mode, e.isHit);
       expect(e.color).toBe(LOTTERY_HOLD_COLORS[new RNGStream(seed, 'holdColor', serial).pick(cw) as number]);
       const baseHot = (patterns[e.patternIndex] as SpinPattern).hot;
       let wantHot = baseHot;
@@ -178,7 +167,7 @@ test('取得時判定が各ストリームの手計算と一致しモード別�
         wantHot = Math.min(5, baseHot + 1);
       }
       if (e.color === 'gold') {
-        wantHot = 5;
+        wantHot = Math.min(5, baseHot + 2);
       }
       expect(e.hot).toBe(wantHot);
       if (e.isHit) {
@@ -192,10 +181,20 @@ test('取得時判定が各ストリームの手計算と一致しモード別�
   expect(drawHold(spec, patterns, seed, 'normal', 0, 1)).toEqual(drawHold(spec, patterns, seed, 'normal', 0, 1));
 });
 
-test('保留色の white 残余が分母の10べきカバーになる（D-032）', () => {
+test('保留色の重みは取得時のモードの表（白も JSON に書く。通常・時短は hold_colors、ST・LT は hold_colors_st, P7-T4）', () => {
   const { spec } = loadMachine();
-  expect(holdColorWeights(spec, true)).toEqual([10, 20, 50, 20, 0]);
-  expect(holdColorWeights(spec, false)).toEqual([900, 70, 25, 0, 5]);
+  // 並びは LOTTERY_HOLD_COLORS（青・緑・赤・金・白）。
+  expect(holdColorWeights(spec, 'normal', true)).toEqual([10, 15, 40, 30, 5]);
+  expect(holdColorWeights(spec, 'normal', false)).toEqual([669, 302, 202, 26, 98801]);
+  expect(holdColorWeights(spec, 'st', true)).toEqual([15, 15, 15, 15, 40]);
+  expect(holdColorWeights(spec, 'st', false)).toEqual([2185, 716, 165, 20, 96914]);
+  const noSt = parseMachineText(readFileSync('../../resources/machines/light-middle-01.json', 'utf8').replace('"hold_colors_st"', '"_unused"'));
+  expect(holdColorWeights(noSt, 'st', false)).toEqual(holdColorWeights(noSt, 'normal', false));
+  expect(holdHot(3, 'white')).toBe(3);
+  expect(holdHot(3, 'red')).toBe(4);
+  expect(holdHot(3, 'gold')).toBe(5);
+  expect(holdHot(1, 'gold')).toBe(3);
+  expect(holdHot(5, 'red')).toBe(5);
 });
 
 test('レート倍率とメダル・不正入力', () => {

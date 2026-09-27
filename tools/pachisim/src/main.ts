@@ -9,6 +9,7 @@ import {
   writeAtlasFile,
 } from './atlas.ts';
 import { ECON_PROFILES, formatEcon, lastRegular, measurePachinkoEv, parseEconArgs, runEcon } from './econ.ts';
+import { formatHolds, parseHoldsArgs, runHolds } from './holds.ts';
 import { formatReports, parseRunArgs, runMachines } from './run.ts';
 
 /** 性能しきい値（発/秒・単スレッド）。未達は終了コード 1（Blockers に計測値を記録する）。 */
@@ -102,6 +103,15 @@ function econ(argv: string[]): void {
   console.log(formatEcon(result, ev, baseline));
 }
 
+/** 保留色の実測（`pnpm sim holds [--spins <n>] [--seed <s>] [--machine <id>]... [--json]`）。許容幅を外れたら終了コード 1。 */
+function holds(argv: string[]): void {
+  const reports = runHolds(parseHoldsArgs(argv));
+  console.log(argv.includes('--json') ? JSON.stringify(reports, null, 2) : formatHolds(reports));
+  if (!reports.every((r) => r.ok)) {
+    process.exit(1);
+  }
+}
+
 const [command = 'help', ...rest] = process.argv.slice(2);
 switch (command) {
   case 'version':
@@ -119,8 +129,11 @@ switch (command) {
   case 'econ':
     econ(rest);
     break;
+  case 'holds':
+    holds(rest);
+    break;
   default:
     console.log(
-      'usage: pachisim <version|bench [count]|atlas --board <id> [--jobs <n>]|run --balls <n> --seed <s> [--machine <id>]... [--json]|econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--json]>',
+      'usage: pachisim <version|bench [count]|atlas --board <id> [--jobs <n>]|run --balls <n> --seed <s> [--machine <id>]... [--json]|econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--json]|holds [--spins <n>] [--seed <s>] [--machine <id>]... [--json]>',
     );
 }

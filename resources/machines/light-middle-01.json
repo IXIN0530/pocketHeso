@@ -15,9 +15,17 @@
   "hold_max": 4,
   "spin_patterns": "patterns.json",
   "hold_colors": [
-    { "color": "blue", "w_hit": 10, "w_miss": 900 },
-    { "color": "green", "w_hit": 20, "w_miss": 70 },
-    { "color": "red", "w_hit": 50, "w_miss": 25 },
-    { "color": "gold", "w_hit": 20, "w_miss": 0 }
+    { "color": "white", "w_hit": 5, "w_miss": 98801 },
+    { "color": "blue", "w_hit": 10, "w_miss": 669 },
+    { "color": "green", "w_hit": 15, "w_miss": 302 },
+    { "color": "red", "w_hit": 40, "w_miss": 202 },
+    { "color": "gold", "w_hit": 30, "w_miss": 26 }
+  ],
+  "hold_colors_st": [
+    { "color": "white", "w_hit": 40, "w_miss": 96914 },
+    { "color": "blue", "w_hit": 15, "w_miss": 2185 },
+    { "color": "green", "w_hit": 15, "w_miss": 716 },
+    { "color": "red", "w_hit": 15, "w_miss": 165 },
+    { "color": "gold", "w_hit": 15, "w_miss": 20 }
   ]
 }

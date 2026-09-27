@@ -68,6 +68,7 @@ export type {
 export type {
   HoldColor,
   HoldColorWeight,
+  HoldTableColor,
   JackpotBranch,
   JackpotKind,
   JackpotNext,
@@ -85,7 +86,9 @@ export {
   drawBonusHold,
   drawHold,
   hesoPayoutBalls,
+  holdColorTable,
   holdColorWeights,
+  holdHot,
   jackpotBonusRounds,
   jackpotPayoutBalls,
   jackpotTotalRounds,
@@ -170,6 +173,7 @@ export type {
 export { BONUS_SERIAL_BASE, Engine, FIRE_INTERVAL_MS, projectSnapshot } from './engine.ts';
 export {
   HOLD_COLORS,
+  HOLD_TABLE_COLORS,
   JACKPOT_KINDS,
   JACKPOT_NEXTS,
   LOTTERY_MODE_IDS,

@@ -15,11 +15,17 @@ export type JackpotKind = 'kakuhen' | 'tsujo';
 /** 既知の振分け種別（順序固定）。 */
 export const JACKPOT_KINDS: readonly JackpotKind[] = ['kakuhen', 'tsujo'];
 
-/** 保留色（`white` は重み残余として暗黙に存在）。 */
+/** 白以外の保留色（熱さ順）。 */
 export type HoldColor = 'blue' | 'green' | 'red' | 'gold';
 
-/** 既知の保留色（順序固定）。 */
+/** 既知の白以外の保留色（順序固定）。 */
 export const HOLD_COLORS: readonly HoldColor[] = ['blue', 'green', 'red', 'gold'];
+
+/** 保留色の表に書く色（白も重みを JSON に書く, P7-T4）。 */
+export type HoldTableColor = HoldColor | 'white';
+
+/** 保留色の表に必須の色（順序固定）。 */
+export const HOLD_TABLE_COLORS: readonly HoldTableColor[] = ['blue', 'green', 'red', 'gold', 'white'];
 
 /** 抽選モード（通常・時短・ST(RUSH)・LT。spec/21 モード拡張節）。 */
 export type LotteryModeId = 'normal' | 'jitan' | 'st' | 'lt';
@@ -54,7 +60,7 @@ export interface JackpotBranch {
 
 /** 保留色の重み（当否別）。 */
 export interface HoldColorWeight {
-  readonly color: HoldColor;
+  readonly color: HoldTableColor;
   readonly wHit: number;
   readonly wMiss: number;
 }
@@ -75,7 +81,10 @@ export interface MachineSpec {
   readonly hesoPayout: number;
   readonly holdMax: number;
   readonly spinPatterns: string;
+  /** 通常・時短の保留色の表。 */
   readonly holdColors: readonly HoldColorWeight[];
+  /** ST・LT の保留色の表（`hold_colors_st`。省略時は `holdColors`）。 */
+  readonly holdColorsSt: readonly HoldColorWeight[];
 }
 
 /** 変動パターンの1行。 */
@@ -161,13 +170,46 @@ function isJackpotKind(value: string): value is JackpotKind {
   return false;
 }
 
-function isHoldColor(value: string): value is HoldColor {
-  for (let i = 0; i < HOLD_COLORS.length; i = i + 1) {
-    if (HOLD_COLORS[i] === value) {
+function isHoldTableColor(value: string): value is HoldTableColor {
+  for (let i = 0; i < HOLD_TABLE_COLORS.length; i = i + 1) {
+    if (HOLD_TABLE_COLORS[i] === value) {
       return true;
     }
   }
   return false;
+}
+
+/** 保留色の表を読む（5色すべて必須・重複不可。当否それぞれの合計は正, P7-T4）。 */
+function parseHoldColors(raw: unknown, name: string): HoldColorWeight[] {
+  const colorsRaw = asArray(raw, name);
+  const rows: HoldColorWeight[] = [];
+  let sumHit = 0;
+  let sumMiss = 0;
+  for (let i = 0; i < colorsRaw.length; i = i + 1) {
+    const what = name + '[' + i + ']';
+    const co = asRecord(colorsRaw[i], what);
+    const colorRaw = asString(co['color'], what + '.color');
+    if (!isHoldTableColor(colorRaw)) {
+      fail(what + '.color unknown');
+    }
+    const wHit = asNonNegativeInt(co['w_hit'], what + '.w_hit');
+    const wMiss = asNonNegativeInt(co['w_miss'], what + '.w_miss');
+    for (let j = 0; j < rows.length; j = j + 1) {
+      if ((rows[j] as HoldColorWeight).color === colorRaw) {
+        fail(what + '.color duplicates ' + name + '[' + j + ']');
+      }
+    }
+    rows.push({ color: colorRaw, wHit, wMiss });
+    sumHit = sumHit + wHit;
+    sumMiss = sumMiss + wMiss;
+  }
+  if (rows.length !== HOLD_TABLE_COLORS.length) {
+    fail(name + ' must list white, blue, green, red and gold');
+  }
+  if (sumHit <= 0 || sumMiss <= 0) {
+    fail(name + ' needs positive w_hit and w_miss totals');
+  }
+  return rows;
 }
 
 /** 確率表記（1/N）を uint32 閾値に変換する（`floor(2^32 / jackpot_1_in)`）。 */
@@ -418,30 +460,8 @@ export function parseMachine(json: unknown): MachineSpec {
     fail('spin_patterns too long');
   }
 
-  const colorsRaw = asArray(o['hold_colors'], 'hold_colors');
-  if (colorsRaw.length === 0) {
-    fail('hold_colors must not be empty');
-  }
-  const holdColors: HoldColorWeight[] = [];
-  for (let i = 0; i < colorsRaw.length; i = i + 1) {
-    const what = 'hold_colors[' + i + ']';
-    const co = asRecord(colorsRaw[i], what);
-    const colorRaw = asString(co['color'], what + '.color');
-    if (!isHoldColor(colorRaw)) {
-      fail(what + '.color unknown');
-    }
-    const wHit = asNonNegativeInt(co['w_hit'], what + '.w_hit');
-    const wMiss = asNonNegativeInt(co['w_miss'], what + '.w_miss');
-    if (wHit + wMiss <= 0) {
-      fail(what + ' needs a positive weight');
-    }
-    for (let j = 0; j < holdColors.length; j = j + 1) {
-      if ((holdColors[j] as HoldColorWeight).color === colorRaw) {
-        fail(what + '.color duplicates hold_colors[' + j + ']');
-      }
-    }
-    holdColors.push({ color: colorRaw, wHit, wMiss });
-  }
+  const holdColors = parseHoldColors(o['hold_colors'], 'hold_colors');
+  const holdColorsSt = o['hold_colors_st'] === undefined ? holdColors : parseHoldColors(o['hold_colors_st'], 'hold_colors_st');
 
   if (jitan === undefined && lt === undefined) {
     return {
@@ -458,6 +478,7 @@ export function parseMachine(json: unknown): MachineSpec {
       holdMax,
       spinPatterns,
       holdColors,
+      holdColorsSt,
     };
   }
   if (jitan !== undefined && lt === undefined) {
@@ -476,6 +497,7 @@ export function parseMachine(json: unknown): MachineSpec {
       holdMax,
       spinPatterns,
       holdColors,
+      holdColorsSt,
     };
   }
   if (jitan === undefined && lt !== undefined) {
@@ -494,6 +516,7 @@ export function parseMachine(json: unknown): MachineSpec {
       holdMax,
       spinPatterns,
       holdColors,
+      holdColorsSt,
     };
   }
   return {
@@ -512,6 +535,7 @@ export function parseMachine(json: unknown): MachineSpec {
     holdMax,
     spinPatterns,
     holdColors,
+    holdColorsSt,
   };
 }
 

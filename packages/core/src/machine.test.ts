@@ -30,6 +30,7 @@ function machineFixture(): Record<string, unknown> {
       { color: 'green', w_hit: 20, w_miss: 70 },
       { color: 'red', w_hit: 50, w_miss: 25 },
       { color: 'gold', w_hit: 20, w_miss: 0 },
+      { color: 'white', w_hit: 0, w_miss: 5 },
     ],
   };
 }
@@ -70,7 +71,8 @@ test('機種 JSON を検証して読み込み、閾値を変換する', () => {
   expect(spec.payoutPerBall).toBe(15);
   expect(spec.hesoPayout).toBe(3);
   expect(spec.holdMax).toBe(4);
-  expect(spec.holdColors.length).toBe(4);
+  expect(spec.holdColors.length).toBe(5);
+  expect(spec.holdColorsSt).toBe(spec.holdColors);
 });
 
 test('変動パターン JSON を検証して読み込む', () => {
@@ -132,6 +134,18 @@ test('不正な機種・パターンを拒否する', () => {
   const colors = dupColor['hold_colors'] as unknown[];
   colors.push(colors[0]);
   expect(() => parseMachine(dupColor)).toThrow();
+
+  const noWhite = clone(machineFixture());
+  noWhite['hold_colors'] = (noWhite['hold_colors'] as Array<Record<string, unknown>>).filter((r) => r['color'] !== 'white');
+  expect(() => parseMachine(noWhite)).toThrow();
+
+  const zeroMiss = clone(machineFixture());
+  zeroMiss['hold_colors'] = (zeroMiss['hold_colors'] as Array<Record<string, unknown>>).map((r) => ({ ...r, w_miss: 0 }));
+  expect(() => parseMachine(zeroMiss)).toThrow();
+
+  const badSt = clone(machineFixture());
+  badSt['hold_colors_st'] = [{ color: 'white', w_hit: 1, w_miss: 1 }];
+  expect(() => parseMachine(badSt)).toThrow();
 
   const badHoldMax = clone(machineFixture());
   badHoldMax['hold_max'] = 0;

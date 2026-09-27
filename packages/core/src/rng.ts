@@ -7,6 +7,7 @@ export type RNGStreamID =
   | 'pattern'
   | 'holdColor'
   | 'presentation'
+  | 'holdChange'
   | 'notice'
   | 'economy';
 
@@ -19,6 +20,7 @@ export const RNG_STREAM_IDS: readonly RNGStreamID[] = [
   'pattern',
   'holdColor',
   'presentation',
+  'holdChange',
   'notice',
   'economy',
 ];

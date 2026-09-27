@@ -1,11 +1,14 @@
 import 'fake-indexeddb/auto';
 import { readFileSync } from 'node:fs';
 import type { ClaimRecord } from '@ph/claims';
+import type { HoldEntry, LotteryHoldColor } from '@ph/core';
+import { HOLD_CHANGE_DELAY_MS, holdRank, planHoldChange } from '@ph/fx';
 import { expect, test } from 'vitest';
+import packJson from '../../../../resources/packs/default/pack.json';
 import { EngineHost, type TickResult } from '../engine/engine-host.ts';
 import { openStorage } from '../platform/storage.ts';
 import { DISPLAY_LAG_MS } from './ball-tracks.ts';
-import { LcdTimeline, matchesProjection, type LcdState } from './lcd-timeline.ts';
+import { LcdTimeline, applyLcdEvent, matchesProjection, shownLcdState, stateFromProjection, type LcdState } from './lcd-timeline.ts';
 import { spinTargets } from './lcd.ts';
 
 const ATLAS = ((): ArrayBuffer => {
@@ -114,4 +117,56 @@ test('出目: 当たりは3つ揃い・リーチのハズレは中だけずれ�
     const [x, , z] = spinTargets(e, false, false);
     expect(x).not.toBe(z);
   }
+});
+
+const hold = (serial: number, color: LotteryHoldColor): HoldEntry =>
+  ({ serial, modeAtDraw: 'normal', isHit: false, branchIndex: null, patternIndex: 0, color, hot: 0, hesoPayoutBalls: 3 }) as HoldEntry;
+
+/** 見せ方が plan の条件に合う番号を探す（seed 固定）。 */
+function findSerial(seed: number, final: LotteryHoldColor, ok: (p: ReturnType<typeof planHoldChange>) => boolean): number {
+  for (let s = 0; s < 10000; s++) if (ok(planHoldChange(seed, s, final))) return s;
+  throw new Error('not found');
+}
+
+test('保留変化: 前の保留の消化で変わる保留は、消化の少し後に最終色になり、途中で最終色を超えない', () => {
+  const seed = 99;
+  const serial = findSerial(seed, 'red', (p) => p.steps.length === 1 && p.steps[0]!.timing === 'shift');
+  const plan = planHoldChange(seed, serial, 'red');
+  let s: LcdState = { holds: [], spin: null, resolved: null, jackpot: null };
+  s = applyLcdEvent(s, { k: 'holdAdded', entry: hold(1, 'white'), at: 1000 });
+  s = applyLcdEvent(s, { k: 'holdAdded', entry: hold(serial, 'red'), at: 2000 });
+  expect(shownLcdState(s, seed, 50000).holds[1]!.color).toBe(plan.start);
+  s = applyLcdEvent(s, { k: 'spinStarted', entry: 1, at: 60000, pattern: 'normal_short', endsAt: 65000 });
+  expect(s.holds[0]!.shiftAt).toBe(60000);
+  expect(shownLcdState(s, seed, 60000 + HOLD_CHANGE_DELAY_MS.shift - 1).holds[0]!.color).toBe(plan.start);
+  expect(shownLcdState(s, seed, 60000 + HOLD_CHANGE_DELAY_MS.shift).holds[0]!.color).toBe('red');
+  // 変動に移っても最終色のまま。
+  s = applyLcdEvent(s, { k: 'spinStarted', entry: serial, at: 65000, pattern: 'normal_short', endsAt: 70000 });
+  expect(shownLcdState(s, seed, 65000).spin!.color).toBe('red');
+});
+
+test('保留変化: 変動開始で変わる保留は、リプレイ（取得時刻が不明）でも同じ時刻に同じ色になる', () => {
+  const seed = 7;
+  const serial = findSerial(seed, 'gold', (p) => p.steps.some((x) => x.timing === 'spin'));
+  let live: LcdState = { holds: [], spin: null, resolved: null, jackpot: null };
+  live = applyLcdEvent(live, { k: 'holdAdded', entry: hold(serial, 'gold'), at: 1000 });
+  live = applyLcdEvent(live, { k: 'spinStarted', entry: serial, at: 9000, pattern: 'sp_reach', endsAt: 54000 });
+  const replay: LcdState = {
+    holds: [],
+    spin: { entry: serial, pattern: 'sp_reach', startAt: 9000, endsAt: 54000, color: 'gold', hit: true, addedAt: null, shiftAt: null },
+    resolved: null,
+    jackpot: null,
+  };
+  for (const t of [9000, 9000 + HOLD_CHANGE_DELAY_MS.spin - 1, 9000 + HOLD_CHANGE_DELAY_MS.spin, 20000]) {
+    expect(shownLcdState(replay, seed, t).spin!.color).toBe(shownLcdState(live, seed, t).spin!.color);
+  }
+  expect(holdRank(shownLcdState(live, seed, 9000).spin!.color!)).toBeLessThan(holdRank('gold'));
+  expect(shownLcdState(live, seed, 9000 + HOLD_CHANGE_DELAY_MS.spin).spin!.color).toBe('gold');
+});
+
+test('保留変化: Projection から作った保留は最終色のまま・パックに hold_<色> の演出がある', () => {
+  const s = stateFromProjection({ holds: ['gold', 'red'], spin: undefined, jackpot: undefined } as never);
+  expect(shownLcdState(s, 1, 0)).toBe(s);
+  const names = packJson.sheets.map((x) => x.pattern);
+  for (const c of ['blue', 'green', 'red', 'gold']) expect(names).toContain('hold_' + c);
 });

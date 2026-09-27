@@ -15,14 +15,20 @@
   "heso_payout": 3,
   "hold_max": 4,
   "spin_patterns": "patterns.json",
-  "hold_colors": [{"color": "blue", "w_hit": 10, "w_miss": 900},
-                  {"color": "green","w_hit": 20, "w_miss": 70},
-                  {"color": "red",  "w_hit": 50, "w_miss": 25},
-                  {"color": "gold", "w_hit": 20, "w_miss": 0}]
+  "hold_colors":    [{"color": "white", "w_hit": 5,  "w_miss": 99317},
+                     {"color": "blue",  "w_hit": 10, "w_miss": 381},
+                     {"color": "green", "w_hit": 15, "w_miss": 172},
+                     {"color": "red",   "w_hit": 40, "w_miss": 115},
+                     {"color": "gold",  "w_hit": 30, "w_miss": 15}],
+  "hold_colors_st": [ ...同じ形。ST・LT 中の表... ]
 }
 ```
 - 確率はロード時に `uint32` 閾値へ変換（`threshold = floor(2^32 / jackpot_1_in)`、`>>> 0` で扱う）。
-- `hold_colors` の `white` は重み残余として暗黙に存在。
+- 保留色の表は白を含む5色すべてを書く（当否それぞれの合計は正, D-072）。取得時のモードで表を選ぶ: 通常・時短は `hold_colors`、ST・LT は `hold_colors_st`（省略時は `hold_colors`）。
+  目安（1/349.9・1/39.9）: 通常時は信頼度 青7%・緑20%・赤50%・金85%、出現 青1/245・緑1/467・赤1/437・金1/993（色付き約1/105）。
+  ST 中は当たりの40%が白から、信頼度 青15%・緑35%・赤70%・金95%、出現 青1/40・緑1/93・赤1/186・金1/253（色付き約1/22）。
+  通常 1/199.8 の機種はハズレの重みを増やして同じ信頼度に揃える。`pnpm sim holds` で実測と理論値を比べる（許容 信頼度±2pt・出現率±8%）。
+- 保留変化（表示を始める色・途中の段階・変わる時点）は演出側が決める（spec/43）。Core は最終色だけを決める。
 - 振分けの各枝は `weight`（通常時）と任意の `weight_st`（ST 中。省略時は `weight`）を持つ。0 可・各モードの合計は正。
   同じ `kind` でも `rounds` が違えば並べてよい（例: 初当たり 3R 確変 / RUSH 中 10R 確変, D-036）。
 - `tier`（甘デジ `sweet` / `middle` / `max`）は新台入替（spec/23, 後期）で選ぶ。
@@ -51,11 +57,11 @@
  {"id": "kakutei",      "ms": 60000, "hit_w": 10, "miss_w": 0,   "hot": 5, "climax_ms": 50000}]
 ```
 - 保留3〜4で `normal_short` を 2,000ms に短縮（`ms_by_hold` で拡張可）。変動短縮は経済の強化でも倍率がかかる。
-- `hot`（0〜5）= 演出の熱さ。`hot = max(パターン hot, 保留色ボーナス[red+1, gold→5])`。
+- `hot`（0〜5）= 演出の熱さ。`hot = min(5, パターン hot + 保留色ボーナス[red+1, gold+2])`（金は確定ではないので最大にしない, D-072）。
 
 ## 乱数（D-016）
 - 生成器: `xoshiro128**`（32bit、`Math.imul` と `>>> 0` のみ）。ストリーム初期化: `splitmix32(hash(seed, streamId, index))`。
-- `RNGStreamID`: `launch` `launchJitter` `jackpot` `split` `pattern` `holdColor` `presentation` `notice` `economy`
+- `RNGStreamID`: `launch` `launchJitter` `jackpot` `split` `pattern` `holdColor` `presentation` `holdChange` `notice` `economy`（`holdChange` は保留変化の見せ方, spec/43）
 - 各抽選は `RNGStream(seed, id, entrySerial)` から取る。**演出側の乱数変更が当否に影響しない**。
 - `nextU32()`、`nextUnit()`（[0,1)、`u32 / 2^32`）、`pick(weights)`（整数重み）。
 

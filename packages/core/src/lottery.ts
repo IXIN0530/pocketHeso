@@ -1,5 +1,5 @@
 /** 取得時判定の抽選（当否・振分け・パターン・色, D-017）と賞球・レート倍率（spec/21）。 */
-import type { HoldColor, JackpotBranch, MachineMode, MachineSpec, PatternTable, SpinPattern } from './machine.ts';
+import type { HoldColor, HoldColorWeight, HoldTableColor, JackpotBranch, MachineMode, MachineSpec, PatternTable, SpinPattern } from './machine.ts';
 import { HOLD_COLORS } from './machine.ts';
 import { RNGStream } from './rng.ts';
 
@@ -9,7 +9,7 @@ export type LotteryMode = 'normal' | 'jitan' | 'st' | 'lt';
 /** 既知の抽選モード（順序固定）。 */
 export const LOTTERY_MODES: readonly LotteryMode[] = ['normal', 'jitan', 'st', 'lt'];
 
-/** 保留色の抽選結果（`white` は重み残余として暗黙に存在）。 */
+/** 保留色の抽選結果（白を含む。重みは機種 JSON の表, P7-T4）。 */
 export type LotteryHoldColor = HoldColor | 'white';
 
 /** 保留色の抽選候補（順序固定。`HOLD_COLORS` の順＋`white`）。 */
@@ -74,19 +74,21 @@ function assertSerial(serial: number): number {
   return serial;
 }
 
-/** 合計を覆う最小の10のべき乗（white 残余の分母。D-032）。 */
-function pow10Cover(total: number): number {
-  let d = 1;
-  while (d < total) {
-    d = d * 10;
+/** 取得時のモードで使う保留色の表（通常・時短は `hold_colors`、ST・LT は `hold_colors_st`, P7-T4）。 */
+export function holdColorTable(spec: MachineSpec, mode: LotteryMode): readonly HoldColorWeight[] {
+  if (mode === 'normal' || mode === 'jitan') {
+    return spec.holdColors;
   }
-  return d;
+  if (mode === 'st' || mode === 'lt') {
+    return spec.holdColorsSt;
+  }
+  throw new Error('invalid lottery: mode must be normal, jitan, st or lt');
 }
 
-/** 機種の保留色行を `HOLD_COLORS` 順に探す（JSON の順序に依存しない）。 */
-function holdRow(spec: MachineSpec, color: HoldColor): { wHit: number; wMiss: number } {
-  for (let i = 0; i < spec.holdColors.length; i = i + 1) {
-    const row = spec.holdColors[i];
+/** 表の行を色で探す（JSON の順序に依存しない）。 */
+function holdRow(table: readonly HoldColorWeight[], color: HoldTableColor): HoldColorWeight {
+  for (let i = 0; i < table.length; i = i + 1) {
+    const row = table[i];
     if (row !== undefined && row.color === color) {
       return row;
     }
@@ -94,19 +96,26 @@ function holdRow(spec: MachineSpec, color: HoldColor): { wHit: number; wMiss: nu
   throw new Error('invalid lottery: hold_colors lacks ' + color);
 }
 
-/** 保留色の重み列（`LOTTERY_HOLD_COLORS` と同順。当否別。`white` は残余, D-032）。 */
-export function holdColorWeights(spec: MachineSpec, isHit: boolean): readonly number[] {
+/** 保留色の重み列（`LOTTERY_HOLD_COLORS` と同順。取得時のモードの表・当否別, P7-T4）。 */
+export function holdColorWeights(spec: MachineSpec, mode: LotteryMode, isHit: boolean): readonly number[] {
+  const table = holdColorTable(spec, mode);
   const w: number[] = [];
-  let sum = 0;
-  for (let c = 0; c < HOLD_COLORS.length; c = c + 1) {
-    const color = HOLD_COLORS[c] as HoldColor;
-    const row = holdRow(spec, color);
-    const v = isHit ? row.wHit : row.wMiss;
-    w.push(v);
-    sum = sum + v;
+  for (let c = 0; c < LOTTERY_HOLD_COLORS.length; c = c + 1) {
+    const row = holdRow(table, LOTTERY_HOLD_COLORS[c] as LotteryHoldColor);
+    w.push(isHit ? row.wHit : row.wMiss);
   }
-  w.push(pow10Cover(sum) - sum);
   return w;
+}
+
+/** 熱さ = パターンの hot に保留色のボーナス（赤+1・金+2、上限5, P7-T4）。 */
+export function holdHot(patternHot: number, color: LotteryHoldColor): number {
+  if (color === 'red') {
+    return Math.min(5, patternHot + 1);
+  }
+  if (color === 'gold') {
+    return Math.min(5, patternHot + 2);
+  }
+  return patternHot;
 }
 
 /** 振分けの重み列（`jackpotSplit` と同順。取得時のモードで重みを選ぶ。省略時の既定は weight_jitan=weight・weight_lt=weight_st）。 */
@@ -184,17 +193,12 @@ export function drawBonusHold(
   if (patternRow === undefined) {
     throw new Error('invalid lottery: pattern index out of range');
   }
-  const colorIndex = new RNGStream(seed, 'holdColor', bonusSerial).pick(holdColorWeights(spec, isHit));
+  const colorIndex = new RNGStream(seed, 'holdColor', bonusSerial).pick(holdColorWeights(spec, mode, isHit));
   const color = LOTTERY_HOLD_COLORS[colorIndex];
   if (color === undefined) {
     throw new Error('invalid lottery: color index out of range');
   }
-  let hot = patternRow.hot;
-  if (color === 'red') {
-    hot = Math.min(5, hot + 1);
-  } else if (color === 'gold') {
-    hot = 5;
-  }
+  const hot = holdHot(patternRow.hot, color);
   return { serial: bonusSerial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0 };
 }
 
@@ -224,17 +228,12 @@ export function drawHold(
   if (patternRow === undefined) {
     throw new Error('invalid lottery: pattern index out of range');
   }
-  const colorIndex = new RNGStream(seed, 'holdColor', serial).pick(holdColorWeights(spec, isHit));
+  const colorIndex = new RNGStream(seed, 'holdColor', serial).pick(holdColorWeights(spec, mode, isHit));
   const color = LOTTERY_HOLD_COLORS[colorIndex];
   if (color === undefined) {
     throw new Error('invalid lottery: color index out of range');
   }
-  let hot = patternRow.hot;
-  if (color === 'red') {
-    hot = Math.min(5, hot + 1);
-  } else if (color === 'gold') {
-    hot = 5;
-  }
+  const hot = holdHot(patternRow.hot, color);
   const entry: HoldEntry = { serial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: spec.hesoPayout * rate };
   return rate === 1 ? entry : { ...entry, rate };
 }

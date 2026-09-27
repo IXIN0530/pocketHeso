@@ -59,6 +59,7 @@ function bonusSpecFixture(): MachineSpec {
       { color: 'green', w_hit: 20, w_miss: 70 },
       { color: 'red', w_hit: 50, w_miss: 25 },
       { color: 'gold', w_hit: 20, w_miss: 0 },
+      { color: 'white', w_hit: 0, w_miss: 5 },
     ],
   });
 }
@@ -95,6 +96,7 @@ test('bonus_roundsの検証（省略時0・合計60以内・重複はbonus込み
       { color: 'green', w_hit: 20, w_miss: 70 },
       { color: 'red', w_hit: 50, w_miss: 25 },
       { color: 'gold', w_hit: 20, w_miss: 0 },
+      { color: 'white', w_hit: 0, w_miss: 5 },
     ],
   };
   const noBonus = parseMachine(JSON.parse(JSON.stringify(base)) as unknown);
@@ -248,6 +250,7 @@ test('決定論契約1・2が上乗せを含む区間（大当たり中・LT中�
       { color: 'green', w_hit: 20, w_miss: 70 },
       { color: 'red', w_hit: 50, w_miss: 25 },
       { color: 'gold', w_hit: 20, w_miss: 0 },
+      { color: 'white', w_hit: 0, w_miss: 5 },
     ],
   });
   const spec = highHit;
@@ -347,6 +350,7 @@ test('Engineのuwanose順序と投影chain（bonus機種でprojectにchainが載
       { color: 'green', w_hit: 20, w_miss: 70 },
       { color: 'red', w_hit: 50, w_miss: 25 },
       { color: 'gold', w_hit: 20, w_miss: 0 },
+      { color: 'white', w_hit: 0, w_miss: 5 },
     ],
   });
   const patterns = loadPatterns();

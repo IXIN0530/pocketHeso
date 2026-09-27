@@ -38,24 +38,25 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FlashLayer, type SceneCue } from '@ph/fx';
+import { FlashLayer, holdChangeCue, holdRank, type SceneCue } from '@ph/fx';
 import {
   BALL_RADIUS_MM,
   type Board,
   type BoardYakumono,
   type EngineSimEvent,
   type HallProjection,
+  type LotteryHoldColor,
   type Vec2,
 } from '@ph/core';
 import type { Shot } from '../engine/engine-host.ts';
-import { packTexts, planFor, playCue, playCues, setFlashTarget, setSceneTarget } from '../fx/fx-host.ts';
+import { packTexts, planFor, playCue, playCues, playSideCue, setFlashTarget, setSceneTarget } from '../fx/fx-host.ts';
 import { PREVIEW_TAIL_MS, type PreviewRequest } from '../stores/preview.ts';
 import { LCD_RECT, bakeBoard, bakeGlare, bakeHall, bakeSoftDot, bakeSymbolAtlas, bakeTextAtlas } from './art.ts';
 import { BallTracks, DISPLAY_LAG_MS, MAX_BALLS, PREROLL_MS } from './ball-tracks.ts';
 import { CAB, Cabinet, bakeCabinetEnv, ledTube } from './cabinet.ts';
 import { summarize, type FrameStats } from './frame-stats.ts';
 import { LcdReels, type SpinShow } from './lcd.ts';
-import { LcdTimeline, type LcdState } from './lcd-timeline.ts';
+import { LcdTimeline, shownLcdState, type LcdState } from './lcd-timeline.ts';
 
 export interface DrawInfo {
   calls: number;
@@ -134,6 +135,8 @@ export class BoardScene {
   private readonly lcd: LcdReels;
   private readonly lcdTimeline = new LcdTimeline();
   private lastJackpot = -1;
+  /** 前のフレームで見せた保留の色（番号ごと。保留変化の音・光を鳴らす判定, P7-T4）。 */
+  private shownColors = new Map<number, LotteryHoldColor>();
   /** 今の変動の演出（CueSheet の lcd キュー）。 */
   private show: SpinShow | null = null;
   private seed = 0;
@@ -415,7 +418,9 @@ export class BoardScene {
     this.hesoFlash = Math.max(0, this.hesoFlash - dt / 500);
     this.updateBalls();
     this.updateYakumono(display, winLevel);
-    this.lcd.update(dt, lcdNow, lcdScale, lcdState, (e) => this.lcdTimeline.peekResult(e), winLevel, this.show);
+    const shown = shownLcdState(lcdState, this.seed, lcdNow);
+    this.noteHoldChanges(shown, lcdScale);
+    this.lcd.update(dt, lcdNow, lcdScale, shown, (e) => this.lcdTimeline.peekResult(e), winLevel, this.show);
     this.updateLamps(sec, winLevel, white);
     this.updateCamera(clockNow);
 
@@ -447,7 +452,16 @@ export class BoardScene {
     const ms = pv.durationMs ?? this.patterns(pv.pattern)?.ms ?? 20000;
     const t = now - pv.start;
     if (t < ms) {
-      const spin = { entry: pv.serial, pattern: pv.pattern, startAt: pv.start, endsAt: pv.start + ms, color: pv.color, hit: pv.hit };
+      const spin = {
+        entry: pv.serial,
+        pattern: pv.pattern,
+        startAt: pv.start,
+        endsAt: pv.start + ms,
+        color: pv.color,
+        hit: pv.hit,
+        addedAt: null,
+        shiftAt: null,
+      };
       return { holds: [], spin, resolved: null, jackpot: null };
     }
     if (t < ms + PREVIEW_TAIL_MS) {
@@ -471,6 +485,26 @@ export class BoardScene {
     const plan = planFor(spin.pattern, this.seed, spin.entry, patternMs, spin.endsAt - origin);
     this.show = { entry: spin.entry, origin, lcd: plan.lcd };
     if (scale === 1) playCues(plan.cues, now - origin);
+  }
+
+  /**
+   * 見せる色が上がった保留を光らせ、パックの hold_<色> を鳴らす（保留変化, P7-T4）。
+   * Debug の倍速では液晶だけ（音・光は鳴らさない, D-067）。
+   */
+  private noteHoldChanges(st: LcdState, scale: number): void {
+    const next = new Map<number, LotteryHoldColor>();
+    const see = (entry: number, color: LotteryHoldColor | null) => {
+      if (entry < 0 || color === null) return;
+      const prev = this.shownColors.get(entry);
+      if (prev !== undefined && holdRank(color) > holdRank(prev)) {
+        this.lcd.pulse();
+        if (scale === 1) playSideCue(holdChangeCue(color), this.seed, entry);
+      }
+      next.set(entry, color);
+    };
+    for (const h of st.holds) see(h.entry, h.color);
+    if (st.spin) see(st.spin.entry, st.spin.color);
+    this.shownColors = next;
   }
 
   /** 盤面が受け持つキュー: 揺れと液晶への寄り（spec/43 shake・camera）。 */

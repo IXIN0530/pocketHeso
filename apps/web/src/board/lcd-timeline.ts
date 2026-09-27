@@ -2,13 +2,19 @@
 // Engine のイベント（保留の取得 → 変動開始 → 停止 → 大当たり）を時刻付きでため、盤面の玉と同じ表示時刻で1つずつ反映する。
 // 前進ごとに「全部反映した結果」を Projection と照らし、合わなければ（背面の間・Debug の倍速で取りこぼした時）Projection に揃える。
 import type { EngineSimEvent, HallProjection, JackpotKind, LotteryHoldColor } from '@ph/core';
+import { holdColorAt, planHoldChange, type HoldChangeClock } from '@ph/fx';
 
 export interface LcdHold {
   /** 保留の通し番号（Projection から作った時は分からないので -1）。 */
   readonly entry: number;
+  /** 最終色（Core が取得時に確定）。見せる色は shownLcdState（保留変化, P7-T4）。 */
   readonly color: LotteryHoldColor;
   /** 当否（取得時に確定済み, spec/21）。Projection から作った時は null。 */
   readonly hit: boolean | null;
+  /** 取得の時刻（Projection から作った時は null）。 */
+  readonly addedAt: number | null;
+  /** 前の保留が初めて消化された時刻（まだ・不明なら null）。 */
+  readonly shiftAt: number | null;
 }
 
 export interface LcdSpin {
@@ -17,9 +23,12 @@ export interface LcdSpin {
   /** 開始時刻（Projection から作った時は分からないので null）。 */
   readonly startAt: number | null;
   readonly endsAt: number;
-  /** 当該保留の色（Projection から作った時は分からないので null）。 */
+  /** 当該保留の最終色（Projection から作った時は分からないので null）。 */
   readonly color: LotteryHoldColor | null;
   readonly hit: boolean | null;
+  /** 保留だった時の取得・前の保留の消化の時刻（保留変化用。不明なら null）。 */
+  readonly addedAt: number | null;
+  readonly shiftAt: number | null;
 }
 
 export interface LcdJackpot {
@@ -54,8 +63,10 @@ const EMPTY: LcdState = { holds: [], spin: null, resolved: null, jackpot: null }
 /** Projection の時点の状態（通し番号・当否・開始時刻は分からない）。 */
 export function stateFromProjection(p: HallProjection): LcdState {
   return {
-    holds: p.holds.map((color) => ({ entry: -1, color, hit: null })),
-    spin: p.spin ? { entry: p.spin.entry, pattern: p.spin.pattern, startAt: null, endsAt: p.spin.endsAt, color: null, hit: null } : null,
+    holds: p.holds.map((color) => ({ entry: -1, color, hit: null, addedAt: null, shiftAt: null })),
+    spin: p.spin
+      ? { entry: p.spin.entry, pattern: p.spin.pattern, startAt: null, endsAt: p.spin.endsAt, color: null, hit: null, addedAt: null, shiftAt: null }
+      : null,
     resolved: null,
     jackpot: p.jackpot ? { entry: p.jackpot.entry, kind: p.jackpot.kind, rounds: p.jackpot.rounds } : null,
   };
@@ -65,14 +76,27 @@ export function stateFromProjection(p: HallProjection): LcdState {
 export function applyLcdEvent(s: LcdState, e: LcdEvent): LcdState {
   switch (e.k) {
     case 'holdAdded':
-      return { ...s, holds: [...s.holds, { entry: e.entry.serial, color: e.entry.color, hit: e.entry.isHit }] };
+      return {
+        ...s,
+        holds: [...s.holds, { entry: e.entry.serial, color: e.entry.color, hit: e.entry.isHit, addedAt: e.at, shiftAt: null }],
+      };
     case 'spinStarted': {
       const i = Math.max(0, s.holds.findIndex((h) => h.entry === e.entry));
       const h = s.holds[i];
       return {
         ...s,
-        holds: s.holds.filter((_, k) => k !== i),
-        spin: { entry: e.entry, pattern: e.pattern, startAt: e.at, endsAt: e.endsAt, color: h?.color ?? null, hit: h?.hit ?? null },
+        // 残った保留は「前の保留が消化された」（保留変化の時点, P7-T4）。
+        holds: s.holds.filter((_, k) => k !== i).map((x) => (x.shiftAt === null && x.addedAt !== null ? { ...x, shiftAt: e.at } : x)),
+        spin: {
+          entry: e.entry,
+          pattern: e.pattern,
+          startAt: e.at,
+          endsAt: e.endsAt,
+          color: h?.color ?? null,
+          hit: h?.hit ?? null,
+          addedAt: h?.addedAt ?? null,
+          shiftAt: h?.shiftAt ?? null,
+        },
       };
     }
     case 'spinResolved':
@@ -94,6 +118,25 @@ export function matchesProjection(s: LcdState, p: HallProjection): boolean {
     (s.spin?.entry ?? -1) === (p.spin?.entry ?? -1) &&
     (s.jackpot?.entry ?? -1) === (p.jackpot?.entry ?? -1)
   );
+}
+
+/**
+ * 見せる色に置き換えた状態（保留変化, P7-T4）。見せ方は RNGStream(seed, 'holdChange', entry) で決まり、
+ * 最終色は Core のまま。Projection から作った保留・変動（番号・開始時刻が不明）は最終色のまま見せる。
+ */
+export function shownLcdState(s: LcdState, seed: number, now: number): LcdState {
+  const shown = (entry: number, color: LotteryHoldColor, clock: HoldChangeClock) =>
+    entry < 0 ? color : holdColorAt(planHoldChange(seed, entry, color), clock, now);
+  const holds = s.holds.map((h) => {
+    const color = shown(h.entry, h.color, { addedAt: h.addedAt, shiftAt: h.shiftAt, spinAt: null });
+    return color === h.color ? h : { ...h, color };
+  });
+  let spin = s.spin;
+  if (spin && spin.color !== null && spin.startAt !== null) {
+    const color = shown(spin.entry, spin.color, { addedAt: spin.addedAt, shiftAt: spin.shiftAt, spinAt: spin.startAt });
+    if (color !== spin.color) spin = { ...spin, color };
+  }
+  return holds.every((h, i) => h === s.holds[i]) && spin === s.spin ? s : { ...s, holds, spin };
 }
 
 export class LcdTimeline {

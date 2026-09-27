@@ -96,6 +96,11 @@ export class LcdReels {
    * 表示時刻 now の状態を映す。scale は Debug の時間倍率（止まる動きは実時間なので、その分だけ早めに止め始める）。
    * peek は当否が不明な変動（Projection に揃えた直後）の結果を先読みする。
    */
+  /** 保留が光る（保留変化, P7-T4）。 */
+  pulse(): void {
+    this.flash = 1;
+  }
+
   update(
     dtMs: number,
     now: number,

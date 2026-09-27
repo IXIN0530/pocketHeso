@@ -115,6 +115,25 @@ export function playCues(cues: readonly Cue[], startedAgoMs = 0): void {
   tick();
 }
 
+/** 変動の演出と重ねて鳴らす短い演出（保留変化など）。変動の演出は止めない。 */
+const sidePlayer = new CuePlayer(route);
+let sideRaf = 0;
+
+function sideTick(): void {
+  sidePlayer.update(performance.now());
+  sideRaf = sidePlayer.done ? 0 : requestAnimationFrame(sideTick);
+}
+
+/** パックの演出を変動の演出と重ねて今から鳴らす（分岐は RNGStream(seed, 'presentation', serial)）。 */
+export function playSideCue(pattern: string, seed: number, serial: number): boolean {
+  const sheet = sheets.get(pattern);
+  if (!sheet) return false;
+  sidePlayer.start(resolveCueSheet(sheet, { seed, serial, intensity: INTENSITY }).cues, performance.now());
+  if (sideRaf) cancelAnimationFrame(sideRaf);
+  sideTick();
+  return true;
+}
+
 export function stopCue(): void {
   player.stop();
   if (raf) cancelAnimationFrame(raf);

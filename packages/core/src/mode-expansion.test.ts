@@ -37,6 +37,7 @@ function testSpecFixture(): MachineSpec {
       { color: 'green', w_hit: 20, w_miss: 70 },
       { color: 'red', w_hit: 50, w_miss: 25 },
       { color: 'gold', w_hit: 20, w_miss: 0 },
+      { color: 'white', w_hit: 0, w_miss: 5 },
     ],
   });
 }
@@ -100,6 +101,7 @@ test('spins/st_spins両対応・next/weight既定・不正の拒否', () => {
       { color: 'green', w_hit: 20, w_miss: 70 },
       { color: 'red', w_hit: 50, w_miss: 25 },
       { color: 'gold', w_hit: 20, w_miss: 0 },
+      { color: 'white', w_hit: 0, w_miss: 5 },
     ],
   };
   const spec = parseMachine(JSON.parse(JSON.stringify(base)) as unknown);

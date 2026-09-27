@@ -11,7 +11,10 @@
     "cutin": { "synth": { "wave": "sawtooth", "hz": [1400, 300], "ms": 420, "gain": 0.3 } },
     "swarm": { "synth": { "wave": "triangle", "hz": [300, 1500], "ms": 1400, "gain": 0.25 } },
     "black": { "synth": { "wave": "sine", "hz": [110, 55], "ms": 1200, "gain": 0.5 } },
-    "kime": { "synth": { "wave": "square", "hz": [1320, 1980], "ms": 260, "gain": 0.35 } }
+    "kime": { "synth": { "wave": "square", "hz": [1320, 1980], "ms": 260, "gain": 0.35 } },
+    "hold_up": { "synth": { "wave": "triangle", "hz": [880, 1320], "ms": 160, "gain": 0.3 } },
+    "hold_red": { "synth": { "wave": "square", "hz": [700, 1400], "ms": 240, "gain": 0.3 } },
+    "hold_gold": { "synth": { "wave": "sawtooth", "hz": [600, 2600], "ms": 600, "gain": 0.35 } }
   },
   "sheets": [
     {
@@ -156,6 +159,34 @@
             ] }
           ]
         }
+      ]
+    },
+    {
+      "pattern": "hold_blue",
+      "cues": [{ "at": 0, "kind": "sound", "bus": "se", "asset": "hold_up" }]
+    },
+    {
+      "pattern": "hold_green",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "hold_up" },
+        { "at": 0, "kind": "haptic", "pattern": [20] }
+      ]
+    },
+    {
+      "pattern": "hold_red",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "hold_red" },
+        { "at": 0, "kind": "flash", "style": "white", "ms": 120, "min_intensity": 2 },
+        { "at": 0, "kind": "haptic", "pattern": [30, 20, 30] }
+      ]
+    },
+    {
+      "pattern": "hold_gold",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "hold_gold" },
+        { "at": 0, "kind": "flash", "style": "rainbow", "ms": 500 },
+        { "at": 0, "kind": "haptic", "pattern": [60, 30, 90] },
+        { "at": 0, "kind": "bloom", "ms": 900, "strength": 0.5, "min_intensity": 2 }
       ]
     },
     {
