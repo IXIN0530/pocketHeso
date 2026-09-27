@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { readFileSync } from 'node:fs';
 import type { ClaimRecord } from '@ph/claims';
 import type { HoldEntry, LotteryHoldColor } from '@ph/core';
-import { HOLD_BREAK_MS, HOLD_CRACK_CUE, SAKIBARE_CUE, SAKIBARE_DELAY_MS, planHoldChange } from '@ph/fx';
+import { HOLD_BREAK_MS, HOLD_CRACK_CUE, HOLD_CRACK_STEPS_MS, SAKIBARE_CUE, SAKIBARE_DELAY_MS, holdBreakScale, planHoldChange } from '@ph/fx';
 import { expect, test } from 'vitest';
 import packJson from '../../../../resources/packs/default/pack.json';
 import { EngineHost, type TickResult } from '../engine/engine-host.ts';
@@ -153,8 +153,19 @@ test('保留変化: 変化する保留は灰色で点滅して出て、消化さ
   expect(shownLcdState(s, seed, 64000).holds[0]).toMatchObject({ color: 'white', blink: true });
   s = applyLcdEvent(s, { k: 'spinStarted', entry: serial, at: 65000, pattern: 'normal_short', endsAt: 70000 });
   expect(shownLcdState(s, seed, 65000).spin).toMatchObject({ color: 'white', breaks: true });
-  expect(shownLcdState(s, seed, 65000 + HOLD_BREAK_MS.reveal - 1).spin!.color).toBe('white');
-  expect(shownLcdState(s, seed, 65000 + HOLD_BREAK_MS.reveal).spin!.color).toBe('red');
+  // 5秒の変動は割れる演出を縮めて、割れた後に図柄が回る時間を残す。
+  const reveal = HOLD_BREAK_MS.reveal * holdBreakScale(5000);
+  expect(reveal).toBeLessThan(HOLD_BREAK_MS.reveal);
+  expect(5000 - HOLD_BREAK_MS.reels * holdBreakScale(5000)).toBeGreaterThanOrEqual(1200);
+  expect(shownLcdState(s, seed, 65000 + Math.ceil(reveal) - 1).spin!.color).toBe('white');
+  expect(shownLcdState(s, seed, 65000 + Math.ceil(reveal)).spin!.color).toBe('red');
+});
+
+test('割れる演出の縮尺: 長い変動は元の尺、短い変動ほど縮む（下限あり）', () => {
+  expect(holdBreakScale(20000)).toBe(1);
+  expect(holdBreakScale(HOLD_BREAK_MS.reels + 1200)).toBe(1);
+  expect(holdBreakScale(5000)).toBeCloseTo(0.76);
+  expect(holdBreakScale(1458)).toBe(0.15);
 });
 
 test('保留変化: リプレイ（取得時刻が不明）でも同じ時刻に割れて同じ色になる', () => {
@@ -184,6 +195,10 @@ test('保留変化: Projection から作った保留は最終色のまま・パ�
   const names = packJson.sheets.map((x) => x.pattern);
   for (const c of ['blue', 'green', 'red', 'gold']) expect(names).toContain('hold_' + c);
   expect(names).toContain(HOLD_CRACK_CUE);
+  // ひびのピキッ（液晶）と crack の音は同じ時刻。
+  const crack = packJson.sheets.find((x) => x.pattern === HOLD_CRACK_CUE)!;
+  const at = crack.cues.filter((c) => 'asset' in c && c.asset === 'crack').map((c) => c.at);
+  expect(at).toEqual([...HOLD_CRACK_STEPS_MS]);
 });
 
 test('先バレ: 玉が入ってすぐ鳴り、保留は灰色で点滅して出る。変動に移っても同じ時刻・リプレイでは鳴らない', () => {
@@ -201,6 +216,6 @@ test('先バレ: 玉が入ってすぐ鳴り、保留は灰色で点滅して出
   expect(sakibareTimes(s, seed)).toEqual([{ entry: serial, at: 1000 + SAKIBARE_DELAY_MS }]);
   const replay: LcdState = { ...s, spin: { ...s.spin!, addedAt: null } };
   expect(sakibareTimes(replay, seed)).toEqual([]);
-  expect(shownLcdState(replay, seed, 8000 + HOLD_BREAK_MS.reveal).spin!.color).toBe('green');
+  expect(shownLcdState(replay, seed, 8000 + HOLD_BREAK_MS.reveal * holdBreakScale(5000)).spin!.color).toBe('green');
   expect(packJson.sheets.map((x) => x.pattern)).toContain(SAKIBARE_CUE);
 });

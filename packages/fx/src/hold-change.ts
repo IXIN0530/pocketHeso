@@ -42,16 +42,28 @@ export function planHoldChange(seed: number, serial: number, final: LotteryHoldC
 }
 
 /**
- * 割れる演出の時刻（自分の変動開始から, ms）。grow までに保留が液晶の中央へ動いて大きな玉になり、
+ * 割れる演出の時刻（自分の変動開始から, ms。変動が長い時の尺）。grow までに保留が液晶の中央へ動いて大きな玉になり、
  * crack からひびが入って広がり（点滅が速くなる）、reveal で割れて最終色の保留が出る（色が変わり hold_<色> が鳴る）。
  * reels で図柄が回り始め（変動の演出もここから）、end までに保留が当該保留の位置へ戻る。
+ * 短い変動は holdBreakScale で全体を縮め、割れた後に図柄が HOLD_BREAK_MIN_REELS_MS 回るようにする。
  */
-export const HOLD_BREAK_MS = { grow: 450, crack: 600, reveal: 1500, reels: 2000, end: 2400 } as const;
+export const HOLD_BREAK_MS = { grow: 1350, crack: 1800, reveal: 4500, reels: 5000, end: 5400 } as const;
 
-/** 時刻 now に見せる色。spinAt は自分の変動開始の時刻（まだ・不明なら null）。 */
-export function holdColorAt(plan: HoldChangePlan, spinAt: number | null, now: number): LotteryHoldColor {
+/** ひびがピキッと伸びる時刻（HOLD_BREAK_MS の尺, ms。だんだん間が詰まる）。パックの hold_crack の crack の音と同じ時刻。 */
+export const HOLD_CRACK_STEPS_MS = [1950, 2600, 3150, 3550, 3850, 4100, 4280] as const;
+
+/** 割れた後に図柄が回る最短の時間（左 → 右 → 中と止めるのに要る時間）。 */
+export const HOLD_BREAK_MIN_REELS_MS = 1200;
+
+/** 変動時間 spinMs に割れる演出を収める縮尺（1 は HOLD_BREAK_MS のまま。0.15 より縮めない）。 */
+export function holdBreakScale(spinMs: number): number {
+  return Math.min(1, Math.max(0.15, (spinMs - HOLD_BREAK_MIN_REELS_MS) / HOLD_BREAK_MS.reels));
+}
+
+/** 時刻 now に見せる色。spinAt は自分の変動開始の時刻（まだ・不明なら null）、scale は holdBreakScale。 */
+export function holdColorAt(plan: HoldChangePlan, spinAt: number | null, now: number, scale = 1): LotteryHoldColor {
   if (!plan.change) return plan.final;
-  return spinAt !== null && now >= spinAt + HOLD_BREAK_MS.reveal ? plan.final : 'white';
+  return spinAt !== null && now >= spinAt + HOLD_BREAK_MS.reveal * scale ? plan.final : 'white';
 }
 
 /** 取得から先バレまでの間（玉が入ってすぐ鳴らす）。 */

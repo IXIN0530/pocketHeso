@@ -2,7 +2,7 @@
 // Engine のイベント（保留の取得 → 変動開始 → 停止 → 大当たり）を時刻付きでため、盤面の玉と同じ表示時刻で1つずつ反映する。
 // 前進ごとに「全部反映した結果」を Projection と照らし、合わなければ（背面の間・Debug の倍速で取りこぼした時）Projection に揃える。
 import type { EngineSimEvent, HallProjection, JackpotKind, LotteryHoldColor } from '@ph/core';
-import { holdColorAt, planHoldChange, sakibareAt } from '@ph/fx';
+import { holdBreakScale, holdColorAt, planHoldChange, sakibareAt } from '@ph/fx';
 
 export interface LcdHold {
   /** 保留の通し番号（Projection から作った時は分からないので -1）。 */
@@ -121,7 +121,7 @@ export function matchesProjection(s: LcdState, p: HallProjection): boolean {
 
 /**
  * 見せる色に置き換えた状態（保留変化, D-075）。見せ方は RNGStream(seed, 'holdChange', entry) で決まり、最終色は Core のまま。
- * 変化する保留は灰色（白）で点滅（blink）し、変動が始まると割れて（breaks）HOLD_BREAK_MS.reveal に最終色になる。
+ * 変化する保留は灰色（白）で点滅（blink）し、変動が始まると割れて（breaks）HOLD_BREAK_MS.reveal（短い変動は縮めた時刻）に最終色になる。
  * Projection から作った保留・変動（番号・開始時刻が不明）は最終色のまま見せる。
  */
 export function shownLcdState(s: LcdState, seed: number, now: number): LcdState {
@@ -133,7 +133,10 @@ export function shownLcdState(s: LcdState, seed: number, now: number): LcdState 
   if (spin && spin.color !== null && spin.startAt !== null) {
     // プレビューは breaks を指定して割れる演出を見せられる。
     const change = spin.breaks === true || (spin.entry >= 0 && planHoldChange(seed, spin.entry, spin.color).change);
-    if (change) spin = { ...spin, color: holdColorAt({ final: spin.color, change, sakibare: false }, spin.startAt, now), breaks: true };
+    if (change) {
+      const scale = holdBreakScale(spin.endsAt - spin.startAt);
+      spin = { ...spin, color: holdColorAt({ final: spin.color, change, sakibare: false }, spin.startAt, now, scale), breaks: true };
+    }
   }
   return holds.every((h, i) => h === s.holds[i]) && spin === s.spin ? s : { ...s, holds, spin };
 }

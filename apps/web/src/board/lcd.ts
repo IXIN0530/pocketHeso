@@ -1,6 +1,6 @@
 import { ShaderMaterial, Vector3, Vector4, type Texture } from 'three';
 import type { LotteryHoldColor } from '@ph/core';
-import { HOLD_BREAK_MS } from '@ph/fx';
+import { HOLD_BREAK_MS, HOLD_CRACK_STEPS_MS, holdBreakScale } from '@ph/fx';
 import type { LcdCue } from '@ph/shared';
 import { NO_LOOK, lcdLook, pseudoWindows, reachAt, type LcdLook } from './lcd-scenes.ts';
 import type { LcdSpin, LcdState } from './lcd-timeline.ts';
@@ -134,7 +134,9 @@ export class LcdReels {
     const bk = st.holds.map((x) => (x.blink ? 1 : 0));
     (u.uBlink!.value as Vector4).set(bk[0] ?? 0, bk[1] ?? 0, bk[2] ?? 0, bk[3] ?? 0);
     u.uCur!.value = st.spin?.color ? HOLD_CODE[st.spin.color] : 0;
-    const bt = st.spin?.breaks && st.spin.startAt !== null ? now - st.spin.startAt : -1;
+    // 割れる演出は HOLD_BREAK_MS の尺で描く（短い変動は縮めた分だけ速く進める）。
+    const sp = st.spin;
+    const bt = sp?.breaks && sp.startAt !== null ? (now - sp.startAt) / holdBreakScale(sp.endsAt - sp.startAt) : -1;
     u.uBrk!.value = bt >= 0 && bt < HOLD_BREAK_MS.end ? bt / 1000 : -1;
     u.uTime!.value = this.elapsed / 1000;
     u.uReach!.value = this.reachMs >= 0 ? Math.min(1, this.reachMs / 300) : 0;
@@ -332,6 +334,12 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
       const float B_REVEAL = ${(HOLD_BREAK_MS.reveal / 1000).toFixed(3)};
       const float B_REELS = ${(HOLD_BREAK_MS.reels / 1000).toFixed(3)};
       const float B_END = ${(HOLD_BREAK_MS.end / 1000).toFixed(3)};
+      // ひびの進み（0〜1）。HOLD_CRACK_STEPS_MS の時刻にピキッと一段ずつ伸びる（音と同じ時刻）。
+      float crackAt(float t) {
+        float c = 0.0;
+        ${HOLD_CRACK_STEPS_MS.map((ms) => `c += smoothstep(${(ms / 1000).toFixed(3)}, ${(ms / 1000 + 0.06).toFixed(3)}, t);`).join('\n        ')}
+        return c / ${HOLD_CRACK_STEPS_MS.length.toFixed(1)};
+      }
 
       vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
       float hash1(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
@@ -430,7 +438,7 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
 
       // 保留1つを重ねる（空きは暗い輪だけ）。面取りした金属の板として陰影をつけ、ハイライトが斜めに流れる。
       // 赤・金は点滅して後光が脈打つ（2.0/2.4回/秒, spec/43 の3回/秒未満）。reduced-motion（uCalm）では点滅と流れを止める。
-      // bk は灰色の変化保留のチカチカ（2.0回/秒で明滅し、白い後光が脈打つ）。
+      // bk は灰色の変化保留のチカチカ（2.0回/秒で明滅し、白い後光が大きく脈打つ）。
       vec3 drawHold(vec3 col, vec2 c, float code, float size, float bk) {
         vec2 d = (vUv - c) * vec2(ASPECT, 1.0);
         if (code < 0.5) {
@@ -449,7 +457,7 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
         float glow = exp(-max(sd, 0.0) * mix(90.0, 45.0, hot)) * mix(0.3, 0.12 + 0.8 * blink, hot);
         col += base * glow * 0.6;
         float chika = blinkAt(t * 2.0);
-        col += vec3(0.85, 0.92, 1.0) * exp(-max(sd, 0.0) * 50.0) * bk * (0.25 + 0.7 * chika);
+        col += vec3(0.85, 0.92, 1.0) * (exp(-max(sd, 0.0) * 50.0) * 0.6 + exp(-max(sd, 0.0) * 18.0) * 0.55) * bk * (0.25 + 0.75 * chika);
         if (fill <= 0.0) return col;
 
         // 面取りの法線: 縁の bevel 幅だけ外へ傾く（距離の勾配の向き）。
@@ -500,21 +508,21 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
       }
 
       // 変化保留が割れる（D-075）。t は変動開始からの秒、code は見せる色（割れるまでは白）。
-      // 左下の保留が中央へ動いて大きなパチンコ玉になり、点滅が 2.0 → 2.9 回/秒へ速くなりながらひびが広がり、
+      // 左下の保留が中央へ動いて大きなパチンコ玉になり、点滅が 2.0 → 2.9 回/秒へ速くなりながらひびがピキッと段々に広がり、
       // 割れると殻が飛び散って中から最終色の保留が出て、保留の色が中心から液晶いっぱいに広がる。
       vec3 drawBreak(vec3 col, float t, float code) {
         float g = smoothstep(0.0, B_GROW, t);
         // 周りを暗くして玉に目を向ける（割れてから図柄が回り始めるまでに戻す）。
         col *= 1.0 - 0.6 * g * (1.0 - smoothstep(B_REVEAL, B_REELS, t));
         if (t < B_REVEAL) {
-          float c = smoothstep(B_CRACK, B_REVEAL, t);
+          float c = crackAt(t);
           float u = max(t - B_CRACK, 0.0);
           float bl = blinkAt(2.0 * t + 0.45 * u * u / (B_REVEAL - B_CRACK));
           vec2 ctr = mix(vec2(0.075, 0.095), vec2(0.5, 0.52), g);
           ctr.y += sin(g * 3.14159) * 0.06;
           // 割れる直前は小刻みに震える。
           ctr += (hash2(vec2(floor(t * 40.0), 1.0)) - 0.5) * 0.012 * c * c * (1.0 - uCalm);
-          float R = mix(0.032, 0.2, g);
+          float R = mix(0.032, 0.3, g);
           vec2 q = (vUv - ctr) * vec2(ASPECT, 1.0) / R;
           float r = length(q);
           col += vec3(0.85, 0.9, 1.0) * exp(-max(r - 1.0, 0.0) * 4.0) * (0.1 + 0.3 * bl + 0.45 * c);
@@ -570,7 +578,7 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
         // 割れた瞬間の白い光。
         col += vec3(1.0) * exp(-s * 12.0) * mix(0.35, 0.15, uCalm);
         // 殻のかけらが外へ広がって消える。
-        vec2 q = d / (0.2 * (1.0 + s * 3.0));
+        vec2 q = d / (0.3 * (1.0 + s * 3.0));
         float rq = length(q);
         if (rq < 1.0 && s < 0.4) {
           float gap = 0.03 + s * 0.5;
@@ -581,7 +589,7 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
         float k = clamp(s / 0.3, 0.0, 1.0);
         float pop = 1.0 - (1.0 - k) * (1.0 - k) * (1.0 - k) + 0.18 * sin(clamp(s / 0.45, 0.0, 1.0) * 3.14159);
         float mv = smoothstep(B_REELS - 0.1, B_END, t);
-        return drawHold(col, mix(ctr, vec2(0.5, 0.1), mv), code, max(mix(0.16, 0.058, mv) * pop, 0.001), 0.0);
+        return drawHold(col, mix(ctr, vec2(0.5, 0.1), mv), code, max(mix(0.24, 0.058, mv) * pop, 0.001), 0.0);
       }
 
       void main() {

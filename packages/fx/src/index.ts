@@ -10,11 +10,14 @@ export { FlashLayer } from './flash-layer.ts';
 export { Haptics } from './haptics.ts';
 export type { HoldChangePlan } from './hold-change.ts';
 export {
+  HOLD_BREAK_MIN_REELS_MS,
   HOLD_BREAK_MS,
+  HOLD_CRACK_STEPS_MS,
   HOLD_CRACK_CUE,
   HOLD_RANKED,
   SAKIBARE_CUE,
   SAKIBARE_DELAY_MS,
+  holdBreakScale,
   holdChangeCue,
   holdColorAt,
   holdRank,

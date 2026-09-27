@@ -38,7 +38,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FlashLayer, HOLD_BREAK_MS, HOLD_CRACK_CUE, SAKIBARE_CUE, holdChangeCue, holdRank, type SceneCue } from '@ph/fx';
+import { FlashLayer, HOLD_BREAK_MS, HOLD_CRACK_CUE, SAKIBARE_CUE, holdBreakScale, holdChangeCue, holdRank, type SceneCue } from '@ph/fx';
 import {
   BALL_RADIUS_MM,
   type Board,
@@ -492,7 +492,7 @@ export class BoardScene {
   /**
    * 変動が始まったら演出を決める（分岐は RNGStream(seed, 'presentation', entry)、尺は実際の変動時間, D-067）。
    * 液晶のシーンは LcdReels が描き、音・光・振動・揺れ・カメラは CuePlayer が実時間で鳴らす（Debug の倍速では鳴らさない）。
-   * 保留が割れる変動（D-075）は hold_crack を鳴らし、図柄と演出は割れた後（HOLD_BREAK_MS.reels）から残りの尺で流す。
+   * 保留が割れる変動（D-075）は hold_crack を鳴らし、図柄と演出は割れた後（HOLD_BREAK_MS.reels。短い変動は holdBreakScale で縮める）から残りの尺で流す。
    */
   private startShow(st: LcdState, now: number, scale: number): void {
     const spin = st.spin;
@@ -500,12 +500,14 @@ export class BoardScene {
     const patternMs = this.patterns(spin.pattern)?.ms ?? spin.endsAt - (spin.startAt ?? now);
     // Projection から作った変動は開始時刻が分からないので、パターンの尺から逆算する。
     const start = spin.startAt ?? spin.endsAt - patternMs;
-    const origin = spin.breaks ? Math.min(start + HOLD_BREAK_MS.reels, spin.endsAt - 1) : start;
+    // 短い変動は割れる演出を縮めて、割れた後にも図柄が回るようにする。
+    const k = holdBreakScale(spin.endsAt - start);
+    const origin = spin.breaks ? Math.min(start + HOLD_BREAK_MS.reels * k, spin.endsAt - 1) : start;
     const plan = planFor(spin.pattern, this.seed, spin.entry, patternMs, spin.endsAt - origin);
     this.show = { entry: spin.entry, origin, lcd: plan.lcd };
     if (scale !== 1) return;
     playCues(plan.cues, now - origin);
-    if (spin.breaks && now - start < HOLD_BREAK_MS.reveal) playBreakCue(HOLD_CRACK_CUE, this.seed, spin.entry, now - start);
+    if (spin.breaks && now - start < HOLD_BREAK_MS.reveal * k) playBreakCue(HOLD_CRACK_CUE, this.seed, spin.entry, now - start, k);
   }
 
   /**

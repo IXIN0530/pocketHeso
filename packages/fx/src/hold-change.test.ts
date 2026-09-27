@@ -3,6 +3,7 @@ import { LOTTERY_HOLD_COLORS, holdColorWeights, modeOf, parseMachineText, type L
 import { expect, test } from 'vitest';
 import {
   HOLD_BREAK_MS,
+  HOLD_CRACK_STEPS_MS,
   SAKIBARE_DELAY_MS,
   holdChangeCue,
   holdColorAt,
@@ -111,6 +112,10 @@ test('変化する保留は灰色のまま、自分の変動開始から割れ�
   // 玉になる → ひび → 割れる → 図柄が回る → 戻る、の順。
   const t = HOLD_BREAK_MS;
   expect(t.grow <= t.crack && t.crack < t.reveal && t.reveal < t.reels && t.reels < t.end).toBe(true);
+  expect(HOLD_CRACK_STEPS_MS.every((ms, i) => ms > t.crack && ms < t.reveal && (i === 0 || ms > HOLD_CRACK_STEPS_MS[i - 1]!))).toBe(true);
+  // 縮めた尺でも割れる時刻に最終色。
+  expect(holdColorAt(p, 5000, 5000 + t.reveal * 0.5 - 1, 0.5)).toBe('white');
+  expect(holdColorAt(p, 5000, 5000 + t.reveal * 0.5, 0.5)).toBe('gold');
   const colors: LotteryHoldColor[] = ['blue', 'green', 'red', 'gold'];
   expect(colors.map(holdChangeCue)).toEqual(['hold_blue', 'hold_green', 'hold_red', 'hold_gold']);
 });

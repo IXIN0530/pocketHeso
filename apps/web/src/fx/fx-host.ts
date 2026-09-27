@@ -115,18 +115,22 @@ export function playCues(cues: readonly Cue[], startedAgoMs = 0): void {
   tick();
 }
 
-/** 変動の演出と重ねて鳴らす短い演出の再生口。変動の演出は止めない（同じ口の前の演出は上書き）。startedAgoMs > 0 なら途中から。 */
-function sideLane(): (pattern: string, seed: number, serial: number, startedAgoMs?: number) => boolean {
+/**
+ * 変動の演出と重ねて鳴らす短い演出の再生口。変動の演出は止めない（同じ口の前の演出は上書き）。startedAgoMs > 0 なら途中から。
+ * timeScale はシートの時刻の縮尺（短い変動に収める割れる演出, D-075）。
+ */
+function sideLane(): (pattern: string, seed: number, serial: number, startedAgoMs?: number, timeScale?: number) => boolean {
   const p = new CuePlayer(route);
   let id = 0;
   const step = () => {
     p.update(performance.now());
     id = p.done ? 0 : requestAnimationFrame(step);
   };
-  return (pattern, seed, serial, startedAgoMs = 0) => {
+  return (pattern, seed, serial, startedAgoMs = 0, timeScale = 1) => {
     const sheet = sheets.get(pattern);
     if (!sheet) return false;
-    p.start(resolveCueSheet(sheet, { seed, serial, intensity: INTENSITY }).cues, performance.now() - startedAgoMs);
+    const cues = resolveCueSheet(sheet, { seed, serial, intensity: INTENSITY }).cues;
+    p.start(timeScale === 1 ? cues : cues.map((c) => ({ ...c, at: c.at * timeScale })), performance.now() - startedAgoMs);
     if (id) cancelAnimationFrame(id);
     step();
     return true;
