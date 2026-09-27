@@ -7,7 +7,9 @@
 
 ## 入力（すべて追記のみ、時刻昇順）
 ```ts
-type Grant   = { claimId: string; at: SimTime; fuelMs: number; medals: number; streakDay?: string } // spec/30 が生成
+type Grant   = { claimId: string; at: SimTime; fuelMs: number; medals: number; streakDay?: string   // spec/30 が生成
+                 prodMin?: number     // 即時の玉 = refPerSec × prodMin × 60（spec/23, D-081。省略は0）
+                 bonusHolds?: number } // 特別保留の数（整数。省略は0）
 type Action  =
   | { t: SimTime; k: 'buy'; target: UpgradeId; count: number }
   | { t: SimTime; k: 'awaken'; yakumono: YakumonoId }
@@ -16,7 +18,7 @@ type Action  =
   | { t: SimTime; k: 'presence'; fg: boolean }                     // 前面/背面（放置効率・予告の出現）
   | { t: SimTime; k: 'noticeTap'; noticeId: number }
   | { t: SimTime; k: 'boost'; on: boolean }
-  | { t: SimTime; k: 'close' }                                     // 閉店（周回）
+  | { t: SimTime; k: 'close'; machineId?: string }                // 閉店（周回）。machineId で次の周回の機種（新台入替, D-082）
 ```
 - 検証に失敗した Action（残高不足・期限切れの予告等）は `rejected` イベントを出して無視する（状態は変えない）。
 - 背面にいる間は `shoot` を自動で off 扱い（手動打ちは前面限定）。
@@ -29,13 +31,13 @@ type SimEvent =
   | { k: 'holdAdded'; entry: HoldEntry; at: SimTime } | { k: 'holdOverflow'; ball: number; at: SimTime }
   | { k: 'spinStarted'; entry: number; at: SimTime; pattern: PatternId; endsAt: SimTime }
   | { k: 'spinResolved'; entry: number; at: SimTime; hit: boolean }
-  | { k: 'jackpotStarted'; entry: number; at: SimTime; kind: JackpotKind; rounds: number }
-  | { k: 'jackpotEnded'; entry: number; at: SimTime; payout: number }
+  | { k: 'jackpotStarted'; entry: number; at: SimTime; kind: JackpotKind; rounds: number; roundBonus?: number } // 1Rの大当たりボーナス（経済つきのみ）
+  | { k: 'jackpotEnded'; entry: number; at: SimTime; payout: number; bonus?: number }  // payout=出玉、bonus=roundBonus×実ラウンド数
   | { k: 'modeChanged'; to: Mode; at: SimTime; stRemaining: number }
   | { k: 'noticeSpawned' | 'noticeExpired'; id: number; at: SimTime; effect: NoticeEffect }
-  | { k: 'granted'; claimId: string; at: SimTime; fuelMs: number; medals: number }
+  | { k: 'granted'; claimId: string; at: SimTime; fuelMs: number; medals: number; balls?: number; bonusHolds?: number } // balls=即時の玉
   | { k: 'fuelEmpty' | 'fuelRefilled'; at: SimTime }
-  | { k: 'closed'; at: SimTime; regularPoints: number }
+  | { k: 'closed'; at: SimTime; regularPoints: number; machineId?: string }  // 機種を変えた時だけ
   | { k: 'rejected'; at: SimTime; action: Action['k']; reason: string }
 type HoldEntry = { serial: number; hit: boolean; kind?: JackpotKind; pattern: PatternId; color: HoldColor; hot: number }
 type Mode = 'normal' | 'jitan' | 'st' | 'lt'  // spec/21 モード拡張節。stRemaining は jitan/st/lt の残り回転数（normal は 0）
@@ -45,7 +47,7 @@ type Mode = 'normal' | 'jitan' | 'st' | 'lt'  // spec/21 モード拡張節。st
 ## Engine
 ```ts
 export class Engine {
-  constructor(cfg: EngineConfig /* seed, machine, board, atlas, economy */, grants: Grant[], actions: Action[])
+  constructor(cfg: EngineConfig /* seed, machine, machines?, board, atlas, economy */, grants: Grant[], actions: Action[])
   appendGrant(g: Grant): void; appendAction(a: Action): void   // 未来時刻のみ受け付ける（t ≥ now）
   advance(to: SimTime): SimEvent[]                              // 新規イベントのみ返す
   snapshot(): EngineSnapshot; static restore(s: EngineSnapshot, cfg: EngineConfig): Engine
@@ -54,7 +56,13 @@ export class Engine {
 }
 ```
 - 玉の結果は `atlas[key(ball)]` を引くだけ（物理は走らせない）。センサー時刻 = 発射時刻 + flightMs。
-- 同時刻の並び: Action/Grant → sensor → holdAdded/Overflow → spinResolved → jackpot* → spinStarted → mode → notice → economyTick。
+- 同時刻の並び: Action/Grant → sensor → holdAdded/Overflow → spinResolved → jackpot* → 特別保留の投入 → 電サポの自動補充 → spinStarted → mode → notice → economyTick。
+- **特別保留**（D-081）: Grant.bonusHolds はストック（snapshot `bonusStock`）に足し、保留に空きがあれば1つずつ入れる（`holdAdded`）。
+  抽選は `RNGStream(seed, 'grantHold', n)`（n はストックから出した通し番号, 0 始まり）、serial = `GRANT_HOLD_SERIAL_BASE`（1.5e9）+ n。
+  当否・色は予告のボーナス保留（`drawBonusHold`）と同じ規則、rate1・賞球なし。取得時のモードで表を選ぶ。
+- **新台入替**（D-082）: `EngineConfig.machines`（MachineSpec の配列。id で引く。反復順に依存しない）があれば、close の machineId で次の周回の機種に切り替える。
+  大当たり中・電サポ中（jitan/st/lt）の close に machineId が付いていれば `rejected`（'busy'）。切り替える時は保留と変動中の結果を捨て（特別保留のストックは残す）、normal から始める。
+  machines に無い id は `rejected`（'machine'）。snapshot に今の機種 id を持つ。
 - 性能: 放置24時間分の `advance`（オート打ち込み）が iPhone で 300ms 以内。超える場合は Web Worker で実行し進捗表示。
 
 ## 決定論契約（テスト必須）
@@ -70,6 +78,7 @@ export interface HallProjection {
   at: SimTime; mode: Mode; stRemaining: number
   holds: HoldColor[]; spin?: SpinView; jackpot?: JackpotView
   balls: number; medals: number; fuelMs: number; boostMs: number; perSec: number   // 現在の生産/秒（燃料・放置効率込み）
+  refPerSec: number; bonusStock: number; machineId: string   // 基準生産（spec/23）・特別保留のストック・今の機種
   yakumono: YakumonoView[]            // Lv, 次の価格, 回転位相と実効周期 periodS（描画用）, 覚醒数
   notice?: NoticeView                 // 表示中の予告
   totals: Totals                      // 回転数, 当たり, 出玉, 発射数, 累計玉
