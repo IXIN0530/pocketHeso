@@ -15,6 +15,17 @@ const SEVEN = 6; // アトラスの 7 の添字
 /** 保留の色 → シェーダーの番号（0 は空き。1,2 は丸・3 はひし形・4 は4点の星・5 は5点の星, spec/40 の色＋形）。 */
 export const HOLD_CODE: Record<LotteryHoldColor, number> = { white: 1, blue: 2, green: 3, red: 4, gold: 5 };
 
+/** 保留の横位置（次の保留が当該保留のすぐ左、そこから左へ順に並ぶ, D-078）。5つ目は1つずれる動きの出どころ。 */
+const HOLD_X = [0.4, 0.325, 0.25, 0.175, 0.1] as const;
+const HOLD_Y = 0.095;
+const HOLD_SIZE = 0.04;
+/** 当該変動の保留（中央下に大きく）。 */
+const CUR_X = 0.5;
+const CUR_Y = 0.1;
+const CUR_SIZE = 0.058;
+/** 変動開始で保留が左から右へ1つずれる時間（実時間）。 */
+const SHIFT_MS = 350;
+
 interface Reel {
   pos: number;
   vel: number;
@@ -54,7 +65,8 @@ export function spinTargets(entry: number, reach: boolean, hit: boolean): [numbe
  * 変動の開始で回し、左 → 右 → 中の順に止める。中は変動の終了時刻に止まる。リーチ（パターンの hot ≥ 1）は左右を
  * シートの reach の時刻（無ければ早め）に揃え、中を終了まで回して最後の 1.2 秒で減速する。疑似連の区間は3列をいったん
  * 止めて回し直す。SP・決め・群予告・テロップなどはシートの lcd キューをシェーダーで描く（図形・テキスト・パーティクルのみ）。
- * 保留は色＋形で4つまで、当該変動の保留は中央下に大きく出す。変化する保留は灰色で点滅し、変動開始で液晶の中央へ動いて
+ * 当該変動の保留は中央下に大きく、保留は色＋形で4つまでそのすぐ左から左へ順に出し、変動開始で右へ1つずれる（D-078）。
+ * 変化する保留は灰色で点滅し、変動開始で液晶の中央へ動いて
  * 大きな玉になり、ひびが入って割れ、中から最終色の保留が出て色が広がる（HOLD_BREAK_MS, D-075）。図柄はその後に回り始める。
  */
 export class LcdReels {
@@ -79,6 +91,9 @@ export class LcdReels {
   private reachMs = -1;
   private flash = 0;
   private holdCount = 0;
+  /** 保留が1つずれ始めた時刻（elapsed）と、ずれる保留の数（その後に来た保留は動かさない）。 */
+  private shiftAt = -Infinity;
+  private shiftN = 0;
   /** prefers-reduced-motion（保留の点滅と流れる光を止める, spec/43）。 */
   reducedMotion = false;
   private show: SpinShow | null = null;
@@ -126,7 +141,11 @@ export class LcdReels {
     if (st.holds.length > this.holdCount) this.flash = 1;
     this.holdCount = st.holds.length;
 
-    if (st.spin && st.spin.entry !== this.spin?.entry) this.begin(st.spin, now, show?.entry === st.spin.entry ? show : null);
+    if (st.spin && st.spin.entry !== this.spin?.entry) {
+      this.shiftAt = this.elapsed;
+      this.shiftN = st.holds.length;
+      this.begin(st.spin, now, show?.entry === st.spin.entry ? show : null);
+    }
     if (this.spin) this.step(dtMs, now, scale, st, peek);
     const look = this.show && this.spin ? lcdLook(this.show.lcd, now - this.show.origin, this.textRow) : NO_LOOK;
     this.setLook(look);
@@ -139,6 +158,16 @@ export class LcdReels {
     const bk = st.holds.map((x) => (x.blink ? 1 : 0));
     (u.uBlink!.value as Vector4).set(bk[0] ?? 0, bk[1] ?? 0, bk[2] ?? 0, bk[3] ?? 0);
     u.uCur!.value = st.spin?.color ? HOLD_CODE[st.spin.color] : 0;
+    // 変動開始で残りの保留が右へ1つずれ、次の保留が当該の位置へ大きくなりながら動く（reduced-motion は動かさない）。
+    const k = this.reducedMotion ? 1 : Math.min(1, (this.elapsed - this.shiftAt) / SHIFT_MS);
+    const e = 1 - (1 - k) * (1 - k) * (1 - k);
+    const x = [0, 1, 2, 3].map((i) => (i < this.shiftN ? HOLD_X[i + 1]! + (HOLD_X[i]! - HOLD_X[i + 1]!) * e : HOLD_X[i]!));
+    (u.uHoldX!.value as Vector4).set(x[0]!, x[1]!, x[2]!, x[3]!);
+    (u.uCurPos!.value as Vector3).set(
+      HOLD_X[0] + (CUR_X - HOLD_X[0]) * e,
+      HOLD_Y + (CUR_Y - HOLD_Y) * e,
+      HOLD_SIZE + (CUR_SIZE - HOLD_SIZE) * e,
+    );
     // 割れる演出は HOLD_BREAK_MS の尺で描く（短い変動は縮めた分だけ速く進める）。
     const sp = st.spin;
     const bt = sp?.breaks && sp.startAt !== null ? (now - sp.startAt) / holdBreakScale(sp.endsAt - sp.startAt) : -1;
@@ -309,6 +338,8 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: 
       uReel: { value: new Vector3() },
       uBlur: { value: new Vector3() },
       uHolds: { value: new Vector4() },
+      uHoldX: { value: new Vector4(HOLD_X[0], HOLD_X[1], HOLD_X[2], HOLD_X[3]) },
+      uCurPos: { value: new Vector3(CUR_X, CUR_Y, CUR_SIZE) },
       uBlink: { value: new Vector4() },
       uCur: { value: 0 },
       uBrk: { value: -1 },
@@ -337,6 +368,8 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: 
       uniform vec3 uReel;
       uniform vec3 uBlur;
       uniform vec4 uHolds;
+      uniform vec4 uHoldX;    // 保留の横位置（1つずれる動きの途中を含む）
+      uniform vec3 uCurPos;   // 当該変動の保留の位置と大きさ
       uniform vec4 uBlink;    // 灰色で点滅する保留（変化する保留, D-075）
       uniform float uCur, uTime, uReach, uFlash, uWin, uCalm;
       uniform float uBrk;     // 保留が割れる演出の経過秒（-1 は無し）
@@ -522,7 +555,7 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: 
       }
 
       // 変化保留が割れる（D-075）。t は変動開始からの秒、code は見せる色（割れるまでは白）。
-      // 左下の保留が中央へ動いて大きなパチンコ玉になり、点滅が 2.0 → 2.9 回/秒へ速くなりながらひびがピキッと段々に広がり、
+      // 次の保留の位置（当該のすぐ左）から中央へ動いて大きなパチンコ玉になり、点滅が 2.0 → 2.9 回/秒へ速くなりながらひびがピキッと段々に広がり、
       // 割れると殻が飛び散って中から最終色の保留が出て、保留の色が中心から液晶いっぱいに広がる。
       vec3 drawBreak(vec3 col, float t, float code) {
         float g = smoothstep(0.0, B_GROW, t);
@@ -532,7 +565,7 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: 
           float c = crackAt(t);
           float u = max(t - B_CRACK, 0.0);
           float bl = blinkAt(2.0 * t + 0.45 * u * u / (B_REVEAL - B_CRACK));
-          vec2 ctr = mix(vec2(0.075, 0.095), vec2(0.5, 0.52), g);
+          vec2 ctr = mix(vec2(${HOLD_X[0]}, ${HOLD_Y}), vec2(0.5, 0.52), g);
           ctr.y += sin(g * 3.14159) * 0.06;
           // 割れる直前は小刻みに震える。
           ctr += (hash2(vec2(floor(t * 40.0), 1.0)) - 0.5) * 0.012 * c * c * (1.0 - uCalm);
@@ -603,7 +636,7 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: 
         float k = clamp(s / 0.3, 0.0, 1.0);
         float pop = 1.0 - (1.0 - k) * (1.0 - k) * (1.0 - k) + 0.18 * sin(clamp(s / 0.45, 0.0, 1.0) * 3.14159);
         float mv = smoothstep(B_REELS - 0.1, B_END, t);
-        return drawHold(col, mix(ctr, vec2(0.5, 0.1), mv), code, max(mix(0.24, 0.058, mv) * pop, 0.001), 0.0);
+        return drawHold(col, mix(ctr, vec2(${CUR_X}, ${CUR_Y}), mv), code, max(mix(0.24, ${CUR_SIZE}, mv) * pop, 0.001), 0.0);
       }
 
       void main() {
@@ -675,14 +708,15 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: 
           col = mix(col, hud.rgb, hud.a);
         }
 
-        // 保留（左下に4つ、色＋形）と当該変動の保留（中央下に大きく）。読みやすいよう下端に暗い帯を敷く。
+        // 当該変動の保留（中央下に大きく）と保留（そのすぐ左から左へ順に4つ、色＋形）。読みやすいよう下端に暗い帯を敷く。
+        // 左の保留から描く（右へずれる保留が、その先の空きの輪の上に重なるように）。
         col *= 1.0 - 0.6 * (1.0 - smoothstep(0.17, 0.22, vUv.y));
-        col = drawHold(col, vec2(0.075, 0.095), uHolds.x, 0.04, uBlink.x);
-        col = drawHold(col, vec2(0.15, 0.095), uHolds.y, 0.04, uBlink.y);
-        col = drawHold(col, vec2(0.225, 0.095), uHolds.z, 0.04, uBlink.z);
-        col = drawHold(col, vec2(0.3, 0.095), uHolds.w, 0.04, uBlink.w);
+        col = drawHold(col, vec2(uHoldX.w, ${HOLD_Y}), uHolds.w, ${HOLD_SIZE}, uBlink.w);
+        col = drawHold(col, vec2(uHoldX.z, ${HOLD_Y}), uHolds.z, ${HOLD_SIZE}, uBlink.z);
+        col = drawHold(col, vec2(uHoldX.y, ${HOLD_Y}), uHolds.y, ${HOLD_SIZE}, uBlink.y);
+        col = drawHold(col, vec2(uHoldX.x, ${HOLD_Y}), uHolds.x, ${HOLD_SIZE}, uBlink.x);
         if (uBrk >= 0.0) col = drawBreak(col, uBrk, uCur);
-        else if (uCur > 0.5) col = drawHold(col, vec2(0.5, 0.1), uCur, 0.058, 0.0);
+        else if (uCur > 0.5) col = drawHold(col, uCurPos.xy, uCur, uCurPos.z, 0.0);
 
         // 走査線と周辺減光（液晶らしさ）。
         col *= 0.93 + 0.07 * sin(vUv.y * 420.0);
