@@ -49,7 +49,7 @@ import {
   type Vec2,
 } from '@ph/core';
 import type { Shot } from '../engine/engine-host.ts';
-import { packTexts, planFor, playCue, playCues, playSideCue, setFlashTarget, setSceneTarget } from '../fx/fx-host.ts';
+import { packTexts, planFor, playCue, playCues, playHesoCue, playSideCue, setFlashTarget, setSceneTarget } from '../fx/fx-host.ts';
 import { PREVIEW_TAIL_MS, type PreviewRequest } from '../stores/preview.ts';
 import { LCD_RECT, bakeBoard, bakeGlare, bakeHall, bakeSoftDot, bakeSymbolAtlas, bakeTextAtlas } from './art.ts';
 import { BallTracks, DISPLAY_LAG_MS, MAX_BALLS, PREROLL_MS } from './ball-tracks.ts';
@@ -68,6 +68,8 @@ const WIN_MS = 3000;
 
 /** 先バレの時刻からこれ以上たって気付いたら鳴らさない（表示時刻の ms）。 */
 const SAKIBARE_LATE_MS = 1000;
+/** ヘソ入賞で鳴らすパックの演出。 */
+const HESO_CUE = 'heso';
 
 /** 変動パターンの熱さ（1 以上をリーチとして見せる）と基準の尺（spec/21 patterns.json）。 */
 export interface PatternInfo {
@@ -398,7 +400,10 @@ export class BoardScene {
 
     const display = this.displayNow();
     this.tracks.update(display, (kind) => {
-      if (kind === 'start1') this.hesoFlash = 1;
+      if (kind !== 'start1') return;
+      this.hesoFlash = 1;
+      // ヘソ入賞の軽い音（先バレとは別の小さな正弦波）。Debug の倍速では鳴らさない。
+      if (this.clock.scale === 1) playHesoCue(HESO_CUE, this.seed, 0);
     });
     const clockNow = performance.now();
     let lcdState = this.lcdTimeline.advance(display);

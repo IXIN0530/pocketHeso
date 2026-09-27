@@ -15,6 +15,8 @@
     "hold_up": { "synth": { "wave": "triangle", "hz": [880, 1320], "ms": 160, "gain": 0.3 } },
     "hold_red": { "synth": { "wave": "square", "hz": [700, 1400], "ms": 240, "gain": 0.3 } },
     "hold_gold": { "synth": { "wave": "sawtooth", "hz": [600, 2600], "ms": 600, "gain": 0.35 } },
+    "heso_pi": { "synth": { "wave": "sine", "hz": [1175, 1175], "ms": 70, "gain": 0.14 } },
+    "heso_ron": { "synth": { "wave": "sine", "hz": [1568, 1568], "ms": 220, "gain": 0.12 } },
     "sakibare": { "synth": { "wave": "square", "hz": [2000, 3200], "ms": 110, "gain": 0.3 } }
   },
   "sheets": [
@@ -188,6 +190,13 @@
         { "at": 0, "kind": "flash", "style": "rainbow", "ms": 500 },
         { "at": 0, "kind": "haptic", "pattern": [60, 30, 90] },
         { "at": 0, "kind": "bloom", "ms": 900, "strength": 0.5, "min_intensity": 2 }
+      ]
+    },
+    {
+      "pattern": "heso",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "heso_pi" },
+        { "at": 70, "kind": "sound", "bus": "se", "asset": "heso_ron" }
       ]
     },
     {
