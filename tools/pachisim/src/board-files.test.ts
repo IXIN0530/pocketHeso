@@ -32,10 +32,10 @@ function reverseKeys(v: unknown): unknown {
   return v;
 }
 
-test('default.json がロード・検証を通る（釘約300・役物8）', () => {
+test('default.json がロード・検証を通る（釘約250（液晶まわりは空ける, D-073）・役物8）', () => {
   const board = parseBoardText(loadText('default.json'));
   expect(board.id).toBe('default');
-  expect(board.pins.length).toBeGreaterThanOrEqual(280);
+  expect(board.pins.length).toBeGreaterThanOrEqual(230);
   expect(board.pins.length).toBeLessThanOrEqual(340);
   expect(board.yakumono.length).toBe(8);
   const kinds = board.sensors.map((s) => s.kind);

@@ -10,7 +10,7 @@ import { openStorage } from '../platform/storage.ts';
 import { BallTracks, DISPLAY_LAG_MS, MAX_BALLS } from './ball-tracks.ts';
 
 const ATLAS = ((): ArrayBuffer => {
-  const b = readFileSync('../../resources/atlas/default.9489bfc699495d5a.bin');
+  const b = readFileSync('../../resources/atlas/default.27038344f36daf46.bin');
   return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
 })();
 const BOARD = parseBoard(boardJson);

@@ -12,7 +12,7 @@ import { LcdTimeline, applyLcdEvent, matchesProjection, shownLcdState, stateFrom
 import { spinTargets } from './lcd.ts';
 
 const ATLAS = ((): ArrayBuffer => {
-  const b = readFileSync('../../resources/atlas/default.9489bfc699495d5a.bin');
+  const b = readFileSync('../../resources/atlas/default.27038344f36daf46.bin');
   return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
 })();
 
@@ -78,7 +78,10 @@ test('保留が増減し、変動の開始で先頭が1つ消化される（取�
     });
     expect(tl.resyncs).toBe(0);
     // 表示時刻が追いつけば Projection と同じ（保留の色の並び・変動中の番号）。
-    const last = await host.tick(T0 + 6 * MIN);
+    // 大当たりの出玉で打ち続ける台もあるので、打つのを止めてから保留と大当たりが終わるまで待つ。
+    const stop = await host.act({ k: 'shoot', on: false, rate: 1 }, T0 + 6 * MIN);
+    tl.push(stop.projection, stop.events);
+    const last = await host.tick(T0 + 20 * MIN);
     tl.push(last.projection, last.events);
     expect(matchesProjection(tl.advance(last.projection.at), last.projection)).toBe(true);
     expect(last.projection.holds.length).toBe(0);

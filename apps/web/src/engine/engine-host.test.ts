@@ -6,7 +6,7 @@ import { appendClaims, getSnapshot, loadActions, openStorage, putSnapshot, type 
 import { EngineHost } from './engine-host.ts';
 
 const ATLAS = ((): ArrayBuffer => {
-  const b = readFileSync('../../resources/atlas/default.9489bfc699495d5a.bin');
+  const b = readFileSync('../../resources/atlas/default.27038344f36daf46.bin');
   return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
 })();
 

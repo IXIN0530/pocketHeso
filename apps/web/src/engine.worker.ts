@@ -1,6 +1,6 @@
 // Engine を UI スレッドの外で回す（spec/40）。中身は EngineHost、ここは Atlas の読み込みと RPC の公開だけ。
 import type { ClaimRecord } from '@ph/claims';
-import atlasUrl from '../../../resources/atlas/default.9489bfc699495d5a.bin?url';
+import atlasUrl from '../../../resources/atlas/default.27038344f36daf46.bin?url';
 import { EngineHost, type ActionInput } from './engine/engine-host.ts';
 import { expose, type Port } from './engine/rpc.ts';
 import { openStorage } from './platform/storage.ts';

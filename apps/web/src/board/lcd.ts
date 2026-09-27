@@ -73,6 +73,8 @@ export class LcdReels {
   private reachMs = -1;
   private flash = 0;
   private holdCount = 0;
+  /** prefers-reduced-motion（保留の点滅と流れる光を止める, spec/43）。 */
+  reducedMotion = false;
   private show: SpinShow | null = null;
   private pseudo: { from: number; to: number; state: 'wait' | 'stopped' | 'done' }[] = [];
   /** 中の図柄を最後に止めた（疑似連の停止と区別する）。 */
@@ -130,6 +132,7 @@ export class LcdReels {
     u.uReach!.value = this.reachMs >= 0 ? Math.min(1, this.reachMs / 300) : 0;
     u.uFlash!.value = this.flash;
     u.uWin!.value = Math.max(winLevel, st.jackpot ? 0.35 : 0);
+    u.uCalm!.value = this.reducedMotion ? 1 : 0;
   }
 
   private begin(spin: LcdSpin, now: number, show: SpinShow | null): void {
@@ -280,6 +283,7 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
       uReach: { value: 0 },
       uFlash: { value: 0 },
       uWin: { value: 0 },
+      uCalm: { value: 0 },
     },
     vertexShader: /* glsl */ `
       varying vec2 vUv;
@@ -295,7 +299,7 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
       uniform vec3 uReel;
       uniform vec3 uBlur;
       uniform vec4 uHolds;
-      uniform float uCur, uTime, uReach, uFlash, uWin;
+      uniform float uCur, uTime, uReach, uFlash, uWin, uCalm;
       varying vec2 vUv;
       const float SYM_H = 0.46;
       const float ASPECT = ${(160 / 104).toFixed(4)};
@@ -375,12 +379,13 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
         return length(p) * sign(p.x);
       }
 
+      // 金属の地の色（白は銀）。
       vec3 holdColor(float code) {
-        if (code < 1.5) return vec3(0.85);
-        if (code < 2.5) return vec3(0.25, 0.6, 1.6);
-        if (code < 3.5) return vec3(0.3, 1.4, 0.45);
-        if (code < 4.5) return vec3(1.7, 0.18, 0.2);
-        return vec3(1.9, 1.35, 0.35);
+        if (code < 1.5) return vec3(0.9, 0.93, 1.0);
+        if (code < 2.5) return vec3(0.22, 0.52, 1.3);
+        if (code < 3.5) return vec3(0.18, 1.1, 0.38);
+        if (code < 4.5) return vec3(1.45, 0.1, 0.12);
+        return vec3(1.5, 1.0, 0.22);
       }
 
       // 形（丸・ひし形・星）の距離。size は外接半径。
@@ -391,8 +396,9 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
         return star(d, size * 1.1, 5.0, 3.0);
       }
 
-      // 保留1つを重ねる（空きは暗い輪だけ）。
-      vec3 drawHold(vec3 col, vec2 c, float code, float size, float pulse) {
+      // 保留1つを重ねる（空きは暗い輪だけ）。面取りした金属の板として陰影をつけ、ハイライトが斜めに流れる。
+      // 赤・金は点滅して後光が脈打つ（2.0/2.4回/秒, spec/43 の3回/秒未満）。reduced-motion（uCalm）では点滅と流れを止める。
+      vec3 drawHold(vec3 col, vec2 c, float code, float size) {
         vec2 d = (vUv - c) * vec2(ASPECT, 1.0);
         if (code < 0.5) {
           float ring = 1.0 - smoothstep(0.0, 0.004, abs(length(d) - size * 0.6));
@@ -400,10 +406,44 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
         }
         float sd = holdShape(d, code, size);
         float fill = 1.0 - smoothstep(-0.002, 0.002, sd);
-        float glow = exp(-max(sd, 0.0) * 90.0) * (0.35 + 0.25 * pulse);
-        vec3 hc = holdColor(code);
-        col += hc * glow * 0.5;
-        return mix(col, hc * (0.9 + 0.3 * pulse), fill);
+        vec3 base = holdColor(code);
+        float hot = step(3.5, code);
+        float gold = step(4.5, code);
+        float t = uTime;
+        float blink = mix(1.0, smoothstep(-0.35, 0.35, sin(t * 6.2832 * mix(2.0, 2.4, gold))), hot * (1.0 - uCalm));
+
+        // 後光（赤・金は大きく、点滅に合わせて脈打つ）。
+        float glow = exp(-max(sd, 0.0) * mix(90.0, 45.0, hot)) * mix(0.3, 0.12 + 0.8 * blink, hot);
+        col += base * glow * 0.6;
+        if (fill <= 0.0) return col;
+
+        // 面取りの法線: 縁の bevel 幅だけ外へ傾く（距離の勾配の向き）。
+        float e = size * 0.03;
+        vec2 g = vec2(holdShape(d + vec2(e, 0.0), code, size) - sd, holdShape(d + vec2(0.0, e), code, size) - sd) / e;
+        float h = clamp(-sd / (size * 0.3), 0.0, 1.0);
+        vec3 n = normalize(vec3(g * (1.0 - h) * 1.8, 1.0));
+        // 映り込み: 上は明るい空、中よりやや下に暗い水平線、下は照り返し（クロームの定番の見え方）。
+        float v = d.y / size * 0.5 + n.y * 0.9;
+        vec3 metal = base * (mix(0.45, 0.6, hot) + 0.75 * smoothstep(-0.35, 0.6, v));
+        metal += base * 0.4 * smoothstep(-0.55, -1.0, v);
+        metal *= 1.0 - 0.3 * exp(-(v + 0.3) * (v + 0.3) * 50.0);
+        // 左上からの光のハイライト（地の色を少し残した白）。
+        float spec = pow(max(dot(n, normalize(vec3(-0.35, 0.45, 1.0))), 0.0), 60.0);
+        metal += mix(base, vec3(1.0), 0.6) * spec * 1.3;
+        // 斜めに流れる光（通常は約2.6秒ごと、赤・金は約1.1秒ごと）。
+        float period = mix(2.6, 1.1, hot);
+        float at = fract(t / period) * 3.0 - 1.2;
+        float sweep = exp(-pow(((d.x + d.y) / size * 0.5 - at) * 5.0, 2.0)) * (1.0 - uCalm);
+        metal += mix(base, vec3(1.0), 0.7) * sweep * 0.9;
+        // 金はきらめき（面の上の4点の光）。
+        if (gold > 0.5) {
+          vec2 q = d / size - vec2(0.25, 0.3);
+          float tw = 0.5 + 0.5 * sin(t * 5.0);
+          float cross = exp(-abs(q.x) * 40.0) * exp(-abs(q.y) * 6.0) + exp(-abs(q.y) * 40.0) * exp(-abs(q.x) * 6.0);
+          metal += vec3(1.0, 0.95, 0.7) * cross * mix(0.9, 0.3 + 1.0 * tw, 1.0 - uCalm);
+        }
+        metal *= mix(1.0, 0.4 + 0.8 * blink, hot);
+        return mix(col, metal, fill);
       }
 
       void main() {
@@ -471,12 +511,11 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number): Shad
 
         // 保留（左下に4つ、色＋形）と当該変動の保留（中央下に大きく）。読みやすいよう下端に暗い帯を敷く。
         col *= 1.0 - 0.6 * (1.0 - smoothstep(0.17, 0.22, vUv.y));
-        float pulse = 0.5 + 0.5 * sin(uTime * 6.0);
-        col = drawHold(col, vec2(0.075, 0.095), uHolds.x, 0.04, pulse);
-        col = drawHold(col, vec2(0.15, 0.095), uHolds.y, 0.04, pulse);
-        col = drawHold(col, vec2(0.225, 0.095), uHolds.z, 0.04, pulse);
-        col = drawHold(col, vec2(0.3, 0.095), uHolds.w, 0.04, pulse);
-        if (uCur > 0.5) col = drawHold(col, vec2(0.5, 0.1), uCur, 0.058, pulse);
+        col = drawHold(col, vec2(0.075, 0.095), uHolds.x, 0.04);
+        col = drawHold(col, vec2(0.15, 0.095), uHolds.y, 0.04);
+        col = drawHold(col, vec2(0.225, 0.095), uHolds.z, 0.04);
+        col = drawHold(col, vec2(0.3, 0.095), uHolds.w, 0.04);
+        if (uCur > 0.5) col = drawHold(col, vec2(0.5, 0.1), uCur, 0.058);
 
         // 走査線と周辺減光（液晶らしさ）。
         col *= 0.93 + 0.07 * sin(vUv.y * 420.0);

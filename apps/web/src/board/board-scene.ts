@@ -420,6 +420,7 @@ export class BoardScene {
     this.updateYakumono(display, winLevel);
     const shown = shownLcdState(lcdState, this.seed, lcdNow);
     this.noteHoldChanges(shown, lcdScale);
+    this.lcd.reducedMotion = this.flashLayer.reducedMotion;
     this.lcd.update(dt, lcdNow, lcdScale, shown, (e) => this.lcdTimeline.peekResult(e), winLevel, this.show);
     this.updateLamps(sec, winLevel, white);
     this.updateCamera(clockNow);

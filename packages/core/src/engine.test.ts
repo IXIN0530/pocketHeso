@@ -358,7 +358,8 @@ test('inFlightは飛行中の玉の写しで、発射イベントと入賞先が
   const { spec, patterns } = loadMachine();
   const atlas = loadAtlas();
   const eng = makeEngine(77, atlas, spec, patterns, [{ t: 0, k: 'shoot', on: true, rate: 1 }], [], 100000);
-  const fired = eng.advance(30000).filter((e) => e.k === 'fired');
+  // 30000 ちょうどの発射の直後（盤面によらず必ず1発は飛んでいる）。
+  const fired = eng.advance(30100).filter((e) => e.k === 'fired');
   const flying = eng.inFlight();
   expect(flying.length).toBeGreaterThan(0);
   for (let i = 0; i < flying.length; i = i + 1) {
