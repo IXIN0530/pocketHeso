@@ -2,13 +2,21 @@ import 'fake-indexeddb/auto';
 import { readFileSync } from 'node:fs';
 import type { ClaimRecord } from '@ph/claims';
 import type { HoldEntry, LotteryHoldColor } from '@ph/core';
-import { HOLD_CHANGE_DELAY_MS, holdRank, planHoldChange } from '@ph/fx';
+import { HOLD_CHANGE_DELAY_MS, SAKIBARE_CUE, SAKIBARE_DELAY_MS, holdRank, planHoldChange } from '@ph/fx';
 import { expect, test } from 'vitest';
 import packJson from '../../../../resources/packs/default/pack.json';
 import { EngineHost, type TickResult } from '../engine/engine-host.ts';
 import { openStorage } from '../platform/storage.ts';
 import { DISPLAY_LAG_MS } from './ball-tracks.ts';
-import { LcdTimeline, applyLcdEvent, matchesProjection, shownLcdState, stateFromProjection, type LcdState } from './lcd-timeline.ts';
+import {
+  LcdTimeline,
+  applyLcdEvent,
+  matchesProjection,
+  sakibareTimes,
+  shownLcdState,
+  stateFromProjection,
+  type LcdState,
+} from './lcd-timeline.ts';
 import { spinTargets } from './lcd.ts';
 
 const ATLAS = ((): ArrayBuffer => {
@@ -172,4 +180,23 @@ test('保留変化: Projection から作った保留は最終色のまま・パ�
   expect(shownLcdState(s, 1, 0)).toBe(s);
   const names = packJson.sheets.map((x) => x.pattern);
   for (const c of ['blue', 'green', 'red', 'gold']) expect(names).toContain('hold_' + c);
+});
+
+test('先バレ: 玉が入ってすぐ鳴り、保留は白で出て取得時の変化で最終色へ。変動に移っても同じ時刻・リプレイでは鳴らない', () => {
+  const seed = 5;
+  const serial = findSerial(seed, 'green', (p) => p.sakibare);
+  const other = findSerial(seed, 'red', (p) => !p.sakibare);
+  let s: LcdState = { holds: [], spin: null, resolved: null, jackpot: null };
+  s = applyLcdEvent(s, { k: 'holdAdded', entry: hold(other, 'red'), at: 500 });
+  s = applyLcdEvent(s, { k: 'holdAdded', entry: hold(serial, 'green'), at: 1000 });
+  expect(sakibareTimes(s, seed)).toEqual([{ entry: serial, at: 1000 + SAKIBARE_DELAY_MS }]);
+  expect(shownLcdState(s, seed, 1000 + SAKIBARE_DELAY_MS).holds[1]!.color).toBe('white');
+  expect(shownLcdState(s, seed, 1000 + HOLD_CHANGE_DELAY_MS.acquire).holds[1]!.color).toBe('green');
+  s = applyLcdEvent(s, { k: 'spinStarted', entry: other, at: 3000, pattern: 'normal_short', endsAt: 8000 });
+  s = applyLcdEvent(s, { k: 'spinStarted', entry: serial, at: 8000, pattern: 'normal_short', endsAt: 13000 });
+  expect(sakibareTimes(s, seed)).toEqual([{ entry: serial, at: 1000 + SAKIBARE_DELAY_MS }]);
+  const replay: LcdState = { ...s, spin: { ...s.spin!, addedAt: null, shiftAt: null } };
+  expect(sakibareTimes(replay, seed)).toEqual([]);
+  expect(shownLcdState(replay, seed, 8000).spin!.color).toBe('green');
+  expect(packJson.sheets.map((x) => x.pattern)).toContain(SAKIBARE_CUE);
 });

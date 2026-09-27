@@ -12,11 +12,14 @@ export type { HoldChangeClock, HoldChangePlan, HoldChangeStep, HoldChangeTiming 
 export {
   HOLD_CHANGE_DELAY_MS,
   HOLD_RANKED,
+  SAKIBARE_CUE,
+  SAKIBARE_DELAY_MS,
   holdChangeCue,
   holdChangeTimes,
   holdColorAt,
   holdRank,
   planHoldChange,
+  sakibareAt,
 } from './hold-change.ts';
 export type { ResolveOptions, ResolvedCues } from './resolve.ts';
 export { resolveCueSheet } from './resolve.ts';

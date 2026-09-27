@@ -2,7 +2,7 @@
 // Engine のイベント（保留の取得 → 変動開始 → 停止 → 大当たり）を時刻付きでため、盤面の玉と同じ表示時刻で1つずつ反映する。
 // 前進ごとに「全部反映した結果」を Projection と照らし、合わなければ（背面の間・Debug の倍速で取りこぼした時）Projection に揃える。
 import type { EngineSimEvent, HallProjection, JackpotKind, LotteryHoldColor } from '@ph/core';
-import { holdColorAt, planHoldChange, type HoldChangeClock } from '@ph/fx';
+import { holdColorAt, planHoldChange, sakibareAt, type HoldChangeClock } from '@ph/fx';
 
 export interface LcdHold {
   /** 保留の通し番号（Projection から作った時は分からないので -1）。 */
@@ -137,6 +137,22 @@ export function shownLcdState(s: LcdState, seed: number, now: number): LcdState 
     if (color !== spin.color) spin = { ...spin, color };
   }
   return holds.every((h, i) => h === s.holds[i]) && spin === s.spin ? s : { ...s, holds, spin };
+}
+
+/**
+ * 先バレ（D-074）する保留・変動の番号と時刻（見せ方と同じ RNGStream(seed, 'holdChange', entry) で決まる）。
+ * 取得時刻が分からない保留（Projection から作った・リプレイ・プレビュー）は出さない。
+ */
+export function sakibareTimes(s: LcdState, seed: number): { entry: number; at: number }[] {
+  const out: { entry: number; at: number }[] = [];
+  const see = (entry: number, color: LotteryHoldColor | null, addedAt: number | null) => {
+    if (entry < 0 || color === null || addedAt === null) return;
+    const at = sakibareAt(planHoldChange(seed, entry, color), { addedAt, shiftAt: null, spinAt: null });
+    if (at !== null) out.push({ entry, at });
+  };
+  for (const h of s.holds) see(h.entry, h.color, h.addedAt);
+  if (s.spin) see(s.spin.entry, s.spin.color, s.spin.addedAt);
+  return out;
 }
 
 export class LcdTimeline {

@@ -38,7 +38,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FlashLayer, holdChangeCue, holdRank, type SceneCue } from '@ph/fx';
+import { FlashLayer, SAKIBARE_CUE, holdChangeCue, holdRank, type SceneCue } from '@ph/fx';
 import {
   BALL_RADIUS_MM,
   type Board,
@@ -56,7 +56,7 @@ import { BallTracks, DISPLAY_LAG_MS, MAX_BALLS, PREROLL_MS } from './ball-tracks
 import { CAB, Cabinet, bakeCabinetEnv, ledTube } from './cabinet.ts';
 import { summarize, type FrameStats } from './frame-stats.ts';
 import { LcdReels, type SpinShow } from './lcd.ts';
-import { LcdTimeline, shownLcdState, type LcdState } from './lcd-timeline.ts';
+import { LcdTimeline, sakibareTimes, shownLcdState, type LcdState } from './lcd-timeline.ts';
 
 export interface DrawInfo {
   calls: number;
@@ -65,6 +65,9 @@ export interface DrawInfo {
 
 /** 当たり演出の長さ（ブルームを ON にしておく時間）。 */
 const WIN_MS = 3000;
+
+/** 先バレの時刻からこれ以上たって気付いたら鳴らさない（表示時刻の ms）。 */
+const SAKIBARE_LATE_MS = 1000;
 
 /** 変動パターンの熱さ（1 以上をリーチとして見せる）と基準の尺（spec/21 patterns.json）。 */
 export interface PatternInfo {
@@ -137,6 +140,8 @@ export class BoardScene {
   private lastJackpot = -1;
   /** 前のフレームで見せた保留の色（番号ごと。保留変化の音・光を鳴らす判定, P7-T4）。 */
   private shownColors = new Map<number, LotteryHoldColor>();
+  /** 先バレを済ませた保留の番号（D-074）。 */
+  private sakibareDone = new Set<number>();
   /** 今の変動の演出（CueSheet の lcd キュー）。 */
   private show: SpinShow | null = null;
   private seed = 0;
@@ -419,6 +424,7 @@ export class BoardScene {
     this.updateBalls();
     this.updateYakumono(display, winLevel);
     const shown = shownLcdState(lcdState, this.seed, lcdNow);
+    this.noteSakibare(lcdState, lcdNow, lcdScale);
     this.noteHoldChanges(shown, lcdScale);
     this.lcd.reducedMotion = this.flashLayer.reducedMotion;
     this.lcd.update(dt, lcdNow, lcdScale, shown, (e) => this.lcdTimeline.peekResult(e), winLevel, this.show);
@@ -506,6 +512,22 @@ export class BoardScene {
     for (const h of st.holds) see(h.entry, h.color);
     if (st.spin) see(st.spin.entry, st.spin.color);
     this.shownColors = next;
+  }
+
+  /**
+   * 先バレ（D-074）: 玉が入ってすぐ保留を光らせ、パックの sakibare を鳴らす（色が上がるのは取得時の変化で、そこで hold_<色> が鳴る）。
+   * 時刻を大きく過ぎてから気付いた先バレ（背面から戻った時など）は鳴らさない。Debug の倍速では液晶だけ。
+   */
+  private noteSakibare(st: LcdState, now: number, scale: number): void {
+    const next = new Set<number>();
+    for (const { entry, at } of sakibareTimes(st, this.seed)) {
+      if (at > now) continue;
+      next.add(entry);
+      if (this.sakibareDone.has(entry) || now - at > SAKIBARE_LATE_MS) continue;
+      this.lcd.pulse();
+      if (scale === 1) playSideCue(SAKIBARE_CUE, this.seed, entry);
+    }
+    this.sakibareDone = next;
   }
 
   /** 盤面が受け持つキュー: 揺れと液晶への寄り（spec/43 shake・camera）。 */

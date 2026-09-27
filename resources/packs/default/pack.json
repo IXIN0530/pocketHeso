@@ -14,7 +14,8 @@
     "kime": { "synth": { "wave": "square", "hz": [1320, 1980], "ms": 260, "gain": 0.35 } },
     "hold_up": { "synth": { "wave": "triangle", "hz": [880, 1320], "ms": 160, "gain": 0.3 } },
     "hold_red": { "synth": { "wave": "square", "hz": [700, 1400], "ms": 240, "gain": 0.3 } },
-    "hold_gold": { "synth": { "wave": "sawtooth", "hz": [600, 2600], "ms": 600, "gain": 0.35 } }
+    "hold_gold": { "synth": { "wave": "sawtooth", "hz": [600, 2600], "ms": 600, "gain": 0.35 } },
+    "sakibare": { "synth": { "wave": "square", "hz": [2000, 3200], "ms": 110, "gain": 0.3 } }
   },
   "sheets": [
     {
@@ -187,6 +188,17 @@
         { "at": 0, "kind": "flash", "style": "rainbow", "ms": 500 },
         { "at": 0, "kind": "haptic", "pattern": [60, 30, 90] },
         { "at": 0, "kind": "bloom", "ms": 900, "strength": 0.5, "min_intensity": 2 }
+      ]
+    },
+    {
+      "pattern": "sakibare",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "sakibare" },
+        { "at": 140, "kind": "sound", "bus": "se", "asset": "sakibare" },
+        { "at": 0, "kind": "flash", "style": "white", "ms": 160 },
+        { "at": 0, "kind": "haptic", "pattern": [40, 30, 40, 30, 90] },
+        { "at": 0, "kind": "shake", "ms": 300, "amp": 0.25, "min_intensity": 2 },
+        { "at": 0, "kind": "bloom", "ms": 700, "strength": 0.5, "min_intensity": 2 }
       ]
     },
     {
