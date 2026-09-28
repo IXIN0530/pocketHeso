@@ -7,6 +7,9 @@ import { engineConfig } from './game-config.ts';
 /** 4 = P8-T8（単価 unit・Totals bonusBalls 廃止・EngineSnapshot jackpotBonus 廃止・autoAcc・IdleEconomy v5 レート移行）。 */
 export const SNAPSHOT_VERSION = 4;
 
+/** 読んでよい旧版（3 = P7-T7。旧レート段・旧単価は Core の restore が移行する。再計算だと新レート表で買い直しになるため, D-092）。 */
+const LEGACY_SNAPSHOT_VERSIONS: readonly number[] = [3];
+
 export type RestoredFrom = 'snapshot' | 'recompute';
 
 /** 保存するスナップショット（meta と一致しなければ使わない）。 */
@@ -38,7 +41,9 @@ function lastFg(actions: readonly Action[]): boolean {
 function restoreFrom(raw: unknown, meta: GameMeta, atlas: ArrayBuffer, claims: readonly ClaimRecord[], actions: readonly Action[]): Engine | null {
   const rec = raw as Partial<SnapshotRecord> | undefined;
   if (
-    rec?.v !== SNAPSHOT_VERSION ||
+    rec === undefined ||
+    rec === null ||
+    (rec.v !== SNAPSHOT_VERSION && !LEGACY_SNAPSHOT_VERSIONS.includes(rec.v as number)) ||
     rec.seed !== meta.seed ||
     rec.machineId !== meta.machineId ||
     rec.createdAt !== meta.createdAt ||

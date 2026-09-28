@@ -772,6 +772,29 @@ export class Engine {
     return (hook.bind(this.economy))(rate);
   }
 
+  /** 解放済みでないレートを、解放済みのうちそれ以下の最大に丸める（旧セーブの400・1000など。表が無ければそのまま, D-092）。 */
+  private clampUnlockedRate(rate: number): number {
+    if (this.isRateAllowed(rate)) {
+      return rate;
+    }
+    const hook = this.econHook('getUnlockedRates') as (() => readonly number[]) | undefined;
+    if (hook === undefined || typeof hook !== 'function') {
+      return rate;
+    }
+    const rates = (hook.bind(this.economy))();
+    if (rates.length === 0) {
+      return rate;
+    }
+    let best = rates[0] as number;
+    for (let i = 1; i < rates.length; i = i + 1) {
+      const r = rates[i] as number;
+      if (r <= rate && r > best) {
+        best = r;
+      }
+    }
+    return best;
+  }
+
   /** オート打ちが解放済みか（フック無しは許可）。 */
   private isAutoUnlocked(): boolean {
     const hook = this.econHook('isAutoUnlocked') as (() => boolean) | undefined;
@@ -1485,16 +1508,19 @@ export class Engine {
       }
       const rate = this.autoRateState;
       const unit = this.readShotUnit(rate);
-      const ref = this.readRefPerSec();
-      const invested = (ref * this.autoShareState * FIRE_INTERVAL_MS) / 1000;
-      this.autoAccState = this.autoAccState + invested;
-      if (this.autoAccState < unit) {
-        return;
-      }
+      // 持ち玉が1発に足りない間は積まない。蓄積は1発分で頭打ち（戻った時の連射を防ぐ, D-092）。
       if (this.ballsState < unit) {
         return;
       }
-      this.autoAccState = this.autoAccState - unit;
+      const ref = this.readRefPerSec();
+      const invested = (ref * this.autoShareState * FIRE_INTERVAL_MS) / 1000;
+      const acc = this.autoAccState + invested;
+      if (acc < unit) {
+        this.autoAccState = acc;
+        return;
+      }
+      const left = acc - unit;
+      this.autoAccState = left > unit ? unit : left;
       this.fireOneBall(at, out, rate, unit);
     }
   }
@@ -1898,6 +1924,9 @@ export class Engine {
     }
     eng.actionIdxState = snap.actionIdx;
     eng.economy.restore(snap.economy);
+    // 旧セーブの 400・1000 は経済側で解放段が丸められるので、打つレートも合わせる（D-092）。
+    eng.shootRateState = eng.clampUnlockedRate(eng.shootRateState);
+    eng.autoRateState = eng.clampUnlockedRate(eng.autoRateState);
     eng.noticeCfgCache = eng.readNoticeConfig();
     eng.nailQCache = null;
     eng.noticeSeqState = snap.noticeSeq;
