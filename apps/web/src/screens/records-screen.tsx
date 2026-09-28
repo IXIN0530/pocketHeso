@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ClaimRecord } from '@ph/claims';
 import { loadLedger, openStorage } from '../platform/storage.ts';
-import { describeRecord, formatFuel } from '../stores/activity.ts';
+import { describeRecord, formatFuel, formatProd } from '../stores/activity.ts';
 import { clock, dbNameFor } from '../stores/clock.ts';
 import { useEngine } from '../stores/engine.ts';
 import { formatNum, formatTime } from '../stores/format.ts';
@@ -14,6 +14,9 @@ export interface DayRecord {
   readonly day: string;
   readonly fuelMs: number;
   readonly medals: number;
+  /** 即時の玉（生産◯分ぶん。玉数は受け取り時の基準生産で決まり台帳に残らない）。 */
+  readonly prodMin: number;
+  readonly bonusHolds: number;
   readonly lines: readonly string[];
 }
 
@@ -22,11 +25,13 @@ export const DEBUG_CLAIM_PREFIX = 'debug-';
 
 /** 台帳を日別にまとめる（新しい日から days 日分）。 */
 export function groupByDay(ledger: readonly ClaimRecord[], days = RECORD_DAYS): DayRecord[] {
-  const map = new Map<string, { fuelMs: number; medals: number; lines: string[] }>();
+  const map = new Map<string, { fuelMs: number; medals: number; prodMin: number; bonusHolds: number; lines: string[] }>();
   for (const r of ledger) {
-    const d = map.get(r.day) ?? { fuelMs: 0, medals: 0, lines: [] };
+    const d = map.get(r.day) ?? { fuelMs: 0, medals: 0, prodMin: 0, bonusHolds: 0, lines: [] };
     d.fuelMs += r.grant.fuelMs;
     d.medals += r.grant.medals;
+    d.prodMin += r.grant.prodMin ?? 0;
+    d.bonusHolds += r.grant.bonusHolds ?? 0;
     d.lines.push(r.claimId.startsWith(DEBUG_CLAIM_PREFIX) ? 'Debug の付与' : describeRecord(r).replace(/^\d+\/\d+ /, ''));
     map.set(r.day, d);
   }
@@ -82,6 +87,8 @@ export function RecordsScreen() {
             <dd>{formatNum(t.fired)}発</dd>
             <dt>出玉</dt>
             <dd>{formatNum(t.payoutBalls)}玉</dd>
+            <dt>大当たりボーナス</dt>
+            <dd>{formatNum(t.bonusBalls)}玉</dd>
           </dl>
         </section>
       )}
@@ -110,8 +117,10 @@ export function RecordsScreen() {
           <ul className={styles.list}>
             {days.map((d) => (
               <li key={d.day}>
-                <b>{dayLabel(d.day)}</b> 燃料 +{formatFuel(d.fuelMs)}
+                <b>{dayLabel(d.day)}</b>
+                {d.prodMin > 0 && ` 玉 生産${formatProd(d.prodMin)}ぶん ・`} 燃料 +{formatFuel(d.fuelMs)}
                 {d.medals > 0 && ` ・メダル +${d.medals}`}
+                {d.bonusHolds > 0 && ` ・特別保留 +${d.bonusHolds}`}
                 <br />
                 <small className={styles.note}>{d.lines.join(' / ')}</small>
               </li>

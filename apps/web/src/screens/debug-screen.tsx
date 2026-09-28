@@ -4,7 +4,8 @@ import type { AtlasVerifyResult } from '@ph/core';
 import type { DebugInfo } from '../engine/engine-host.ts';
 import { haptics, pack, planFor, playCue, sound } from '../fx/fx-host.ts';
 import { writeClipboard } from '../platform/clipboard.ts';
-import { formatFuel, localDay } from '../stores/activity.ts';
+import { describeReceived, localDay, type ClaimPlan } from '../stores/activity.ts';
+import { ConfirmModal } from './confirm-modal.tsx';
 import { DEBUG_SCALES, clock } from '../stores/clock.ts';
 import { debugInfo, receiveClaims, showLastAway, stateDump, useEngine, verifyAtlas } from '../stores/engine.ts';
 import { PREVIEWS, PREVIEW_SERIAL_BASE, requestPreview } from '../stores/preview.ts';
@@ -16,15 +17,24 @@ import { usePrefs } from '../stores/prefs.ts';
 import styles from './activity.module.css';
 
 const H = 3600000;
-const GRANTS: readonly { label: string; fuelMs: number; medals: number }[] = [
+interface DebugGrant {
+  readonly fuelMs: number;
+  readonly medals: number;
+  readonly prodMin?: number;
+  readonly bonusHolds?: number;
+}
+const GRANTS: readonly (DebugGrant & { label: string })[] = [
   { label: '燃料 +1時間', fuelMs: H, medals: 0 },
   { label: '燃料 +12時間', fuelMs: 12 * H, medals: 0 },
   { label: 'メダル +10', fuelMs: 0, medals: 10 },
+  { label: '玉 生産1時間ぶん', fuelMs: 0, medals: 0, prodMin: 60 },
+  { label: '特別保留 +3', fuelMs: 0, medals: 0, bonusHolds: 3 },
 ];
 
 /** Debug の付与（台帳の1行。種類は報酬の無い「距離」にして上限・連続日数に響かせない）。 */
-export function debugRecord(at: number, fuelMs: number, medals: number): ClaimRecord {
+export function debugRecord(at: number, fuelMs: number, medals: number, extra: { prodMin?: number; bonusHolds?: number } = {}): ClaimRecord {
   const claimId = `${DEBUG_CLAIM_PREFIX}${crypto.randomUUID()}`;
+  const { prodMin = 0, bonusHolds = 0 } = extra;
   return {
     claimId,
     receivedAt: at,
@@ -33,7 +43,7 @@ export function debugRecord(at: number, fuelMs: number, medals: number): ClaimRe
     day: localDay(at),
     amount: 0,
     trust: 1,
-    grant: { claimId, at, fuelMs, medals },
+    grant: { claimId, at, fuelMs, medals, ...(prodMin > 0 ? { prodMin } : {}), ...(bonusHolds > 0 ? { bonusHolds } : {}) },
   };
 }
 
@@ -78,11 +88,16 @@ export default function DebugScreen() {
     }
   };
 
-  const grant = (fuelMs: number, medals: number) =>
-    run(async () => {
-      await receiveClaims([debugRecord(clock.now(), fuelMs, medals)], false);
-      setMessage(`付与しました（燃料 +${formatFuel(fuelMs)}・メダル +${medals}）`);
-    });
+  // 受け取り確認（行動タブと同じシート）を通して付与する（P7-T9 の確認用）。
+  const [pending, setPending] = useState<ClaimPlan | null>(null);
+  const grant = (g: DebugGrant) =>
+    setPending({ title: 'Debug の付与', records: [debugRecord(clock.now(), g.fuelMs, g.medals, g)], warnings: [] });
+  const confirmGrant = async () => {
+    if (pending === null) return;
+    const got = await receiveClaims(pending.records, false);
+    setPending(null);
+    setMessage(describeReceived(got) ?? '付与しました（増えたものなし）');
+  };
 
   const check = () =>
     run(async () => {
@@ -119,7 +134,7 @@ export default function DebugScreen() {
         {scaled ? (
           <div className={styles.row}>
             {GRANTS.map((g) => (
-              <button key={g.label} className={styles.sub} disabled={busy} onClick={() => void grant(g.fuelMs, g.medals)}>
+              <button key={g.label} className={styles.sub} disabled={busy} onClick={() => grant(g)}>
                 {g.label}
               </button>
             ))}
@@ -232,6 +247,9 @@ export default function DebugScreen() {
       </section>
       <MetricsPanel now={projection?.at ?? clock.now()} />
       {message && <p className={styles.note}>{message}</p>}
+      {pending && (
+        <ConfirmModal plan={pending} refPerSec={projection?.refPerSec ?? null} onConfirm={confirmGrant} onCancel={() => setPending(null)} />
+      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { DISPLAY_LAG_MS } from './ball-tracks.ts';
 import {
   LcdTimeline,
   applyLcdEvent,
+  isGrantHold,
   matchesProjection,
   sakibareTimes,
   shownLcdState,
@@ -218,4 +219,13 @@ test('先バレ: 玉が入ってすぐ鳴り、保留は灰色で点滅して出
   expect(sakibareTimes(replay, seed)).toEqual([]);
   expect(shownLcdState(replay, seed, 8000 + HOLD_BREAK_MS.reveal * holdBreakScale(5000)).spin!.color).toBe('green');
   expect(packJson.sheets.map((x) => x.pattern)).toContain(SAKIBARE_CUE);
+});
+
+test('特別保留（通し番号 1.5e9 台）だけに「特」の札', () => {
+  expect(isGrantHold(1500000000)).toBe(true);
+  expect(isGrantHold(1500000007)).toBe(true);
+  expect(isGrantHold(1000000003)).toBe(false); // 予告のボーナス保留
+  expect(isGrantHold(2000000000)).toBe(false); // 電サポの自動保留
+  expect(isGrantHold(42)).toBe(false);
+  expect(isGrantHold(-1)).toBe(false);
 });

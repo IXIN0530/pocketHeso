@@ -15,13 +15,18 @@ import {
 } from '../platform/storage.ts';
 import {
   CLAIM_RULES,
+  describeReceived,
   formatFuel,
+  formatProd,
   localDay,
   planInput,
   planShortcut,
+  projectBalls,
   summarize,
+  todayRemaining,
   type ClaimPlan,
 } from '../stores/activity.ts';
+import { formatNum } from '../stores/format.ts';
 import { clock, dbNameFor } from '../stores/clock.ts';
 import { receiveClaims, useEngine } from '../stores/engine.ts';
 import { CheckinPanel } from './checkin-panel.tsx';
@@ -46,6 +51,13 @@ export function ActivityScreen() {
   const [settings, setSettings] = useState<Settings>({});
   const [pending, setPending] = useState<Pending | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (toast === null) return;
+    const id = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(id);
+  }, [toast]);
 
   const reload = useCallback(async (d: Db) => {
     const [l, p, s] = await Promise.all([loadLedger(d), loadPlaces(d), loadSettings(d)]);
@@ -90,6 +102,7 @@ export function ActivityScreen() {
 
   const today = localDay(now);
   const sum = summarize(ledger, today);
+  const left = todayRemaining(ledger, now);
 
   const saveSetting = async <K extends keyof Settings>(key: K, value: Settings[K]) => {
     await putSetting(db, key, value);
@@ -124,7 +137,8 @@ export function ActivityScreen() {
       return;
     }
     try {
-      await receiveClaims(pending.plan.records, pending.closesSession);
+      const got = await receiveClaims(pending.plan.records, pending.closesSession);
+      setToast(describeReceived(got));
       setReceiveError(null);
     } catch (e) {
       setReceiveError(`受け取れませんでした: ${e instanceof Error ? e.message : String(e)}`);
@@ -138,6 +152,11 @@ export function ActivityScreen() {
   return (
     <div className={styles.screen}>
       {receiveError && <p className={styles.error}>{receiveError}</p>}
+      {toast && (
+        <p className={styles.toast} role="status" onClick={() => setToast(null)}>
+          {toast}
+        </p>
+      )}
       <div className={styles.summary}>
         <div>
           <small>燃料の残り</small>
@@ -153,6 +172,21 @@ export function ActivityScreen() {
           <b>{sum.streak}日</b>
         </div>
       </div>
+      <section className={styles.card}>
+        <h2>今日の上限までの残り</h2>
+        <dl className={styles.facts}>
+          <dt>即時の玉</dt>
+          <dd>
+            {left.prodMin > 0 ? `生産${formatProd(left.prodMin)}ぶん` : '上限'}
+            {left.prodMin > 0 && projection !== null && `（≈ ${formatNum(projectBalls(left.prodMin, projection.refPerSec))}玉）`}
+          </dd>
+          <dt>メダル</dt>
+          <dd>{left.medals > 0 ? `あと ${left.medals}枚` : '上限'}</dd>
+          <dt>特別保留</dt>
+          <dd>{left.bonusHolds > 0 ? `あと ${left.bonusHolds}つ` : '上限'}</dd>
+        </dl>
+        <p className={styles.note}>歩数・トレーニング・自己申告の合計（玉は今の基準生産での見込み）。</p>
+      </section>
       <ShortcutPanel
         pairingKey={settings.pairingKey}
         onCreateKey={() => saveSetting('pairingKey', generatePairingKey())}
@@ -183,7 +217,14 @@ export function ActivityScreen() {
           </button>
         </div>
       </section>
-      {pending && <ConfirmModal plan={pending.plan} onConfirm={confirm} onCancel={() => setPending(null)} />}
+      {pending && (
+        <ConfirmModal
+          plan={pending.plan}
+          refPerSec={projection?.refPerSec ?? null}
+          onConfirm={confirm}
+          onCancel={() => setPending(null)}
+        />
+      )}
     </div>
   );
 }

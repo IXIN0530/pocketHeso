@@ -1,7 +1,7 @@
 // 液晶の保留・変動・大当たりの再生（spec/40 ホール, spec/21 流れ）。Three に依存しない（テスト用）。
 // Engine のイベント（保留の取得 → 変動開始 → 停止 → 大当たり）を時刻付きでため、盤面の玉と同じ表示時刻で1つずつ反映する。
 // 前進ごとに「全部反映した結果」を Projection と照らし、合わなければ（背面の間・Debug の倍速で取りこぼした時）Projection に揃える。
-import type { EngineSimEvent, HallProjection, JackpotKind, LotteryHoldColor, LotteryMode } from '@ph/core';
+import { GRANT_HOLD_SERIAL_BASE, RESERVE_SERIAL_BASE, type EngineSimEvent, type HallProjection, type JackpotKind, type LotteryHoldColor, type LotteryMode } from '@ph/core';
 import { holdBreakScale, holdColorAt, planHoldChange, sakibareAt } from '@ph/fx';
 
 export interface LcdHold {
@@ -110,6 +110,11 @@ const isLcdEvent = (e: EngineSimEvent): e is LcdEvent =>
 const NORMAL: LcdRush = { mode: 'normal', chain: 0, balls: 0 };
 
 /** RUSH 中か（st/lt。時短は含まない。Core の chain と同じ区切り）。 */
+/** 行動の特別保留（通し番号が 1.5e9 台, D-081）。液晶の保留に「特」の札を付ける。Projection から作った保留（-1）は分からない。 */
+export function isGrantHold(entry: number): boolean {
+  return entry >= GRANT_HOLD_SERIAL_BASE && entry < RESERVE_SERIAL_BASE;
+}
+
 export function isRush(mode: LotteryMode): boolean {
   return mode === 'st' || mode === 'lt';
 }

@@ -157,6 +157,15 @@
   font-weight: 600;
 }
 
+/* 特別保留のストック（保留が満タン・大当たり中は待機, D-081）。 */
+.stock {
+  padding: 0 6px;
+  border-radius: 6px;
+  background: #d0142c;
+  color: white;
+  font-weight: 600;
+}
+
 .controls {
   display: flex;
   flex-wrap: wrap;

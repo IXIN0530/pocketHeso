@@ -142,9 +142,35 @@ export async function startEngine(): Promise<void> {
   }
 }
 
+/** 受け取りで実際に増えたもの（Engine の granted の合計。確定後のトースト用）。 */
+export interface Received {
+  readonly balls: number;
+  readonly bonusHolds: number;
+  readonly medals: number;
+  readonly fuelMs: number;
+}
+
+export function sumGranted(events: readonly EngineSimEvent[], claimIds: ReadonlySet<string>): Received {
+  let balls = 0;
+  let bonusHolds = 0;
+  let medals = 0;
+  let fuelMs = 0;
+  for (const e of events) {
+    if (e.k === 'granted' && claimIds.has(e.claimId)) {
+      balls += e.balls ?? 0;
+      bonusHolds += e.bonusHolds ?? 0;
+      medals += e.medals;
+      fuelMs += e.fuelMs;
+    }
+  }
+  return { balls, bonusHolds, medals, fuelMs };
+}
+
 /** 受け取りを確定する（台帳への追記は Worker が行う）。 */
-export async function receiveClaims(records: readonly ClaimRecord[], closesSession: boolean): Promise<void> {
-  show(await need().receive(records, closesSession, clock.now()));
+export async function receiveClaims(records: readonly ClaimRecord[], closesSession: boolean): Promise<Received> {
+  const r = await need().receive(records, closesSession, clock.now());
+  show(r);
+  return sumGranted(r.events, new Set(records.map((x) => x.claimId)));
 }
 
 export async function act(input: ActionInput): Promise<void> {

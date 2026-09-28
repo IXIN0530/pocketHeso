@@ -8,6 +8,7 @@ import {
   type ClaimRecord,
   type ClaimRules,
 } from '@ph/claims';
+import { formatNum } from './format.ts';
 import economyJson from '../../../../resources/economy/default.json';
 
 export const CLAIM_RULES: ClaimRules = parseClaimRules(economyJson);
@@ -111,18 +112,67 @@ export function describeRecord(r: ClaimRecord): string {
   }
 }
 
-/** 計画の合計（確認画面の「今回増える燃料・メダル」）。 */
-export function planTotals(plan: ClaimPlan): { fuelMs: number; medals: number } {
+/** 受け取りの合計（燃料・メダル・即時の玉の「生産◯分ぶん」・特別保留）。 */
+export interface GrantTotals {
+  readonly fuelMs: number;
+  readonly medals: number;
+  readonly prodMin: number;
+  readonly bonusHolds: number;
+}
+
+export function grantTotals(records: readonly ClaimRecord[]): GrantTotals {
   let fuelMs = 0;
   let medals = 0;
-  for (const r of plan.records) {
+  let prodMin = 0;
+  let bonusHolds = 0;
+  for (const r of records) {
     fuelMs += r.grant.fuelMs;
     medals += r.grant.medals;
+    prodMin += r.grant.prodMin ?? 0;
+    bonusHolds += r.grant.bonusHolds ?? 0;
   }
-  return { fuelMs, medals };
+  return { fuelMs, medals, prodMin, bonusHolds };
+}
+
+/** 計画の合計（確認画面の「今回増えるもの」）。 */
+export function planTotals(plan: ClaimPlan): GrantTotals {
+  return grantTotals(plan.records);
+}
+
+/** 即時の玉の見込み = 基準生産/秒 × 生産◯分 × 60（Engine と同じ式, spec/23。確定値は granted の balls）。 */
+export function projectBalls(prodMin: number, refPerSec: number): number {
+  return refPerSec * prodMin * 60;
+}
+
+/** 「生産◯時間ぶん」の◯（「1時間05分」「25分」。1分未満は「1分未満」）。 */
+export function formatProd(prodMin: number): string {
+  return prodMin > 0 && prodMin < 1 ? '1分未満' : formatFuel(prodMin * 60000);
+}
+
+/** 今日の上限までの残り（即時の玉・メダル・特別保留）。上限を超える仮の入力を planGrants に通して求める（施設のチェックイン扱い）。 */
+export function todayRemaining(ledger: readonly ClaimRecord[], now: number, rules: ClaimRules = CLAIM_RULES): Omit<GrantTotals, 'fuelMs'> {
+  const today = localDay(now);
+  const probes: ClaimInput[] = [
+    { k: 'health', receivedAt: now, today, days: [{ day: today, steps: 1e9 }] },
+    { k: 'checkin', receivedAt: now, today, sessionId: 'probe', day: today, own: false, minutes: 100000, span: [now, now] },
+  ];
+  const records = probes.flatMap((p) => planGrants(ledger, p, rules));
+  const selfLeft = Math.max(0, rules.self.maxPerDay - ledger.filter((r) => r.kind === 'self' && r.day === today).length);
+  const t = grantTotals(records);
+  return { medals: t.medals, prodMin: t.prodMin + selfLeft * rules.self.prodMinPerItem * rules.trust.self, bonusHolds: t.bonusHolds };
 }
 
 /** セッション・登録地点の ID。 */
 export function newId(): string {
   return crypto.randomUUID();
+}
+
+/** 確定後のトースト（Engine の granted の合計, spec/40）。何も増えなければ null。 */
+export function describeReceived(r: { balls: number; bonusHolds: number; medals: number; fuelMs: number }): string | null {
+  const parts: string[] = [];
+  if (r.balls > 0) parts.push(`玉 +${formatNum(r.balls)}`);
+  if (r.bonusHolds > 0) parts.push(`特別保留 +${r.bonusHolds}`);
+  if (r.medals > 0) parts.push(`メダル +${r.medals}`);
+  if (r.fuelMs > 0) parts.push(`燃料 +${formatFuel(r.fuelMs)}`);
+  return parts.length === 0 ? null : `受け取りました: ${parts.join('・')}`;
 }

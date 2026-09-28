@@ -1,21 +1,37 @@
 import { useState } from 'react';
 import { Sheet } from '../components/sheet.tsx';
-import { describeRecord, formatFuel, planTotals, type ClaimPlan } from '../stores/activity.ts';
+import { describeRecord, formatFuel, formatProd, planTotals, projectBalls, type ClaimPlan } from '../stores/activity.ts';
+import { formatNum } from '../stores/format.ts';
 import styles from './activity.module.css';
 
-/** 受け取り確認（spec/31・32）: 今回増える燃料・メダルを出してから確定する。 */
+/** 1行の内訳（即時の玉・燃料・メダル・特別保留）。 */
+function grantText(g: { fuelMs: number; medals: number; prodMin?: number | undefined; bonusHolds?: number | undefined }): string {
+  const parts: string[] = [];
+  if ((g.prodMin ?? 0) > 0) parts.push(`玉 生産${formatProd(g.prodMin ?? 0)}ぶん`);
+  if (g.fuelMs > 0) parts.push(`燃料 +${formatFuel(g.fuelMs)}`);
+  if (g.medals > 0) parts.push(`メダル +${g.medals}`);
+  if ((g.bonusHolds ?? 0) > 0) parts.push(`特別保留 +${g.bonusHolds}`);
+  return parts.length === 0 ? '' : ` ${parts.join(' ')}`;
+}
+
+/**
+ * 受け取り確認（spec/31・32・40）: 今回増える玉（生産◯時間ぶん ≈ ◯玉）・燃料・メダル・特別保留を出してから確定する。
+ * 玉の見込みは受け取り時点の基準生産（Projection の refPerSec）。確定値は granted の balls（トースト）。
+ */
 export function ConfirmModal({
   plan,
+  refPerSec,
   onConfirm,
   onCancel,
 }: {
   plan: ClaimPlan;
+  refPerSec: number | null;
   onConfirm: () => Promise<void>;
   onCancel: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { fuelMs, medals } = planTotals(plan);
+  const { fuelMs, medals, prodMin, bonusHolds } = planTotals(plan);
   const empty = plan.records.length === 0;
 
   const confirm = async () => {
@@ -36,16 +52,28 @@ export function ConfirmModal({
         <p>今回受け取れるものはありません（その日の分は受け取り済みか、受け取れる期間を過ぎています）。</p>
       ) : (
         <>
-          <p className={styles.total}>
-            燃料 +{formatFuel(fuelMs)}
-            {medals > 0 && ` ／ メダル +${medals}`}
-          </p>
+          {prodMin > 0 && (
+            <p className={styles.total}>
+              玉 生産{formatProd(prodMin)}ぶん
+              {refPerSec !== null && ` ≈ ${formatNum(projectBalls(prodMin, refPerSec))}玉`}
+            </p>
+          )}
+          {(fuelMs > 0 || medals > 0 || bonusHolds > 0 || prodMin === 0) && (
+            <p className={styles.total}>
+              {[
+                (fuelMs > 0 || prodMin === 0) && `燃料 +${formatFuel(fuelMs)}`,
+                medals > 0 && `メダル +${medals}`,
+                bonusHolds > 0 && `特別保留 +${bonusHolds}`,
+              ]
+                .filter(Boolean)
+                .join(' ／ ')}
+            </p>
+          )}
           <ul className={styles.list}>
             {plan.records.map((r) => (
               <li key={r.claimId}>
                 {describeRecord(r)}
-                {r.grant.fuelMs > 0 && ` 燃料 +${formatFuel(r.grant.fuelMs)}`}
-                {r.grant.medals > 0 && ` メダル +${r.grant.medals}`}
+                {grantText(r.grant)}
               </li>
             ))}
           </ul>

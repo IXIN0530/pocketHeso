@@ -127,6 +127,7 @@ export function HallScreen({ active = true }: { active?: boolean }) {
             <span>{modeLabel(p)}</span>
             <span>回転 {formatNum(p.totals.spins)}</span>
             <span>大当たり {formatNum(p.totals.jackpots)}</span>
+            {p.bonusStock > 0 && <span className={styles.stock}>特別保留 ×{p.bonusStock}（待機）</span>}
             {p.jackpot && (
               <span className={styles.hot}>
                 大当たり中 {p.jackpot.rounds}R{p.chain > 1 ? `・${p.chain}連` : ''}

@@ -1,11 +1,11 @@
-import { ShaderMaterial, Vector3, Vector4, type Texture } from 'three';
+import { CanvasTexture, SRGBColorSpace, ShaderMaterial, Vector3, Vector4, type Texture } from 'three';
 import type { LotteryHoldColor } from '@ph/core';
 import { HOLD_BREAK_MS, HOLD_CRACK_STEPS_MS, holdBreakScale } from '@ph/fx';
 import type { LcdCue } from '@ph/shared';
 import { HudCanvas } from './hud-canvas.ts';
 import type { HudView } from './jackpot-hud.ts';
 import { NO_LOOK, lcdLook, pseudoWindows, reachAt, type LcdLook } from './lcd-scenes.ts';
-import type { LcdSpin, LcdState } from './lcd-timeline.ts';
+import { isGrantHold, type LcdSpin, type LcdState } from './lcd-timeline.ts';
 
 const SPIN_SPEED = 16; // 図柄/秒
 const STOP_MS = 380;
@@ -110,7 +110,7 @@ export class LcdReels {
     private readonly patternHot: (pattern: string) => number = () => 0,
     private readonly textRow: (text: string) => number = () => -1,
   ) {
-    this.material = lcdMaterial(atlas, textAtlas, textRows, this.hud.texture);
+    this.material = lcdMaterial(atlas, textAtlas, textRows, this.hud.texture, tokuTexture());
   }
 
   get reach(): boolean {
@@ -158,6 +158,9 @@ export class LcdReels {
     const bk = st.holds.map((x) => (x.blink ? 1 : 0));
     (u.uBlink!.value as Vector4).set(bk[0] ?? 0, bk[1] ?? 0, bk[2] ?? 0, bk[3] ?? 0);
     u.uCur!.value = st.spin?.color ? HOLD_CODE[st.spin.color] : 0;
+    const sp4 = st.holds.map((x) => (isGrantHold(x.entry) ? 1 : 0));
+    (u.uToku!.value as Vector4).set(sp4[0] ?? 0, sp4[1] ?? 0, sp4[2] ?? 0, sp4[3] ?? 0);
+    u.uCurToku!.value = st.spin && isGrantHold(st.spin.entry) ? 1 : 0;
     // 変動開始で残りの保留が右へ1つずれ、次の保留が当該の位置へ大きくなりながら動く（reduced-motion は動かさない）。
     const k = this.reducedMotion ? 1 : Math.min(1, (this.elapsed - this.shiftAt) / SHIFT_MS);
     const e = 1 - (1 - k) * (1 - k) * (1 - k);
@@ -324,7 +327,29 @@ function blur(r: Reel): number {
   return r.mode === 'spin' ? Math.min(1, r.vel / SPIN_SPEED) : 0;
 }
 
-function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: Texture): ShaderMaterial {
+/** 特別保留の「特」の札（赤い角丸に白抜き, D-081）。 */
+function tokuTexture(): CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#d0142c';
+  ctx.strokeStyle = '#ffe9a8';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.roundRect(4, 4, 56, 56, 12);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 42px "Hiragino Sans", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('特', 32, 35);
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  return t;
+}
+
+function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: Texture, toku: Texture): ShaderMaterial {
   return new ShaderMaterial({
     uniforms: {
       uAtlas: { value: atlas },
@@ -342,6 +367,9 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: 
       uCurPos: { value: new Vector3(CUR_X, CUR_Y, CUR_SIZE) },
       uBlink: { value: new Vector4() },
       uCur: { value: 0 },
+      uToku: { value: new Vector4() },
+      uCurToku: { value: 0 },
+      uTokuTex: { value: toku },
       uBrk: { value: -1 },
       uTime: { value: 0 },
       uReach: { value: 0 },
@@ -370,6 +398,9 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: 
       uniform vec4 uHolds;
       uniform vec4 uHoldX;    // 保留の横位置（1つずれる動きの途中を含む）
       uniform vec3 uCurPos;   // 当該変動の保留の位置と大きさ
+      uniform vec4 uToku;     // 特別保留（「特」の札, D-081）
+      uniform float uCurToku;
+      uniform sampler2D uTokuTex;
       uniform vec4 uBlink;    // 灰色で点滅する保留（変化する保留, D-075）
       uniform float uCur, uTime, uReach, uFlash, uWin, uCalm;
       uniform float uBrk;     // 保留が割れる演出の経過秒（-1 は無し）
@@ -486,6 +517,16 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: 
       // 保留1つを重ねる（空きは暗い輪だけ）。面取りした金属の板として陰影をつけ、ハイライトが斜めに流れる。
       // 赤・金は点滅して後光が脈打つ（2.0/2.4回/秒, spec/43 の3回/秒未満）。reduced-motion（uCalm）では点滅と流れを止める。
       // bk は灰色の変化保留のチカチカ（2.0回/秒で明滅し、白い後光が大きく脈打つ）。
+      // 特別保留の「特」の札（保留の右上に小さく重ねる, D-081）。
+      vec3 drawToku(vec3 col, vec2 c, float size, float on) {
+        if (on < 0.5) return col;
+        vec2 d = (vUv - c) * vec2(ASPECT, 1.0) - vec2(size * 0.6, size * 1.05);
+        vec2 tuv = d / (size * 1.5) + 0.5;
+        if (tuv.x < 0.0 || tuv.x > 1.0 || tuv.y < 0.0 || tuv.y > 1.0) return col;
+        vec4 tx = texture2D(uTokuTex, tuv);
+        return mix(col, tx.rgb, tx.a);
+      }
+
       vec3 drawHold(vec3 col, vec2 c, float code, float size, float bk) {
         vec2 d = (vUv - c) * vec2(ASPECT, 1.0);
         if (code < 0.5) {
@@ -717,6 +758,11 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: 
         col = drawHold(col, vec2(uHoldX.x, ${HOLD_Y}), uHolds.x, ${HOLD_SIZE}, uBlink.x);
         if (uBrk >= 0.0) col = drawBreak(col, uBrk, uCur);
         else if (uCur > 0.5) col = drawHold(col, uCurPos.xy, uCur, uCurPos.z, 0.0);
+        col = drawToku(col, vec2(uHoldX.w, ${HOLD_Y}), ${HOLD_SIZE}, uToku.w * step(0.5, uHolds.w));
+        col = drawToku(col, vec2(uHoldX.z, ${HOLD_Y}), ${HOLD_SIZE}, uToku.z * step(0.5, uHolds.z));
+        col = drawToku(col, vec2(uHoldX.y, ${HOLD_Y}), ${HOLD_SIZE}, uToku.y * step(0.5, uHolds.y));
+        col = drawToku(col, vec2(uHoldX.x, ${HOLD_Y}), ${HOLD_SIZE}, uToku.x * step(0.5, uHolds.x));
+        if (uBrk < 0.0) col = drawToku(col, uCurPos.xy, uCurPos.z, uCurToku * step(0.5, uCur));
 
         // 走査線と周辺減光（液晶らしさ）。
         col *= 0.93 + 0.07 * sin(vUv.y * 420.0);
