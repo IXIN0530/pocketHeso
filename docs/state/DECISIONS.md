@@ -85,3 +85,4 @@
 - D-082 | 2026-09-28 | 遠征: 台帳の distance（D-055）の累計 42,195m ごとに到達（メダル +10）し、店を順に開ける（駅前店 light・国道店 rush・港町店 lt）。開けた店の台は閉店時に次の周回の機種に選べる（新台入替。close に machineId、EngineConfig に machines）。既定機種が決まるまで最初の店は light | 9/28 人間: トレーニング以外に頑張れることを、新しいデータなしで。spec/23 の後期案「新台入替」を前倒し
 - D-083 | 2026-09-28 | 階段: ショートカットに「上った階数」（日の合計, JSON の任意項目 `fl`、無い旧ショートカットは0扱いで v は1のまま）を足し、10階ごとにメダル +1（1日30階まで）。燃料・即時の玉は出さない | 9/28 人間。iPhone 単体（気圧計）で記録される想定だが、ショートカットで読めるかは実機確認
 - D-084 | 2026-09-28 | P7-T7: 大当たりボーナス実装は IdleEconomy v4（fever廃止・旧v3は読捨て）・EngineSnapshotにjackpotBonus（旧はnull）・Totals bonusBalls・Stubは省略・web SNAPSHOT_VERSION 3。golden 613c145a8f8fd75b | 決定論1秒刻み・restore一致を確認し旧snapshotが落ちない最小形のため
+- D-085 | 2026-09-28 | P7-T8: 特別保留は grantHoldストリームで当否・serialのsplit/pattern/holdColorで枝型・Stubのbonus1In=10・snapshot bonusStock/grantHoldSeqは旧0読み・simはspec/10層違反のため@ph/claimsを使わず自前換算。golden不変613c145a8f8fd75b | 決定論と旧台帳・旧snapshotの互換を保つ最小形のため

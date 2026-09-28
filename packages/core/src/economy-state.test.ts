@@ -47,6 +47,7 @@ function loadEconomy(): IdleEconomy {
   (json['factors'] as Record<string, unknown>)['closed'] = 0.1;
   (json['close'] as Record<string, unknown>)['required_run_total'] = 1000000000;
   (json['close'] as Record<string, unknown>)['divisor'] = 1000000000;
+  (json['close'] as Record<string, unknown>)['medals_per_point'] = 7;
   return new IdleEconomy(parseEconomy(json));
 }
 
@@ -191,15 +192,15 @@ test('閉店は条件・常連P・リセット範囲', () => {
   const early = econ.onClose(0);
   expect(early.ok).toBe(false);
   econ.noteGain(1000000000);
-  econ.onGrant(0, 7, undefined, 0, 0);
+  econ.onGrant(0, 8, undefined, 0, 0);
   const r1 = econ.onBuy('idle', 1, 1000000000, 0);
   expect(r1.ok).toBe(true);
   expect(econ.getUnlockedRates()).toEqual([1]);
-  const r2 = econ.onBuy('rate', 1, 0, 7);
+  const r2 = econ.onBuy('rate', 1, 0, 8);
   expect(r2.ok).toBe(true);
   expect(econ.getUnlockedRates().length).toBe(2);
   // 消費しても累計獲得メダルは減らない
-  expect(econ.getMedalsEarned()).toBe(7);
+  expect(econ.getMedalsEarned()).toBe(8);
   const done = econ.onClose(12345);
   expect(done.ok).toBe(true);
   if (done.ok) {
@@ -210,11 +211,11 @@ test('閉店は条件・常連P・リセット範囲', () => {
   expect(econ.getRegular()).toBe(1);
   expect(econ.getRunTotal()).toBe(0);
   expect(econ.getTotalTotal()).toBe(1000000000);
-  expect(econ.getMedalsEarned()).toBe(7);
+  expect(econ.getMedalsEarned()).toBe(8);
   const views = econ.getYakumonoViews();
   expect((views[0] as { lv: number }).lv).toBe(0);
   expect(econ.idleValue()).toBe(0.5);
-  const buyRate2 = econ.onBuy('rate', 1, 0, 8);
+  const buyRate2 = econ.onBuy('rate', 1, 0, 20);
   expect(buyRate2.ok).toBe(true);
 });
 

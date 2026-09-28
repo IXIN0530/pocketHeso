@@ -130,20 +130,74 @@ export function parseEconArgs(argv: string[]): EconArgs {
   return { profile, days, seed, machine, economy, evHours, json };
 }
 
+/** sim内の換算 Tier（claims と同じ逓減。層違反を避けるため自前実装, D-081）。 */
+interface SimTier {
+  readonly to: number;
+  readonly mult: number;
+}
+
+function simTiered(x: number, ts: readonly SimTier[]): number {
+  let sum = 0;
+  let lo = 0;
+  for (const t of ts) {
+    if (x <= lo) {
+      break;
+    }
+    const hi = x < t.to ? x : t.to;
+    sum = sum + (hi - lo) * t.mult;
+    lo = t.to;
+  }
+  return sum;
+}
+
+/** claims節の換算値（economy JSON から読む。@ph/claims は層違反のため import しない）。 */
+interface SimClaimParams {
+  readonly stepsFuelPer1000: number;
+  readonly stepsProdPer1000: number;
+  readonly stepsTiers: readonly SimTier[];
+  readonly stepsMedalPer: number;
+  readonly stepsMedalTo: number;
+  readonly checkinFuelPerMin: number;
+  readonly checkinProdPerMin: number;
+  readonly checkinTiers: readonly SimTier[];
+  readonly checkinMedalPerMin: number;
+  readonly checkinMedalToMin: number;
+  readonly bonusPerMin: number;
+  readonly bonusMax: number;
+}
+
+function simClaimParams(url: URL = ECONOMY_URL): SimClaimParams {
+  const json = JSON.parse(readFileSync(url, 'utf8')) as Record<string, unknown>;
+  const claims = (json['claims'] as Record<string, unknown>);
+  const steps = claims['steps'] as Record<string, unknown>;
+  const checkin = claims['checkin'] as Record<string, unknown>;
+  const tiersOf = (v: unknown): SimTier[] => (v as SimTier[]).map((t) => ({ to: t.to, mult: t.mult }));
+  return {
+    stepsFuelPer1000: steps['fuel_min_per_1000'] as number,
+    stepsProdPer1000: steps['prod_min_per_1000'] as number,
+    stepsTiers: tiersOf(steps['tiers']),
+    stepsMedalPer: steps['medal_per'] as number,
+    stepsMedalTo: steps['medal_to'] as number,
+    checkinFuelPerMin: checkin['fuel_min_per_min'] as number,
+    checkinProdPerMin: checkin['prod_min_per_min'] as number,
+    checkinTiers: tiersOf(checkin['tiers']),
+    checkinMedalPerMin: checkin['medal_per_min'] as number,
+    checkinMedalToMin: checkin['medal_to_min'] as number,
+    bonusPerMin: checkin['bonus_hold_per_min'] as number,
+    bonusMax: checkin['bonus_hold_max_per_day'] as number,
+  };
+}
+
 /** 歩数 → 営業時間（分）。〜10,000 歩 1,000歩=10分、〜15,000 歩は半分、以降 0（spec/30）。 */
 export function stepsFuelMin(steps: number): number {
-  const full = steps < 10000 ? steps : 10000;
-  const halfTo = steps < 15000 ? steps : 15000;
-  const half = halfTo > 10000 ? halfTo - 10000 : 0;
-  return full / 100 + half / 200;
+  const p = simClaimParams();
+  return (simTiered(steps, p.stepsTiers) * p.stepsFuelPer1000) / 1000;
 }
 
 /** 運動分（1日の合算）→ 営業時間（分）。〜60分 ×2、〜120分 ×1、以降 0（spec/30）。 */
 export function exerciseFuelMin(min: number): number {
-  const full = min < 60 ? min : 60;
-  const halfTo = min < 120 ? min : 120;
-  const half = halfTo > 60 ? halfTo - 60 : 0;
-  return full * 2 + half;
+  const p = simClaimParams();
+  return simTiered(min, p.checkinTiers) * p.checkinFuelPerMin;
 }
 
 /** day 番号の YYYY-MM-DD（UTC 暦）。 */
@@ -158,49 +212,72 @@ export interface EconInput {
   readonly fg?: boolean;
 }
 
-/** プロファイルから Grant と前面切替の列を作る（時刻順）。 */
-export function buildEconInputs(profile: EconProfile, days: number): EconInput[] {
+/** プロファイルから Grant と前面切替の列を作る（時刻順。claims と同じ換算を自前実装, D-081）。 */
+export function buildEconInputs(profile: EconProfile, days: number, params: SimClaimParams = simClaimParams()): EconInput[] {
   const out: EconInput[] = [];
   for (let d = 0; d < days; d = d + 1) {
     const base = d * DAY_MS;
     const dayStr = econDayString(d);
     const gymToday = profile.gymMin > 0 && profile.gymDays.includes(d % 7);
     const gymEnd = profile.gymStartMin + profile.gymMin;
-    let stepsSent = 0;
-    let stepMedal = false;
     const items: { min: number; input: EconInput }[] = [];
-    const exerciseAt = (min: number): number => (gymToday && min >= gymEnd ? profile.gymMin : 0);
     const stepsAt = (min: number): number => {
       const r = (min - STEPS_FROM_MIN) / (STEPS_TO_MIN - STEPS_FROM_MIN);
       const c = r < 0 ? 0 : r > 1 ? 1 : r;
       return Math.floor(profile.steps * c);
     };
-    const streakAt = (min: number): string | undefined =>
-      stepsAt(min) >= 5000 || exerciseAt(min) >= 20 ? dayStr : undefined;
+    let stepsPrev = 0;
+    let stepsMedalsIssued = 0;
+    const streakDays = new Set<string>();
+    const streakFor = (steps: number, exercise: number): string | undefined =>
+      steps >= 5000 || exercise >= 20 ? dayStr : undefined;
     for (let i = 0; i < profile.fgSessions.length; i = i + 1) {
       const [start, len] = profile.fgSessions[i] as readonly [number, number];
       const steps = stepsAt(start);
-      const fuelMs = Math.floor((stepsFuelMin(steps) - stepsFuelMin(stepsSent)) * MIN_MS);
-      let medals = 0;
-      if (!stepMedal && steps >= 8000) {
-        stepMedal = true;
-        medals = 1;
+      const at = base + start * MIN_MS;
+      if (steps > stepsPrev) {
+        const fuelMs = Math.round(
+          ((simTiered(steps, params.stepsTiers) - simTiered(stepsPrev, params.stepsTiers)) * params.stepsFuelPer1000 * MIN_MS) / 1000,
+        );
+        const prodMin =
+          ((simTiered(steps, params.stepsTiers) - simTiered(stepsPrev, params.stepsTiers)) * params.stepsProdPer1000) / 1000;
+        const capped = steps < params.stepsMedalTo ? steps : params.stepsMedalTo;
+        const totalMedals = Math.floor(capped / params.stepsMedalPer);
+        const medals = totalMedals > stepsMedalsIssued ? totalMedals - stepsMedalsIssued : 0;
+        stepsMedalsIssued = totalMedals;
+        const grant: Grant =
+          prodMin > 0
+            ? { claimId: `steps-${d}-${i}`, at, fuelMs, medals, prodMin, streakDay: streakFor(steps, 0) }
+            : { claimId: `steps-${d}-${i}`, at, fuelMs, medals, streakDay: streakFor(steps, 0) };
+        // streakDay は初めて条件を満たした Grant にだけ載せる。
+        const finalGrant = streakDays.has(dayStr) ? { ...grant, streakDay: undefined } : grant;
+        if (finalGrant.streakDay !== undefined) {
+          streakDays.add(dayStr);
+        }
+        if (fuelMs > 0 || medals > 0 || prodMin > 0) {
+          // streakDay が undefined の場合は省略する。
+          const g = finalGrant.streakDay === undefined ? { claimId: finalGrant.claimId, at, fuelMs, medals, ...(prodMin > 0 ? { prodMin } : {}) } : finalGrant;
+          items.push({ min: start, input: { t: at, grant: g } });
+        }
+        stepsPrev = steps;
       }
-      stepsSent = steps;
-      if (fuelMs > 0 || medals > 0) {
-        items.push({
-          min: start,
-          input: { t: base + start * MIN_MS, grant: { claimId: `steps-${d}-${i}`, at: base + start * MIN_MS, fuelMs, medals, streakDay: streakAt(start) } },
-        });
-      }
-      items.push({ min: start, input: { t: base + start * MIN_MS, fg: true } });
+      items.push({ min: start, input: { t: at, fg: true } });
       items.push({ min: start + len, input: { t: base + (start + len) * MIN_MS, fg: false } });
     }
     if (gymToday) {
       const at = base + gymEnd * MIN_MS;
-      const fuelMs = Math.floor(exerciseFuelMin(profile.gymMin) * MIN_MS);
-      const medals = profile.gymMin >= 20 ? 1 : 0;
-      items.push({ min: gymEnd, input: { t: at, grant: { claimId: `gym-${d}`, at, fuelMs, medals, streakDay: streakAt(gymEnd) } } });
+      // sim のジムは1日1回のため、その日の合算 = gymMin。
+      const eq = simTiered(profile.gymMin, params.checkinTiers);
+      const fuelMs = Math.round(eq * params.checkinFuelPerMin * MIN_MS);
+      const prodMin = eq * params.checkinProdPerMin;
+      const capped = profile.gymMin < params.checkinMedalToMin ? profile.gymMin : params.checkinMedalToMin;
+      const medals = Math.floor(capped / params.checkinMedalPerMin);
+      const bonusTotal = Math.floor(profile.gymMin / params.bonusPerMin);
+      const bonusHolds = bonusTotal < params.bonusMax ? bonusTotal : params.bonusMax;
+      const grantBase: Grant = { claimId: `gym-${d}`, at, fuelMs, medals, streakDay: streakDays.has(dayStr) ? undefined : dayStr };
+      const withProd: Grant = prodMin > 0 ? { ...grantBase, prodMin } : grantBase;
+      const grant: Grant = bonusHolds > 0 ? { ...withProd, bonusHolds } : withProd;
+      items.push({ min: gymEnd, input: { t: at, grant } });
     }
     items.sort((a, b) => a.min - b.min);
     for (let i = 0; i < items.length; i = i + 1) {
@@ -239,6 +316,8 @@ export interface EconDayRow {
   readonly yakumono: number;
   /** 大当たりボーナスの合計（累計。jackpotEndedのbonus, D-080）。 */
   readonly bonus: number;
+  /** 行動の即時報酬の合計（累計。grantedのballs, D-081）。 */
+  readonly action: number;
   readonly fuelMin: number;
 }
 
@@ -262,10 +341,11 @@ export interface EconResult {
   readonly medalsPachinko: number;
   /** 閉店ごとの獲得（獲得≥1のみ。貪欲戦略は0獲得で閉店しない）。 */
   readonly closeHistory: readonly EconCloseEntry[];
-  /** 累計の玉内訳（役物/大当たりボーナス/出玉。大当たり＝出玉＋ボーナス, D-080）。 */
+  /** 累計の玉内訳（役物/大当たりボーナス/出玉/行動の即時報酬, D-080・D-081）。 */
   readonly yakumono: number;
   readonly bonus: number;
   readonly payout: number;
+  readonly action: number;
 }
 
 /** 買える候補（安い順に買う単純戦略用）。 */
@@ -345,7 +425,8 @@ export function runEcon(
   machine: string,
   economyUrl: URL = ECONOMY_URL,
 ): EconResult {
-  const spec = parseEconomyText(readFileSync(economyUrl, 'utf8'));
+  const economyText = readFileSync(economyUrl, 'utf8');
+  const spec = parseEconomyText(economyText);
   const table = buildGrowthTable(spec.priceGrowth, 10000);
   const { spec: mspec, patterns } = loadRunMachine(machine);
   const { buffer } = loadRunAtlas();
@@ -355,7 +436,7 @@ export function runEcon(
     [],
     [{ t: 0, k: 'presence', fg: false }],
   );
-  const inputs = buildEconInputs(profile, days);
+  const inputs = buildEconInputs(profile, days, simClaimParams(economyUrl));
   const end = days * DAY_MS;
   const rows: EconDayRow[] = [];
   const closeHistory: EconCloseEntry[] = [];
@@ -372,6 +453,7 @@ export function runEcon(
   let fuelGrantedMs = 0;
   let yakumonoBase = 0;
   let bonusTotal = 0;
+  let actionTotal = 0;
   let croonDay: number | null = null;
   let firstAwakenDay: number | null = null;
   let firstCloseDay: number | null = null;
@@ -466,9 +548,19 @@ export function runEcon(
     const total1 = econ.getTotalTotal();
     const payout1 = eng.project().totals.payoutBalls;
     const bonus1 = eng.project().totals.bonusBalls;
-    const tick = total1 - total0 - (payout1 - payout0) - (bonus1 - bonus0);
+    let actionInInterval = 0;
+    for (let i = 0; i < evs.length; i = i + 1) {
+      const e = evs[i] as EngineSimEvent;
+      if (e.k === 'granted') {
+        actionInInterval = actionInInterval + (e.balls ?? 0);
+      }
+    }
+    const tick = total1 - total0 - (payout1 - payout0) - (bonus1 - bonus0) - actionInInterval;
     if (tick > 0) {
       yakumonoBase = yakumonoBase + tick;
+    }
+    if (actionInInterval > 0) {
+      actionTotal = actionTotal + actionInInterval;
     }
     for (let i = 0; i < evs.length; i = i + 1) {
       const e = evs[i] as EngineSimEvent;
@@ -507,11 +599,13 @@ export function runEcon(
         payout: pe.totals.payoutBalls,
         yakumono: yakumonoBase,
         bonus: bonusTotal,
+        action: actionTotal,
         fuelMin: fuelGrantedMs / MIN_MS,
       });
     }
   }
   const lastPayout = rows.length > 0 ? (rows[rows.length - 1] as EconDayRow).payout : 0;
+  const lastAction = rows.length > 0 ? (rows[rows.length - 1] as EconDayRow).action : 0;
   return {
     profile: profile.id,
     machine,
@@ -527,6 +621,7 @@ export function runEcon(
     yakumono: yakumonoBase,
     bonus: bonusTotal,
     payout: lastPayout,
+    action: lastAction,
   };
 }
 
@@ -577,27 +672,30 @@ export function lastRegular(r: EconResult): number {
 export function formatEcon(r: EconResult, ev: { init: number; full: number } | null, baseline: EconResult | null = null): string {
   const lines: string[] = [];
   lines.push(`econ: profile=${r.profile} days=${r.days} machine=${r.machine} seed=${r.seed}`);
-  lines.push('day | balls | perSec(fg) | runTotal | total | regP(ball/med) | close | awaken | top | medals | yaku/bonus/payout | jackpot% | jackpots | fuel(h,cum)');
+  lines.push('day | balls | perSec(fg) | runTotal | total | regP(ball/med) | close | awaken | top | medals | yaku/bonus/payout/action | jackpot% | action% | jackpots | fuel(h,cum)');
   for (let i = 0; i < r.rows.length; i = i + 1) {
     const w = r.rows[i] as EconDayRow;
-    const total = w.yakumono + w.bonus + w.payout;
+    const total = w.yakumono + w.bonus + w.payout + w.action;
     const share = total > 0 ? ((w.bonus + w.payout) / total) * 100 : 0;
+    const actionShare = total > 0 ? (w.action / total) * 100 : 0;
     lines.push(
-      `${w.day} | ${fmtNum(w.balls)} | ${fmtNum(w.perSecFg)} | ${fmtNum(w.runTotal)} | ${fmtNum(w.totalTotal)} | ${w.regular}(${w.ballPts}/${w.medalPts}) | ${w.closes} | ${w.awakens} | ${w.top} | ${w.medals} | ${fmtNum(w.yakumono)}/${fmtNum(w.bonus)}/${fmtNum(w.payout)} | ${share.toFixed(1)} | ${w.jackpots} | ${(w.fuelMin / 60).toFixed(1)}`,
+      `${w.day} | ${fmtNum(w.balls)} | ${fmtNum(w.perSecFg)} | ${fmtNum(w.runTotal)} | ${fmtNum(w.totalTotal)} | ${w.regular}(${w.ballPts}/${w.medalPts}) | ${w.closes} | ${w.awakens} | ${w.top} | ${w.medals} | ${fmtNum(w.yakumono)}/${fmtNum(w.bonus)}/${fmtNum(w.payout)}/${fmtNum(w.action)} | ${share.toFixed(1)} | ${actionShare.toFixed(1)} | ${w.jackpots} | ${(w.fuelMin / 60).toFixed(1)}`,
     );
   }
   lines.push(`milestones: croon day ${r.croonDay ?? '-'} / first awaken day ${r.firstAwakenDay ?? '-'} / first close day ${r.firstCloseDay ?? '-'}`);
   lines.push(`medals: activity ${r.medalsActivity} / pachinko ${r.medalsPachinko} (pachinko always 0, D-049)`);
   const closeStr = r.closeHistory.length > 0 ? r.closeHistory.map((c) => `day${c.day}+${c.gain}`).join(', ') : '-';
   lines.push(`closes: ${closeStr}`);
-  const grandTotal = r.yakumono + r.bonus + r.payout;
+  const grandTotal = r.yakumono + r.bonus + r.payout + r.action;
   const grandShare = grandTotal > 0 ? ((r.bonus + r.payout) / grandTotal) * 100 : 0;
-  lines.push(`balls: yakumono ${fmtNum(r.yakumono)} / bonus ${fmtNum(r.bonus)} / payout ${fmtNum(r.payout)} (jackpot ${(grandShare).toFixed(1)}%)`);
+  const grandActionShare = grandTotal > 0 ? (r.action / grandTotal) * 100 : 0;
+  lines.push(`balls: yakumono ${fmtNum(r.yakumono)} / bonus ${fmtNum(r.bonus)} / payout ${fmtNum(r.payout)} / action ${fmtNum(r.action)} (jackpot ${(grandShare).toFixed(1)}% / action ${(grandActionShare).toFixed(1)}%)`);
   const row7 = r.rows.length >= 7 ? (r.rows[6] as EconDayRow) : null;
   if (row7 !== null) {
-    const t7 = row7.yakumono + row7.bonus + row7.payout;
+    const t7 = row7.yakumono + row7.bonus + row7.payout + row7.action;
     const s7 = t7 > 0 ? ((row7.bonus + row7.payout) / t7) * 100 : 0;
-    lines.push(`balls day1-7: jackpot share ${s7.toFixed(1)}% (target 25-45%, D-080. action is T8)`);
+    const a7 = t7 > 0 ? (row7.action / t7) * 100 : 0;
+    lines.push(`balls day1-7: jackpot share ${s7.toFixed(1)}% (target 25-45%) / action share ${a7.toFixed(1)}% (target 25-45%, D-081)`);
   }
   lines.push('targets (spec/23):');
   if (r.profile === 'standard') {
@@ -609,9 +707,11 @@ export function formatEcon(r: EconResult, ev: { init: number; full: number } | n
     const okGain = firstGain === 1;
     lines.push(`  croon on day 1: ${ok1 ? 'OK' : 'NG'} / first awaken ~day 3 (3-4): ${ok2 ? 'OK' : 'NG'} / first close ~day 7 (6-8): ${ok3 ? 'OK' : ng3} / first gain +1: ${okGain ? 'OK' : 'NG'}`);
     if (row7 !== null) {
-      const t7 = row7.yakumono + row7.bonus + row7.payout;
+      const t7 = row7.yakumono + row7.bonus + row7.payout + row7.action;
       const s7 = t7 > 0 ? (row7.bonus + row7.payout) / t7 : 0;
+      const a7 = t7 > 0 ? row7.action / t7 : 0;
       lines.push(`  jackpot share day1-7 25-45%: ${(s7 >= 0.25 && s7 <= 0.45 ? 'OK' : 'NG')} (${(s7 * 100).toFixed(1)}%)`);
+      lines.push(`  action share day1-7 25-45%: ${(a7 >= 0.25 && a7 <= 0.45 ? 'OK' : 'NG')} (${(a7 * 100).toFixed(1)}%)`);
     }
     if (r.days >= 28) {
       const closes28 = r.closeHistory.filter((c) => c.day <= 28).length;

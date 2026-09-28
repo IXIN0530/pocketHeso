@@ -73,7 +73,7 @@ test('standard の1週間は 8,000歩×7日＋ジム2回の燃料・メダル・
     }
   }
   expect(fuelMs).toBe((7 * 80 + 2 * 120) * 60000);
-  expect(medals).toBe(7 + 2);
+  expect(medals).toBe(7 * 4 + 2 * 6);
   expect(streakDays.size).toBe(7);
   expect(inputs.filter((i) => i.fg === true).length).toBe(7 * 3);
   const none = buildEconInputs(profile('none'), 7);
@@ -88,7 +88,7 @@ test('runEcon は決定論で、メダル内訳の合計が残高＋覚醒消費
   expect(a.rows.length).toBe(2);
   const last = a.rows[1];
   expect(last === undefined ? -1 : last.medalsActivity + last.medalsPachinko).toBe(a.medalsActivity + a.medalsPachinko);
-  expect(a.medalsActivity).toBe(3);
+  expect(a.medalsActivity).toBe(14);
   expect(a.croonDay).toBe(1);
   expect(last === undefined ? 0 : last.medals).toBeLessThanOrEqual(a.medalsActivity + a.medalsPachinko);
   const text = formatEcon(a, { init: 0.85, full: 1.0 });
@@ -107,21 +107,23 @@ test('runEcon 7日: 閉店は獲得≥1のみ・玉内訳が累計と整合・�
   const last = r.rows[6] as EconDayRow;
   expect(last.closes).toBe(r.closeHistory.length);
   expect(r.bonus).toBeGreaterThan(0);
-  // 役物＋ボーナス＋出玉 = 全期間累計玉（予告のボーナス等も tick 側に入る）。
-  expect((r.yakumono + r.bonus + r.payout) / last.totalTotal).toBeCloseTo(1, 9);
+  expect(r.action).toBeGreaterThan(0);
+  // 役物＋ボーナス＋出玉＋行動 = 全期間累計玉（予告のボーナス等も tick 側に入る）。
+  expect((r.yakumono + r.bonus + r.payout + r.action) / last.totalTotal).toBeCloseTo(1, 9);
   const text = formatEcon(r, null);
   expect(text).toMatch(/first gain \+1: OK/);
   expect(text).toMatch(/jackpot share day1-7 25-45%: (OK|NG) \(\d+\.\d%\)/);
+  expect(text).toMatch(/action share day1-7 25-45%: (OK|NG) \(\d+\.\d%\)/);
 }, 120000);
 
 test('formatEcon: heavy は standard と常連Pを比べ、週次は (最上位役物, Lv合計) の辞書順で上回るかを見る', () => {
   const row = (day: number, top: string, lvTotal: number, regular: number): EconDayRow => ({
     day, balls: 0, perSecFg: day, runTotal: 0, totalTotal: 0, regular, ballPts: 0, medalPts: 0, closes: 0, awakens: 0,
-    top, lvTotal, medals: 0, medalsActivity: 0, medalsPachinko: 0, jackpots: 0, fired: 0, payout: 0, yakumono: 0, bonus: 0, fuelMin: 0,
+    top, lvTotal, medals: 0, medalsActivity: 0, medalsPachinko: 0, jackpots: 0, fired: 0, payout: 0, yakumono: 0, bonus: 0, action: 0, fuelMin: 0,
   });
   const res = (profileId: string, rows: EconDayRow[]): EconResult => ({
     profile: profileId, machine: 'light-middle-01', seed: 1, days: rows.length, rows, croonDay: 1, firstAwakenDay: 3,
-    firstCloseDay: 7, medalsActivity: 0, medalsPachinko: 0, closeHistory: [{ day: 7, gain: 1 }], yakumono: 0, bonus: 0, payout: 0,
+    firstCloseDay: 7, medalsActivity: 0, medalsPachinko: 0, closeHistory: [{ day: 7, gain: 1 }], yakumono: 0, bonus: 0, payout: 0, action: 0,
   });
   const heavy = res('heavy', [row(1, '-', 0, 3)]);
   const std = res('standard', [row(1, '-', 0, 2)]);

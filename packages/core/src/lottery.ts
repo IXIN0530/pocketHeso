@@ -202,6 +202,42 @@ export function drawBonusHold(
   return { serial: bonusSerial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0 };
 }
 
+/** 行動の特別保留1件（当たり1/10は `grantHold` ストリーム、枝・パターン・色は serial の各ストリーム。賞球なし・rate1, D-081）。 */
+export function drawGrantHold(
+  spec: MachineSpec,
+  patterns: PatternTable,
+  seed: number,
+  mode: LotteryMode,
+  grantIndex: number,
+  serial: number,
+  bonus1In: number,
+): HoldEntry {
+  modeOf(spec, mode);
+  assertSerial(grantIndex);
+  assertSerial(serial);
+  if (patterns.length === 0) {
+    throw new Error('invalid lottery: patterns must not be empty');
+  }
+  const hitU32 = new RNGStream(seed, 'grantHold', grantIndex).nextU32();
+  const isHit = hitU32 < bonusThresholdU32(bonus1In);
+  let branchIndex: number | null = null;
+  if (isHit) {
+    branchIndex = new RNGStream(seed, 'split', serial).pick(splitWeights(spec, mode));
+  }
+  const patternIndex = new RNGStream(seed, 'pattern', serial).pick(patternWeights(patterns, isHit));
+  const patternRow = patterns[patternIndex];
+  if (patternRow === undefined) {
+    throw new Error('invalid lottery: pattern index out of range');
+  }
+  const colorIndex = new RNGStream(seed, 'holdColor', serial).pick(holdColorWeights(spec, mode, isHit));
+  const color = LOTTERY_HOLD_COLORS[colorIndex];
+  if (color === undefined) {
+    throw new Error('invalid lottery: color index out of range');
+  }
+  const hot = holdHot(patternRow.hot, color);
+  return { serial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0 };
+}
+
 /** ヘソ入賞時の取得時判定（当否・振分け・パターン・色を全部確定）。 */
 export function drawHold(
   spec: MachineSpec,

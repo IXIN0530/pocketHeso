@@ -140,7 +140,7 @@ test('レート4: 1発4玉・出玉×4・大当たりボーナス×1.5（D-080�
   const initialBalls = 10000000;
   const eng = makeEngine(
     econ,
-    [{ claimId: 'fuel', at: 0, fuelMs: 12 * H, medals: 2 }],
+    [{ claimId: 'fuel', at: 0, fuelMs: 12 * H, medals: 8 }],
     [
       { t: 0, k: 'buy', target: 'rate', count: 1 },
       { t: 0, k: 'shoot', on: true, rate: 4 },
@@ -181,7 +181,7 @@ test('レート4: 1発4玉・出玉×4・大当たりボーナス×1.5（D-080�
   const snap = eng.snapshot();
   expect(snap.balls).toBe(initialBalls - 4 * fired.length + snap.totals.payoutBalls + snap.totals.bonusBalls);
   expect(eng.project().medals).toBe(0);
-  expect(econ.getMedalsEarned()).toBe(2);
+  expect(econ.getMedalsEarned()).toBe(8);
 });
 
 test('上乗せ込みの実ラウンド数でボーナス・rate100は×6・Stubは省略（D-080）', () => {
@@ -310,7 +310,7 @@ test('決定論契約1/2: 大当たりボーナス込みで不揃い刻み・大
 function awayRate4Engine(econ: IdleEconomy): Engine {
   return makeEngine(
     econ,
-    [{ claimId: 'fuel', at: 0, fuelMs: 12 * H, medals: 2 }],
+    [{ claimId: 'fuel', at: 0, fuelMs: 12 * H, medals: 8 }],
     [
       { t: 0, k: 'buy', target: 'windmill', count: 10 },
       { t: 0, k: 'buy', target: 'rate', count: 1 },
@@ -362,7 +362,7 @@ test('持ち玉 < rate なら発射しない（手動・オートとも。持ち
   const econ = loadEconomy();
   const eng = makeEngine(
     econ,
-    [{ claimId: 'fuel', at: 0, fuelMs: 12 * H, medals: 2 }],
+    [{ claimId: 'fuel', at: 0, fuelMs: 12 * H, medals: 8 }],
     [
       { t: 0, k: 'buy', target: 'rate', count: 1 },
       { t: 0, k: 'shoot', on: true, rate: 4 },

@@ -13,7 +13,7 @@
     { "id": "shima", "name": "島設備", "period_s": 16, "yield": 845000, "base_price": 330000000 }
   ],
   "milestones": { "thresholds": [25, 50, 100], "step": 50, "step_from": 150 },
-  "awaken": { "min_lv": 100, "mult": 10, "medal_base": 5, "medal_growth": 2 },
+  "awaken": { "min_lv": 100, "mult": 10, "medal_base": 20, "medal_growth": 2 },
   "factors": { "fg": 1.0, "idle_base": 0.5, "closed": 0.005, "boost_mult": 2.0 },
   "upgrades": {
     "idle_efficiency": { "values": [0.5, 0.6, 0.7, 0.8, 0.9, 1.0], "costs": [1000, 10000, 100000, 1000000, 10000000] },
@@ -23,7 +23,7 @@
     "hold_plus": { "stages": 2, "costs": [100000, 1000000] },
     "auto": { "cost": 50000 },
     "tomeuchi": { "cost": 200000 },
-    "rate_unlock": { "rates": [1, 4, 10, 40, 100, 400, 1000], "medal_costs": [2, 5, 20, 50, 200, 500] }
+    "rate_unlock": { "rates": [1, 4, 10, 40, 100, 400, 1000], "medal_costs": [8, 20, 80, 200, 800, 2000] }
   },
   "notice": {
     "min_fg_ms": 300000,
@@ -38,17 +38,18 @@
     "bonus_1_in": 10,
     "bonus_weight": 5
   },
-  "close": { "required_run_total": 10000000000, "divisor": 12000000000, "medals_per_point": 7, "regular_mult": 1.0, "start_balls": 100 },
+  "close": { "required_run_total": 10000000000, "divisor": 12000000000, "medals_per_point": 28, "regular_mult": 1.0, "start_balls": 100 },
   "prod_ref": { "min_per_sec": 1 },
   "jackpot_bonus": { "round_s": 180, "mult_by_rate": [1, 1.5, 2.5, 4, 6, 9, 12] },
   "claims": {
     "streak_per_day": 0.05,
     "streak_max_days": 20,
     "claim_days": 3,
-    "steps": { "fuel_min_per_1000": 10, "tiers": [{ "to": 10000, "mult": 1 }, { "to": 15000, "mult": 0.5 }], "medal_at": 8000 },
-    "checkin": { "fuel_min_per_min": 2, "tiers": [{ "to": 60, "mult": 1 }, { "to": 120, "mult": 0.5 }], "medal_min_minutes": 20, "medal_max_per_day": 2,
+    "steps": { "fuel_min_per_1000": 10, "prod_min_per_1000": 30, "tiers": [{ "to": 10000, "mult": 1 }, { "to": 15000, "mult": 0.5 }], "medal_per": 2000, "medal_to": 10000 },
+    "checkin": { "fuel_min_per_min": 2, "prod_min_per_min": 10, "tiers": [{ "to": 60, "mult": 1 }, { "to": 120, "mult": 0.5 }], "medal_per_min": 10, "medal_to_min": 60,
+      "bonus_hold_per_min": 20, "bonus_hold_max_per_day": 3, "place_bonus_medals": 4,
       "min_minutes": 20, "self_max_minutes": 60 },
-    "self": { "fuel_min_per_item": 10, "max_per_day": 5 },
+    "self": { "fuel_min_per_item": 10, "prod_min_per_item": 10, "max_per_day": 5 },
     "trust": { "health": 1.0, "checkin": 1.0, "checkin-own": 0.8, "self": 0.3 },
     "streak": { "min_steps": 5000, "min_minutes": 20 }
   }

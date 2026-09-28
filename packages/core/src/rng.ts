@@ -9,6 +9,7 @@ export type RNGStreamID =
   | 'presentation'
   | 'holdChange'
   | 'notice'
+  | 'grantHold'
   | 'economy';
 
 /** 全ストリームID（順序固定。反復順に依存する処理はこの配列を使う）。 */
@@ -22,6 +23,7 @@ export const RNG_STREAM_IDS: readonly RNGStreamID[] = [
   'presentation',
   'holdChange',
   'notice',
+  'grantHold',
   'economy',
 ];
 

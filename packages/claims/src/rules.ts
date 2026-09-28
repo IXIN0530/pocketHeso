@@ -15,14 +15,20 @@ export interface ClaimRules {
   readonly claimDays: number;
   readonly steps: {
     readonly fuelMinPer1000: number;
+    readonly prodMinPer1000: number;
     readonly tiers: readonly Tier[];
-    readonly medalAt: number;
+    readonly medalPer: number;
+    readonly medalTo: number;
   };
   readonly checkin: {
     readonly fuelMinPerMin: number;
+    readonly prodMinPerMin: number;
     readonly tiers: readonly Tier[];
-    readonly medalMinMinutes: number;
-    readonly medalMaxPerDay: number;
+    readonly medalPerMin: number;
+    readonly medalToMin: number;
+    readonly bonusHoldPerMin: number;
+    readonly bonusHoldMaxPerDay: number;
+    readonly placeBonusMedals: number;
     /** チェックインが成立する最短の分（spec/32）。 */
     readonly minMinutes: number;
     /** 施設外で終了・失効を自己申告に切り替えたときの上限の分。 */
@@ -30,6 +36,7 @@ export interface ClaimRules {
   };
   readonly self: {
     readonly fuelMinPerItem: number;
+    readonly prodMinPerItem: number;
     readonly maxPerDay: number;
   };
   readonly trust: Readonly<Record<Exclude<Source, 'pass'>, number>>;
@@ -100,19 +107,26 @@ export function parseClaimRules(economy: unknown): ClaimRules {
     claimDays: int(c['claim_days'], 'claim_days', 1, 31),
     steps: {
       fuelMinPer1000: num(st['fuel_min_per_1000'], 'steps.fuel_min_per_1000', 0, 1000),
+      prodMinPer1000: num(st['prod_min_per_1000'], 'steps.prod_min_per_1000', 0, 10000),
       tiers: tiers(st['tiers'], 'steps.tiers'),
-      medalAt: int(st['medal_at'], 'steps.medal_at', 1, 1e9),
+      medalPer: int(st['medal_per'], 'steps.medal_per', 1, 1e9),
+      medalTo: int(st['medal_to'], 'steps.medal_to', 1, 1e9),
     },
     checkin: {
       fuelMinPerMin: num(ck['fuel_min_per_min'], 'checkin.fuel_min_per_min', 0, 100),
+      prodMinPerMin: num(ck['prod_min_per_min'], 'checkin.prod_min_per_min', 0, 1000),
       tiers: tiers(ck['tiers'], 'checkin.tiers'),
-      medalMinMinutes: int(ck['medal_min_minutes'], 'checkin.medal_min_minutes', 1, 1440),
-      medalMaxPerDay: int(ck['medal_max_per_day'], 'checkin.medal_max_per_day', 0, 100),
+      medalPerMin: int(ck['medal_per_min'], 'checkin.medal_per_min', 1, 1440),
+      medalToMin: int(ck['medal_to_min'], 'checkin.medal_to_min', 1, 1440),
+      bonusHoldPerMin: int(ck['bonus_hold_per_min'], 'checkin.bonus_hold_per_min', 1, 1440),
+      bonusHoldMaxPerDay: int(ck['bonus_hold_max_per_day'], 'checkin.bonus_hold_max_per_day', 0, 100),
+      placeBonusMedals: int(ck['place_bonus_medals'], 'checkin.place_bonus_medals', 0, 100),
       minMinutes: int(ck['min_minutes'], 'checkin.min_minutes', 1, 1440),
       selfMaxMinutes: int(ck['self_max_minutes'], 'checkin.self_max_minutes', 0, 1440),
     },
     self: {
       fuelMinPerItem: num(sf['fuel_min_per_item'], 'self.fuel_min_per_item', 0, 1440),
+      prodMinPerItem: num(sf['prod_min_per_item'], 'self.prod_min_per_item', 0, 14400),
       maxPerDay: int(sf['max_per_day'], 'self.max_per_day', 0, 100),
     },
     trust: {

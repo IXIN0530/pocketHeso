@@ -170,6 +170,8 @@ interface Draft {
   readonly amount: number;
   readonly fuelMs: number;
   readonly medals: number;
+  readonly prodMin: number;
+  readonly bonusHolds: number;
   readonly span?: readonly [SimTime, SimTime] | undefined;
   readonly claimId?: string | undefined;
   readonly placeBonus?: string | undefined;
@@ -197,7 +199,7 @@ export function planGrants(ledger: readonly ClaimRecord[], input: ClaimInput, ru
     if (nowAchieved) {
       const gap = addDays(d.day, -1);
       if (restCoverable(work, gap, rules)) {
-        add({ source: 'pass', kind: 'rest', day: gap, amount: 0, fuelMs: 0, medals: 0 }, 0, gap);
+        add({ source: 'pass', kind: 'rest', day: gap, amount: 0, fuelMs: 0, medals: 0, prodMin: 0, bonusHolds: 0 }, 0, gap);
       }
     }
     add(d, trust, nowAchieved ? d.day : undefined);
@@ -205,11 +207,14 @@ export function planGrants(ledger: readonly ClaimRecord[], input: ClaimInput, ru
 
   const add = (d: Draft, trust: number, streakDay: string | undefined): void => {
     const claimId = d.claimId ?? nextId(work, d.source, d.kind, d.day);
+    const baseGrant: Grant = { claimId, at, fuelMs: d.fuelMs, medals: d.medals };
+    const withProd: Grant =
+      d.prodMin > 0 ? { ...baseGrant, prodMin: d.prodMin } : baseGrant;
     const grant: Grant =
-      streakDay === undefined
-        ? { claimId, at, fuelMs: d.fuelMs, medals: d.medals }
-        : { claimId, at, fuelMs: d.fuelMs, medals: d.medals, streakDay };
-    const base = { claimId, receivedAt: at, source: d.source, kind: d.kind, day: d.day, amount: d.amount, trust, grant };
+      d.bonusHolds > 0 ? { ...withProd, bonusHolds: d.bonusHolds } : withProd;
+    const full: Grant =
+      streakDay === undefined ? grant : { ...grant, streakDay };
+    const base = { claimId, receivedAt: at, source: d.source, kind: d.kind, day: d.day, amount: d.amount, trust, grant: full };
     const withSpan: ClaimRecord = d.span === undefined ? base : { ...base, span: d.span };
     const r: ClaimRecord = d.placeBonus === undefined ? withSpan : { ...withSpan, placeBonus: d.placeBonus };
     work.push(r);
@@ -219,7 +224,22 @@ export function planGrants(ledger: readonly ClaimRecord[], input: ClaimInput, ru
   if (input.k === 'health') {
     const trust = rules.trust.health;
     const perStepMs = (rules.steps.fuelMinPer1000 * MIN_MS) / 1000;
+    const perStepProd = rules.steps.prodMinPer1000 / 1000;
     const fuelAt = (steps: number): number => Math.round(tiered(steps, rules.steps.tiers) * perStepMs * trust);
+    const prodAt = (steps: number): number => tiered(steps, rules.steps.tiers) * perStepProd * trust;
+    const medalTotal = (steps: number): number => {
+      const capped = steps < rules.steps.medalTo ? steps : rules.steps.medalTo;
+      return Math.floor(capped / rules.steps.medalPer);
+    };
+    const issuedMedals = (day: string): number => {
+      let s = 0;
+      for (const r of work) {
+        if (r.kind === 'steps' && r.day === day) {
+          s = s + r.grant.medals;
+        }
+      }
+      return s;
+    };
     const days = input.days.slice().sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
     for (const h of days) {
       checkCount(h.steps, 'steps');
@@ -232,11 +252,22 @@ export function planGrants(ledger: readonly ClaimRecord[], input: ClaimInput, ru
       // 累計値の差分方式: その日の既得最大値を超えた分だけ。減った値は何もしない。
       const prev = maxAmount(work, 'steps', h.day);
       if (h.steps > prev) {
-        const medals = prev < rules.steps.medalAt && h.steps >= rules.steps.medalAt ? 1 : 0;
-        push({ source: 'health', kind: 'steps', day: h.day, amount: h.steps, fuelMs: fuelAt(h.steps) - fuelAt(prev), medals });
+        const total = medalTotal(h.steps);
+        const issued = issuedMedals(h.day);
+        const medals = total > issued ? total - issued : 0;
+        push({
+          source: 'health',
+          kind: 'steps',
+          day: h.day,
+          amount: h.steps,
+          fuelMs: fuelAt(h.steps) - fuelAt(prev),
+          medals,
+          prodMin: prodAt(h.steps) - prodAt(prev),
+          bonusHolds: 0,
+        });
       }
       if (h.distanceM !== undefined && h.distanceM > maxAmount(work, 'distance', h.day)) {
-        push({ source: 'health', kind: 'distance', day: h.day, amount: h.distanceM, fuelMs: 0, medals: 0 });
+        push({ source: 'health', kind: 'distance', day: h.day, amount: h.distanceM, fuelMs: 0, medals: 0, prodMin: 0, bonusHolds: 0 });
       }
     }
     return out;
@@ -259,10 +290,52 @@ export function planGrants(ledger: readonly ClaimRecord[], input: ClaimInput, ru
     const prev = sumAmount(work, 'checkin', input.day);
     const eq = tiered(prev + minutes, rules.checkin.tiers) - tiered(prev, rules.checkin.tiers);
     const fuelMs = Math.round(eq * rules.checkin.fuelMinPerMin * MIN_MS * trust);
-    const sessionMedal = (r: ClaimRecord): boolean =>
-      r.kind === 'checkin' && r.day === input.day && r.grant.medals - (r.placeBonus === undefined ? 0 : 1) > 0;
-    const medalsToday = count(work, sessionMedal);
-    let medals = !self && minutes >= rules.checkin.medalMinMinutes && medalsToday < rules.checkin.medalMaxPerDay ? 1 : 0;
+    const prodMin = eq * rules.checkin.prodMinPerMin * trust;
+    // メダル・特別保留は日の累計から決まる枚数 − 既に出した枚数（self は 0）。
+    const nonSelfPrev = (() => {
+      let s = 0;
+      for (const r of work) {
+        if (r.kind === 'checkin' && r.day === input.day && r.source !== 'self') {
+          s = s + r.amount;
+        }
+      }
+      return s;
+    })();
+    const nonSelfTotal = self ? nonSelfPrev : nonSelfPrev + minutes;
+    const medalTotal = (() => {
+      const capped = nonSelfTotal < rules.checkin.medalToMin ? nonSelfTotal : rules.checkin.medalToMin;
+      return Math.floor(capped / rules.checkin.medalPerMin);
+    })();
+    const issuedBase = (() => {
+      let s = 0;
+      for (const r of work) {
+        if (r.kind === 'checkin' && r.day === input.day) {
+          const place = r.placeBonus === undefined ? 0 : rules.checkin.placeBonusMedals;
+          const base = r.grant.medals - place;
+          s = s + (base > 0 ? base : 0);
+        }
+      }
+      return s;
+    })();
+    const issuedBonus = (() => {
+      let s = 0;
+      for (const r of work) {
+        if (r.kind === 'checkin' && r.day === input.day) {
+          s = s + (r.grant.bonusHolds ?? 0);
+        }
+      }
+      return s;
+    })();
+    const bonusTotal = (() => {
+      const t = Math.floor(nonSelfTotal / rules.checkin.bonusHoldPerMin);
+      return t < rules.checkin.bonusHoldMaxPerDay ? t : rules.checkin.bonusHoldMaxPerDay;
+    })();
+    let medals = 0;
+    let bonusHolds = 0;
+    if (!self) {
+      medals = medalTotal > issuedBase ? medalTotal - issuedBase : 0;
+      bonusHolds = bonusTotal > issuedBonus ? bonusTotal - issuedBonus : 0;
+    }
     // 登録地点での初めての成立: 地点ごとに1回、1日1回まで（その日に出せなければ次の成立へ持ち越す）。
     const pid = input.placeId;
     let placeBonus: string | undefined;
@@ -274,10 +347,10 @@ export function planGrants(ledger: readonly ClaimRecord[], input: ClaimInput, ru
       !work.some((r) => r.placeBonus === pid) &&
       !work.some((r) => r.placeBonus !== undefined && r.day === input.day)
     ) {
-      medals = medals + 1;
+      medals = medals + rules.checkin.placeBonusMedals;
       placeBonus = pid;
     }
-    push({ source, kind: 'checkin', day: input.day, amount: minutes, fuelMs, medals, span: input.span, claimId, placeBonus });
+    push({ source, kind: 'checkin', day: input.day, amount: minutes, fuelMs, medals, prodMin, bonusHolds, span: input.span, claimId, placeBonus });
     return out;
   }
 
@@ -288,7 +361,8 @@ export function planGrants(ledger: readonly ClaimRecord[], input: ClaimInput, ru
     return out;
   }
   const fuelMs = Math.round(rules.self.fuelMinPerItem * MIN_MS * rules.trust.self);
-  push({ source: 'self', kind: 'self', day: input.day, amount: 1, fuelMs, medals: 0 });
+  const prodMin = rules.self.prodMinPerItem * rules.trust.self;
+  push({ source: 'self', kind: 'self', day: input.day, amount: 1, fuelMs, medals: 0, prodMin, bonusHolds: 0 });
   return out;
 }
 

@@ -17,7 +17,7 @@ test('shortcut code → plan; the second paste only adds the difference', () => 
   if (first.k !== 'plan') throw new Error(first.message);
   const t1 = planTotals(first.plan);
   expect(t1.fuelMs).toBeGreaterThan(0);
-  expect(t1.medals).toBe(1);
+  expect(t1.medals).toBe(4);
   const again = planShortcut(first.plan.records, code([{ d: '2026-09-26', steps: 8234, distM: 6120 }]), KEY, NOW);
   expect(again.k === 'plan' && again.plan.records).toEqual([]);
   const more = planShortcut(first.plan.records, code([{ d: '2026-09-26', steps: 9234, distM: 7000 }]), KEY, NOW);
@@ -38,7 +38,7 @@ test('summary sums grants, today and the streak', () => {
   const s = summarize(ledger, localDay(NOW));
   expect(s.fuelMs).toBe(60 * 60000 + 3 * 60000);
   expect(s.todayFuelMs).toBe(s.fuelMs);
-  expect(s.medals).toBe(0);
+  expect(s.medals).toBe(3);
   expect(s.streak).toBe(1);
 });
 

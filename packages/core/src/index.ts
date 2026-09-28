@@ -84,6 +84,7 @@ export {
   LOTTERY_HOLD_COLORS,
   LOTTERY_MODES,
   drawBonusHold,
+  drawGrantHold,
   drawHold,
   hesoPayoutBalls,
   holdColorTable,
@@ -171,7 +172,7 @@ export type {
   Totals,
   YakumonoView,
 } from './engine.ts';
-export { BONUS_SERIAL_BASE, Engine, FIRE_INTERVAL_MS, RESERVE_SERIAL_BASE, projectSnapshot } from './engine.ts';
+export { BONUS_SERIAL_BASE, Engine, FIRE_INTERVAL_MS, GRANT_HOLD_SERIAL_BASE, RESERVE_SERIAL_BASE, projectSnapshot } from './engine.ts';
 export {
   HOLD_COLORS,
   HOLD_TABLE_COLORS,

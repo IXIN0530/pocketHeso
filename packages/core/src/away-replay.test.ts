@@ -45,7 +45,7 @@ function config(seed: number) {
 function awayEngine(seed: number, awayTo = AWAY_TO): Engine {
   return new Engine(
     config(seed),
-    [{ claimId: 'fuel', at: 0, fuelMs: 12 * H, medals: 2 }],
+    [{ claimId: 'fuel', at: 0, fuelMs: 12 * H, medals: 8 }],
     [
       { t: 0, k: 'buy', target: 'windmill', count: 10 },
       { t: 0, k: 'buy', target: 'rate', count: 1 },

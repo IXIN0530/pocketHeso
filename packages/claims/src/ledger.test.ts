@@ -47,6 +47,10 @@ describe('rules', () => {
     expect(rules.claimDays).toBe(3);
     expect(rules.steps.tiers).toEqual([{ to: 10000, mult: 1 }, { to: 15000, mult: 0.5 }]);
     expect(rules.trust['checkin-own']).toBe(0.8);
+    expect(rules.steps.prodMinPer1000).toBe(30);
+    expect(rules.steps.medalPer).toBe(2000);
+    expect(rules.checkin.prodMinPerMin).toBe(10);
+    expect(rules.checkin.bonusHoldMaxPerDay).toBe(3);
   });
   test('rejects broken rules', () => {
     const bad = JSON.parse(JSON.stringify(economy)) as Record<string, unknown>;
@@ -74,9 +78,22 @@ describe('steps', () => {
     expect(got.map((rs) => rs.length)).toEqual([1, 1, 0, 0]);
     expect(got[0]?.[0]?.grant.fuelMs).toBe(30 * MIN);
     expect(got[1]?.[0]?.grant.fuelMs).toBe(50 * MIN);
-    expect(got[1]?.[0]?.grant.medals).toBe(1); // 8,000歩到達
+    expect(got[0]?.[0]?.grant.medals).toBe(1); // 3,000歩で1枚
+    expect(got[1]?.[0]?.grant.medals).toBe(3); // 8,000歩で計4枚 − 既出1枚
+    expect(got[0]?.[0]?.grant.prodMin).toBe(90); // 3,000歩 ×30分/1,000歩
+    expect(got[1]?.[0]?.grant.prodMin).toBe(150); // 8,000歩で計240分 − 既出90分
     expect(fuelOf(ledger)).toBe(80 * MIN);
     expect(ledger.map((r) => r.claimId)).toEqual(['health:steps:2026-09-26:0', 'health:steps:2026-09-26:1']);
+  });
+
+  test('10,000歩で5枚・二重取りなし', () => {
+    const today = '2026-09-26';
+    const once = planGrants([], health(today, [{ day: today, steps: 10000 }]), rules);
+    expect(once[0]?.grant.medals).toBe(5);
+    expect(once[0]?.grant.prodMin).toBe(300);
+    expect(once[0]?.grant.bonusHolds ?? 0).toBe(0);
+    const twice = planGrants(once, health(today, [{ day: today, steps: 10000 }]), rules);
+    expect(twice).toEqual([]);
   });
 
   test('taper: half to 15,000, zero beyond; split syncs sum to the same total', () => {
@@ -88,7 +105,7 @@ describe('steps', () => {
       ledger = apply(ledger, health(today, [{ day: today, steps }]));
     }
     expect(fuelOf(ledger)).toBe(Math.round((10000 + 2500) * 600));
-    expect(ledger.reduce((s, r) => s + r.grant.medals, 0)).toBe(1);
+    expect(ledger.reduce((s, r) => s + r.grant.medals, 0)).toBe(5);
   });
 
   test('only today and the past 2 days', () => {
@@ -128,26 +145,36 @@ describe('checkin', () => {
     let ledger = apply([], checkin(day, 's1', 50));
     expect(ledger[0]?.claimId).toBe('checkin:s1');
     expect(ledger[0]?.grant.fuelMs).toBe(100 * MIN);
+    expect(ledger[0]?.grant.prodMin).toBe(500);
+    expect(ledger[0]?.grant.medals).toBe(5); // 50分で5枚
+    expect(ledger[0]?.grant.bonusHolds).toBe(2); // 50分で2つ
     expect(ledger[0]?.span).toEqual([0, 50 * MIN]);
     // 50〜100分: 10分等倍＋40分半分 = 30分相当 ×2 ×0.8
     ledger = apply(ledger, checkin(day, 's2', 50, true));
     expect(ledger[1]?.source).toBe('checkin-own');
     expect(ledger[1]?.grant.fuelMs).toBe(Math.round(60 * MIN * 0.8));
+    expect(ledger[1]?.grant.prodMin).toBe(30 * 10 * 0.8);
+    expect(ledger[1]?.grant.medals).toBe(1); // 計6枚 − 既出5枚
+    expect(ledger[1]?.grant.bonusHolds).toBe(1); // 計3つ − 既出2つ
     expect(planGrants(ledger, checkin(day, 's1', 50), rules)).toEqual([]);
     // 120分超は 0（記録は残る）
     ledger = apply(ledger, checkin(day, 's3', 30));
     expect(ledger[2]?.grant.fuelMs).toBe(20 * MIN);
+    expect(ledger[2]?.grant.medals).toBe(0);
+    expect(ledger[2]?.grant.bonusHolds ?? 0).toBe(0);
     ledger = apply(ledger, checkin(day, 's4', 30));
     expect(ledger[3]?.grant.fuelMs).toBe(0);
   });
 
-  test('medal per 20min session, 2 per day', () => {
+  test('60分で6枚・1日3つ・二重取りなし', () => {
     const day = '2026-09-26';
     let ledger: ClaimRecord[] = [];
     for (const [id, m] of [['a', 19], ['b', 20], ['c', 25], ['d', 40]] as const) {
       ledger = apply(ledger, checkin(day, id, m));
     }
-    expect(ledger.map((r) => r.grant.medals)).toEqual([0, 1, 1, 0]);
+    expect(ledger.map((r) => r.grant.medals)).toEqual([1, 2, 3, 0]);
+    expect(ledger.map((r) => r.grant.bonusHolds ?? 0)).toEqual([0, 1, 2, 0]);
+    expect(ledger.map((r) => r.grant.prodMin)).toEqual([190, 200, 230, 200]);
   });
 });
 
@@ -160,6 +187,9 @@ describe('self', () => {
     }
     expect(ledger.length).toBe(5);
     expect(ledger[0]?.grant.fuelMs).toBe(3 * MIN);
+    expect(ledger[0]?.grant.prodMin).toBe(3);
+    expect(ledger[0]?.grant.medals).toBe(0);
+    expect(ledger[0]?.grant.bonusHolds ?? 0).toBe(0);
     expect(ledger[4]?.claimId).toBe('self:self:2026-09-26:4');
     expect(ledger.every((r) => r.grant.streakDay === undefined)).toBe(true);
   });

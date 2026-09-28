@@ -109,8 +109,10 @@ describe('判定表', () => {
     expect(o).toMatchObject({ k: 'ok', minutes: 45 });
     const r = planGrants([], ok(o), rules);
     expect(r.map((x) => [x.claimId, x.source, x.grant.fuelMs, x.grant.medals, x.grant.streakDay])).toEqual([
-      ['checkin:s1', 'checkin', 90 * MIN, 1, DAY],
+      ['checkin:s1', 'checkin', 90 * MIN, 4, DAY],
     ]);
+    expect(r[0]?.grant.prodMin).toBe(450);
+    expect(r[0]?.grant.bonusHolds).toBe(2);
     expect(r[0]?.span).toEqual([T0, T0 + 45 * MIN]);
   });
 
@@ -177,20 +179,20 @@ describe('判定表', () => {
     expect(r[0]).toMatchObject({ source: 'self', grant: { medals: 0 } });
   });
 
-  test('登録地点の初成立: +1 medal once per place, once per day (carried over)', () => {
+  test('登録地点の初成立: +4 medals once per place, once per day (carried over)', () => {
     const b: OwnPlace = registerPlace('p2', 'ジム', 'ジム', at(0.0001, 0));
     const own = [home, b];
     const medals = (l: readonly ClaimRecord[]): [number, string | undefined][] =>
       l.map((x) => [x.grant.medals, x.placeBonus]);
     let ledger = apply([], ok(run('a1', 'p1', 30, at(0, 0), { own }).o));
-    expect(medals(ledger)).toEqual([[2, 'p1']]);
+    expect(medals(ledger)).toEqual([[7, 'p1']]);
     // 同じ地点の2回目は通常のメダルだけ
     ledger = apply(ledger, ok(run('a2', 'p1', 30, at(0, 0), { own }).o));
-    // 別の登録地点でも同じ日は出ない（通常のメダルは1日2つで打ち止め）
+    // 別の登録地点でも同じ日は出ない（通常のメダルは1日6枚で打ち止め）
     ledger = apply(ledger, ok(run('a3', 'p2', 30, at(0, 0), { own }).o));
     expect(medals(ledger)).toEqual([
-      [2, 'p1'],
-      [1, undefined],
+      [7, 'p1'],
+      [3, undefined],
       [0, undefined],
     ]);
     // 翌日: p2 の初成立ボーナスが出る。p1 はもう出ない
@@ -198,12 +200,12 @@ describe('判定表', () => {
     ledger = apply(ledger, ok(run('a4', 'p1', 30, at(0, 0), { own, day: next }).o));
     ledger = apply(ledger, ok(run('a5', 'p2', 30, at(0, 0), { own, day: next }).o));
     expect(medals(ledger.slice(3))).toEqual([
-      [1, undefined],
-      [2, 'p2'],
+      [3, undefined],
+      [7, 'p2'],
     ]);
     // YOLP 施設・自己申告には出ない
     const y = apply([], ok(run('y1', 'parkB', 30, at(0, 0.001)).o));
-    expect(medals(y)).toEqual([[1, undefined]]);
+    expect(medals(y)).toEqual([[3, undefined]]);
     const out = run('z1', 'p1', 30, at(0.003, 0), { own: [home] });
     expect(medals(apply([], selfCheckin(out.s, 30, T0 + 30 * MIN, DAY, rules) as ClaimInput))).toEqual([[0, undefined]]);
   });

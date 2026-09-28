@@ -1,7 +1,7 @@
 /** Engine（パチンコ部。発射600ms・Atlas参照・変動・snapshot/lookahead/project。経済は委譲）。 */
 import type { JackpotKind, MachineSpec, PatternTable } from './machine.ts';
 import type { HoldEntry, LotteryHoldColor, LotteryMode } from './lottery.ts';
-import { drawBonusHold, drawHold } from './lottery.ts';
+import { drawBonusHold, drawGrantHold, drawHold } from './lottery.ts';
 import { HoldQueue } from './hold-queue.ts';
 import { SpinMachine, type SpinSnapshot } from './spin.ts';
 import type { SimTime } from './spin.ts';
@@ -73,6 +73,10 @@ export interface Grant {
   readonly fuelMs: number;
   readonly medals: number;
   readonly streakDay?: string | undefined;
+  /** 即時の玉 = refPerSec × prodMin × 60（spec/23, D-081。省略は0）。 */
+  readonly prodMin?: number | undefined;
+  /** 特別保留の数（整数。省略は0, D-081）。 */
+  readonly bonusHolds?: number | undefined;
 }
 
 /** 入力（shoot/autoのrateは解放済みのみ・autoは解放後のみshare>0可・noticeTapは表示中のみ）。 */
@@ -100,7 +104,7 @@ export type SimEvent =
   | { readonly k: 'modeChanged'; readonly to: LotteryMode; readonly at: SimTime; readonly stRemaining: number }
   | { readonly k: 'noticeSpawned'; readonly id: number; readonly at: SimTime; readonly effect: NoticeEffect }
   | { readonly k: 'noticeExpired'; readonly id: number; readonly at: SimTime; readonly effect: NoticeEffect }
-  | { readonly k: 'granted'; readonly claimId: string; readonly at: SimTime; readonly fuelMs: number; readonly medals: number }
+  | { readonly k: 'granted'; readonly claimId: string; readonly at: SimTime; readonly fuelMs: number; readonly medals: number; readonly balls?: number | undefined; readonly bonusHolds?: number | undefined }
   | { readonly k: 'fuelEmpty'; readonly at: SimTime }
   | { readonly k: 'fuelRefilled'; readonly at: SimTime }
   | { readonly k: 'closed'; readonly at: SimTime; readonly regularPoints: number }
@@ -181,6 +185,10 @@ export interface EngineSnapshot {
   readonly nextReserve?: number | undefined;
   /** 大当たり中の1Rボーナス（jackpotStartedで決めた値。無い旧複写はnull扱い, D-080）。 */
   readonly jackpotBonus?: number | null | undefined;
+  /** 特別保留のストック数（古い複写には無い。無い時は0, D-081）。 */
+  readonly bonusStock?: number | undefined;
+  /** 特別保留の通し番号n（次に出すn。古い複写には無い。無い時は0, D-081）。 */
+  readonly grantHoldSeq?: number | undefined;
 }
 
 /** 留守集計の複写（awayFromがnullなら留守中でない）。 */
@@ -245,6 +253,8 @@ export interface HallProjection {
   readonly perSec: number;
   /** 基準生産（大当たりボーナス・行動の即時報酬の単位。経済なしは0, D-080）。 */
   readonly refPerSec: number;
+  /** 特別保留のストック数（EngineのbonusStock, D-081）。 */
+  readonly bonusStock: number;
   readonly yakumono: readonly YakumonoView[];
   readonly notice?: NoticeView | undefined;
   readonly nextHot?: HotHint | undefined;
@@ -272,6 +282,9 @@ export const BONUS_SERIAL_BASE = 1000000000;
 
 /** 自動保留（電サポ）の通し番号の基数（発射玉・ボーナス保留と衝突しないよう2e9から）。 */
 export const RESERVE_SERIAL_BASE = 2000000000;
+
+/** 特別保留の通し番号の基数（1.5e9 + n。発射玉・ボーナス・自動保留と衝突しない, D-081）。 */
+export const GRANT_HOLD_SERIAL_BASE = 1500000000;
 
 /** 2^32（予告の当否しきい値用。`**`禁止のため数値リテラル）。 */
 const UINT32_RANGE = 4294967296;
@@ -400,6 +413,7 @@ export function projectSnapshot(
     boostMs: 0,
     perSec: 0,
     refPerSec: 0,
+    bonusStock: snap.bonusStock === undefined ? 0 : snap.bonusStock,
     yakumono: [],
     notice,
     nextHot,
@@ -504,6 +518,8 @@ export class Engine {
   private awayReplayState: AwayReplay | null;
   private lastSummaryState: AwaySummary | null;
   private jackpotBonusState: number | null;
+  private bonusStockState: number;
+  private grantHoldSeqState: number;
 
   constructor(cfg: EngineConfig, grants: readonly Grant[], actions: readonly Action[]) {
     if (typeof cfg.seed !== 'number' || !Number.isFinite(cfg.seed) || Math.floor(cfg.seed) !== cfg.seed || cfg.seed < 0) {
@@ -565,6 +581,8 @@ export class Engine {
     this.awayReplayState = null;
     this.lastSummaryState = null;
     this.jackpotBonusState = null;
+    this.bonusStockState = 0;
+    this.grantHoldSeqState = 0;
     this.noticeCfgCache = this.readNoticeConfig();
     this.nailQCache = null;
     if (this.noticeCfgCache === null) {
@@ -615,6 +633,14 @@ export class Engine {
     if (g.streakDay !== undefined && typeof g.streakDay !== 'string') {
       throw new Error('invalid engine: grant.streakDay must be a string');
     }
+    const prodMin = g.prodMin === undefined ? 0 : g.prodMin;
+    if (typeof prodMin !== 'number' || !Number.isFinite(prodMin) || prodMin < 0) {
+      throw new Error('invalid engine: grant.prodMin must be finite >= 0');
+    }
+    const bonusHolds = g.bonusHolds === undefined ? 0 : g.bonusHolds;
+    if (Math.floor(bonusHolds) !== bonusHolds || bonusHolds < 0) {
+      throw new Error('invalid engine: grant.bonusHolds must be a non-negative int');
+    }
     if (g.at < this.nowMsState) {
       throw new Error('invalid engine: grant.at must be >= now');
     }
@@ -622,16 +648,13 @@ export class Engine {
     if (last !== undefined && g.at < last.at) {
       throw new Error('invalid engine: grants must be in time order');
     }
+    const base: Grant = { claimId: g.claimId, at: g.at, fuelMs: g.fuelMs, medals: g.medals };
+    const withProd: Grant = prodMin > 0 ? { ...base, prodMin } : base;
+    const withBonus: Grant = bonusHolds > 0 ? { ...withProd, bonusHolds } : withProd;
     if (g.streakDay === undefined) {
-      this.grantsState.push({ claimId: g.claimId, at: g.at, fuelMs: g.fuelMs, medals: g.medals });
+      this.grantsState.push(withBonus);
     } else {
-      this.grantsState.push({
-        claimId: g.claimId,
-        at: g.at,
-        fuelMs: g.fuelMs,
-        medals: g.medals,
-        streakDay: g.streakDay,
-      });
+      this.grantsState.push({ ...withBonus, streakDay: g.streakDay });
     }
   }
 
@@ -914,6 +937,19 @@ export class Engine {
         break;
       }
       this.grantIdxState = this.grantIdxState + 1;
+      const prodMin = g.prodMin === undefined ? 0 : g.prodMin;
+      const bonusHolds = g.bonusHolds === undefined ? 0 : g.bonusHolds;
+      const balls = prodMin > 0 ? this.readRefPerSec() * prodMin * 60 : 0;
+      if (balls > 0) {
+        this.ballsState = addAmount(this.ballsState, balls);
+        this.noteEconomyGain(balls);
+      }
+      if (bonusHolds > 0) {
+        this.bonusStockState = this.bonusStockState + bonusHolds;
+      }
+      const grantedBase = { k: 'granted', claimId: g.claimId, at, fuelMs: g.fuelMs, medals: g.medals } as const;
+      const withBalls = prodMin > 0 ? { ...grantedBase, balls } : grantedBase;
+      const granted = bonusHolds > 0 ? { ...withBalls, bonusHolds } : withBalls;
       const hook = this.econHook('onGrant') as
         | ((
         fuelMs: number,
@@ -928,14 +964,14 @@ export class Engine {
         const r = bound(g.fuelMs, g.medals, g.streakDay, this.fuelMsState, this.medalsState);
         this.fuelMsState = r.fuelMs;
         this.medalsState = r.medals;
-        out.push({ k: 'granted', claimId: g.claimId, at, fuelMs: g.fuelMs, medals: g.medals });
+        out.push(granted);
         if (r.fuelRefilled) {
           out.push({ k: 'fuelRefilled', at });
         }
       } else {
         this.fuelMsState = this.fuelMsState + g.fuelMs;
         this.medalsState = this.medalsState + g.medals;
-        out.push({ k: 'granted', claimId: g.claimId, at, fuelMs: g.fuelMs, medals: g.medals });
+        out.push(granted);
       }
     }
     while (true) {
@@ -1455,6 +1491,32 @@ export class Engine {
     }
   }
 
+  /** 特別保留の投入（ストックから保留の空きへ。自動補充より先。満タン・大当たり中も失われない, D-081）。 */
+  private fillGrantHolds(at: SimTime, out: SimEvent[]): void {
+    if (this.bonusStockState <= 0) {
+      return;
+    }
+    this.syncHoldMax();
+    while (this.bonusStockState > 0 && !this.queue.isFull()) {
+      const n = this.grantHoldSeqState;
+      const serial = GRANT_HOLD_SERIAL_BASE + n;
+      if (serial >= MAX_SAFE_MS) {
+        throw new Error('invalid engine: grant hold serial out of range');
+      }
+      this.grantHoldSeqState = n + 1;
+      this.bonusStockState = this.bonusStockState - 1;
+      const mode = this.spins.mode;
+      const bonus1In = this.noticeCfgCache === null ? 10 : this.noticeCfgCache.bonus1In;
+      const entry = drawGrantHold(this.spec, this.patterns, this.seed, mode, n, serial, bonus1In);
+      this.noteAwayHot(entry.serial, entry.hot);
+      if (this.queue.tryAdd(entry)) {
+        out.push({ k: 'holdAdded', entry, at });
+      } else {
+        break;
+      }
+    }
+  }
+
   /** 同時刻の変動・大当たり・開始（resolve→jackpot*（uwanose含む）→spinStarted→modeの順）。 */
   private applySpinAt(at: SimTime, out: SimEvent[]): void {
     let deferredMode: SimEvent | null = null;
@@ -1551,6 +1613,7 @@ export class Engine {
         }
       }
     }
+    this.fillGrantHolds(at, out);
     this.fillReserveHolds(at, out);
     if (!this.spins.isSpinning && !this.spins.isInJackpot && this.queue.size > 0) {
       const holdCount = this.queue.size;
@@ -1577,6 +1640,7 @@ export class Engine {
         };
       }
     }
+    this.fillGrantHolds(at, out);
     this.fillReserveHolds(at, out);
     if (deferredMode !== null) {
       out.push(deferredMode);
@@ -1636,6 +1700,8 @@ export class Engine {
       activeNotice: activeCopy,
       nextReserve: this.nextReserveState,
       jackpotBonus: this.jackpotBonusState,
+      bonusStock: this.bonusStockState,
+      grantHoldSeq: this.grantHoldSeqState,
       away: {
         awayFrom: this.awayFromState,
         awayBalls: this.awayBallsState,
@@ -1794,6 +1860,22 @@ export class Engine {
         throw new Error('invalid engine: snap.nextReserve must be a non-negative int in range');
       }
       eng.nextReserveState = snap.nextReserve;
+    }
+    if (snap.bonusStock === undefined) {
+      eng.bonusStockState = 0;
+    } else {
+      if (Math.floor(snap.bonusStock) !== snap.bonusStock || snap.bonusStock < 0) {
+        throw new Error('invalid engine: snap.bonusStock must be a non-negative int');
+      }
+      eng.bonusStockState = snap.bonusStock;
+    }
+    if (snap.grantHoldSeq === undefined) {
+      eng.grantHoldSeqState = 0;
+    } else {
+      if (Math.floor(snap.grantHoldSeq) !== snap.grantHoldSeq || snap.grantHoldSeq < 0 || snap.grantHoldSeq >= MAX_SAFE_MS) {
+        throw new Error('invalid engine: snap.grantHoldSeq must be a non-negative int in range');
+      }
+      eng.grantHoldSeqState = snap.grantHoldSeq;
     }
     eng.awayFromState = away.awayFrom;
     eng.awayBallsState = away.awayBalls;
