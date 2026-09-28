@@ -1,11 +1,11 @@
 # STATUS
 <!-- 30行以内を維持。古い Notes は削除してよい（履歴は git log にある） -->
 
-- Current phase: P7 → `docs/plan/P7-soak-tune.md`
-- Last done: [P8-T5] README 2部（遊ぶ人/開発者）・LICENSE（MIT）・package.json license。AboutSheetの表記もMITに
-- Next: P7-T11 階段 → T12 → T13 → P7-T2 1週間の実運用。並行で人間の実機確認（T7・T9）とバランスの判断（Blockers）
-- Owner hint: Claude Code
-- Parallel: P8 → `docs/plan/P8-release.md` / Next: P8-T3 / Owner: 人間＋Muse Spark（OpenCode で `/next P8`。P7 と同時に走らせない。T3 は P7-T11 の後、T6 は人間の指示で）
+- Current phase: P8 → `docs/plan/P8-release.md`（公開優先, D-089）
+- Last done: 公開優先への切り替え（P7-T11〜T13・P7-T2 を保留、P8-T3 は階数なしで進める, D-089）
+- Next: P8-T3（人間: iPhone でショートカットを README 2-1 に直し iCloud リンクを作る → エージェントが記入）→ T6（人間の指示で）
+- Owner hint: 人間＋Muse Spark（T3）
+- Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T12 → T13 → T2 は P8-T6 の後、人間の指示で再開
 
 ## Blockers
 - README手順の人間確認待ち（P8-T5 の Accept。フォーク→Vercel で抜けが無いか読んで確認）

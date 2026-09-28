@@ -3,7 +3,7 @@
 ショートカットは全員共通の iCloud リンク1つで入り、鍵を貼る手順をなくす（D-088）。
 
 - P7 と並行で進めてよい（STATUS の `Parallel` 行）。ただし **同じ作業ツリーで2つのエージェントを同時に走らせない**（どちらも `dev` にコミットする）。
-- 順番: T1 → T2 → T4 → T5 は P7 と独立。T3 は P7-T11（階数）と T2 の後。T6 は全部の後、人間の指示がある時だけ。
+- 順番: T1 → T2 → T4 → T5 は P7 と独立。T3 は T2 の後（P7-T11 の階数は待たない, D-089）。T6 は全部の後、人間の指示がある時だけ。
 - レビューは `/review P8-Tn` を書いた側と別のエージェントで（Claude のトークン節約なら agy）。
 
 ### P8-T1 正式版ビルドの切り替え（開発用の表示を本番から落とす）
@@ -50,13 +50,13 @@ Accept:
 - [ ] 実機は T3 でまとめて確認（dev を push して終える）
 
 ### P8-T3 配布版ショートカットと iCloud リンク
-Owner: 人間（iPhone）＋ Muse Spark（記入） | Read: resources/shortcut/README.md | 前提: P7-T11・P8-T2 が dev に push 済み
+Owner: 人間（iPhone）＋ Muse Spark（記入） | Read: resources/shortcut/README.md | 前提: P8-T2 が dev に push 済み（P7-T11 は待たない, D-089）
 Do:
-- 人間: 自分の `PocketHeso Sync` を README 2-1（入力で鍵）に直し、階数（P7-T11）込みで dev プレビューから受け取れることを確認 →
+- 人間: 自分の `PocketHeso Sync` を README 2-1（入力で鍵）に直し、dev プレビューから受け取れることを確認 →
   README 2-5 で iCloud リンクを作る → 自分のショートカットを削除し、リンクから追加し直して受け取れることを確認（＝利用者と同じ流れ）。
 - エージェント: 人間から受け取ったリンクを `SHORTCUT_ICLOUD_URL` と README 冒頭に記入。iOS の表記が README と違った所を直す。
 Accept:
-- [ ] 実機: リンクから追加 → 鍵を入力せずに ①〜③ が通り、受け取り確認に歩数・距離・階数が出る
+- [ ] 実機: リンクから追加 → 鍵を入力せずに ①〜③ が通り、受け取り確認に歩数・距離が出る（階数は P7-T11 で足す時にリンクを作り直す）
 - [ ] 実機: ショートカットアプリから直接実行すると「PocketHeso の『運動を受け取る』から…」で止まる
 - [ ] `scripts/build.sh`・`scripts/test.sh all` が通る
 
