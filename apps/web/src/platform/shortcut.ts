@@ -5,8 +5,8 @@ export const SHORTCUT_NAME = 'PocketHeso Sync';
 export const PAIRING_KEY_LENGTH = 16;
 /** 手で打ち直しても紛れにくい文字（0/o・1/l/i を除く）。 */
 export const PAIRING_KEY_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
-/** 配布版ショートカットの iCloud リンク（P8-T3 で記入するまでは空文字）。 */
-export const SHORTCUT_ICLOUD_URL = '';
+/** 配布版ショートカットの iCloud リンク（resources/shortcut/README.md の 2-5 で作成。直したら作り直して差し替える）。 */
+export const SHORTCUT_ICLOUD_URL = 'https://www.icloud.com/shortcuts/b542799bc07940afb3ad1f09fb1219d5';
 
 /** 配布版ショートカットの iCloud リンク（VITE_SHORTCUT_URL があればそれ、無ければ定数）。 */
 export function shortcutIcloudUrl(): string {

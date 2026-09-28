@@ -25,7 +25,7 @@ React + TypeScript の PWA。iPhone ではホーム画面に追加し、ヘル�
 
 ### ショートカットの入れ方（運動の受け取り）
 
-- iCloud 共有リンク: （未発行。P8-T3 で記入する）
+- iCloud 共有リンク: https://www.icloud.com/shortcuts/b542799bc07940afb3ad1f09fb1219d5
 - 手順は `resources/shortcut/README.md` の「1. 使い方（利用者向け）」の通り。鍵を貼る手順は無い。
   1. 上のリンクから `PocketHeso Sync` を追加。
   2. 設定 → アプリ → ショートカット → 詳細 →「大量のデータの共有を許可」をオン。

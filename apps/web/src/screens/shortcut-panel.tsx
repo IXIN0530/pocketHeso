@@ -108,7 +108,7 @@ export function ShortcutPanel({
             <div className={styles.row}>
               {icloudUrl === '' ? (
                 <p className={styles.note}>
-                  準備中（配布リンクは P8-T3 で用意します）。作り方は{' '}
+                  配布リンクが未設定です。作り方は{' '}
                   <a className={styles.link} href={GUIDE_URL} target="_blank" rel="noreferrer">
                     ショートカットの使い方
                   </a>{' '}

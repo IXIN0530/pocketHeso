@@ -11,9 +11,9 @@ test('shortcut URL passes the key as text input', () => {
   expect(url).toContain('input=text&text=');
 });
 
-test('shortcut iCloud URL defaults to empty (until P8-T3) and ready flag is the presence of shortcutReadyAt', () => {
-  expect(SHORTCUT_ICLOUD_URL).toBe('');
-  expect(shortcutIcloudUrl()).toBe('');
+test('shortcut iCloud URL defaults to the distributed link and ready flag is the presence of shortcutReadyAt', () => {
+  expect(SHORTCUT_ICLOUD_URL).toMatch(/^https:\/\/www\.icloud\.com\/shortcuts\/[0-9a-f]{32}$/);
+  expect(shortcutIcloudUrl()).toBe(SHORTCUT_ICLOUD_URL);
   expect(isShortcutReady(undefined)).toBe(false);
   expect(isShortcutReady(123)).toBe(true);
 });
