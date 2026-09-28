@@ -27,7 +27,7 @@ const fuel = (at: number): ClaimRecord => ({
   day: '2026-09-26',
   amount: 1000,
   trust: 1,
-  grant: { claimId: 'health:steps:2026-09-26:1', at, fuelMs: 24 * 60 * MIN, medals: 0 },
+  grant: { claimId: 'health:steps:2026-09-26:1', at, fuelMs: 24 * 60 * MIN, medals: 0, prodMin: 2000 },
 });
 
 function inHeso(board: Board, x: number, y: number): boolean {

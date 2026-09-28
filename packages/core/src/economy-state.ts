@@ -10,13 +10,17 @@ import {
   closeGain,
   effectivePeriodS,
   growthPow,
+  shotUnit,
   streakMult,
   yakumonoBulkPrice,
 } from './economy-math.ts';
 
+/** 旧レート表（D-090 前。[1,4,10,40,100,400,1000]。v4 以前の rateStage 移行用）。 */
+const LEGACY_RATES: readonly number[] = [1, 4, 10, 40, 100, 400, 1000];
+
 /** IdleEconomy の複写（Engine の snapshot.economy に入る）。 */
 export interface IdleEconomySnapshot {
-  readonly v: 4;
+  readonly v: 5;
   readonly lv: readonly number[];
   readonly awakened: readonly number[];
   readonly idleStage: number;
@@ -246,7 +250,7 @@ export class IdleEconomy implements EconomyPort {
   /** 状態の複写。 */
   snapshot(): IdleEconomySnapshot {
     return {
-      v: 4,
+      v: 5,
       lv: [...this.lvState],
       awakened: [...this.awakenedState],
       idleStage: this.idleStageState,
@@ -269,13 +273,13 @@ export class IdleEconomy implements EconomyPort {
     };
   }
 
-  /** 複写から復元する（v1 は fever=0、v1/v2 は累計獲得メダル=0、v3 以前の jackpotFeverMult は読んで捨てる）。 */
+  /** 複写から復元する（v1 は fever=0、v1/v2 は累計獲得メダル=0、v3 以前の jackpotFeverMult は読んで捨てる、v4 以前は旧レート段を移行 D-090）。 */
   restore(s: unknown): void {
     if (!isRecord(s)) {
       fail('snapshot must be an object');
     }
     const v = s['v'];
-    if (v !== 1 && v !== 2 && v !== 3 && v !== 4) {
+    if (v !== 1 && v !== 2 && v !== 3 && v !== 4 && v !== 5) {
       fail('snapshot version mismatch');
     }
     const lv = s['lv'];
@@ -294,7 +298,20 @@ export class IdleEconomy implements EconomyPort {
     const nailStage = asNonNegInt(s['nailStage'] as number, 'nailStage');
     const shortenStage = asNonNegInt(s['shortenStage'] as number, 'shortenStage');
     const holdStage = asNonNegInt(s['holdStage'] as number, 'holdStage');
-    const rateStage = asNonNegInt(s['rateStage'] as number, 'rateStage');
+    const rateStageRaw = asNonNegInt(s['rateStage'] as number, 'rateStage');
+    // v4 以前は旧レート表 [1,4,10,40,100,400,1000] の段。旧の最大解放レートを新表のそれ以下の最大に丸める（400・1000→100, D-090）。
+    let rateStage = rateStageRaw;
+    if (v !== 5) {
+      const oldRate = rateStageRaw < LEGACY_RATES.length ? (LEGACY_RATES[rateStageRaw] as number) : 1000;
+      const news = this.spec.upgrades.rates;
+      let mapped = 0;
+      for (let i = 0; i < news.length; i = i + 1) {
+        if ((news[i] as number) <= oldRate) {
+          mapped = i;
+        }
+      }
+      rateStage = mapped;
+    }
     const autoOwned = s['autoOwned'];
     const tomeuchiOwned = s['tomeuchiOwned'];
     if (typeof autoOwned !== 'boolean' || typeof tomeuchiOwned !== 'boolean') {
@@ -330,7 +347,7 @@ export class IdleEconomy implements EconomyPort {
       }
     }
     let medalsEarned = 0;
-    if (v === 3 || v === 4) {
+    if (v === 3 || v === 4 || v === 5) {
       medalsEarned = asNonNegInt(s['medalsEarned'] as number, 'medalsEarned');
       // v3 以前の jackpotFeverMult は読んで捨てる（D-080 で廃止）。
     }
@@ -482,19 +499,25 @@ export class IdleEconomy implements EconomyPort {
     return ref > min ? ref : min;
   }
 
-  /** 1Rの大当たりボーナス＝refPerSec×roundS×レート倍率（打ったレート。無料は rate1, D-080）。 */
-  jackpotRoundBonus(rate: number): number {
+  /** 発射単価の秒数（生産何秒ぶんか, D-090）。 */
+  getShotS(): number {
+    return this.spec.pachinko.shotS;
+  }
+
+  /** 1発の単価 unit＝floor(rate×refPerSec×shotS)、最低 rate（発射時点の ref。無料は rate1, D-090。解放チェックはしない）。 */
+  getShotUnit(rate: number): number {
     if (Math.floor(rate) !== rate || rate < 1) {
-      fail('jackpot rate must be a positive int');
+      fail('shot rate must be a positive int');
     }
-    const rates = this.spec.upgrades.rates;
-    for (let i = 0; i < rates.length; i = i + 1) {
-      if ((rates[i] as number) === rate) {
-        const mult = this.spec.jackpotBonus.multByRate[i] as number;
-        return this.getRefPerSec() * this.spec.jackpotBonus.roundS * mult;
-      }
+    return shotUnit(rate, this.getRefPerSec(), this.spec.pachinko.shotS);
+  }
+
+  /** 解放チェックなしの単価（表示・測試用。rate の解放は問わない）。 */
+  shotUnitUnchecked(rate: number): number {
+    if (Math.floor(rate) !== rate || rate < 1) {
+      fail('shot rate must be a positive int');
     }
-    fail('jackpot rate is not in rates');
+    return shotUnit(rate, this.getRefPerSec(), this.spec.pachinko.shotS);
   }
 
   /** 累計獲得メダル。 */

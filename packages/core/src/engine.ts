@@ -92,15 +92,15 @@ export type Action =
 
 /** Engineが出すイベント（P3-T3で予告を追加。経済の毎秒増減はイベントにしない）。 */
 export type SimEvent =
-  | { readonly k: 'fired'; readonly ball: number; readonly at: SimTime; readonly rate: number }
+  | { readonly k: 'fired'; readonly ball: number; readonly at: SimTime; readonly rate: number; readonly unit?: number | undefined }
   | { readonly k: 'sensor'; readonly ball: number; readonly at: SimTime; readonly kind: 'start1' | 'out' | 'lost' }
   | { readonly k: 'holdAdded'; readonly entry: HoldEntry; readonly at: SimTime }
   | { readonly k: 'holdOverflow'; readonly ball: number; readonly at: SimTime }
   | { readonly k: 'spinStarted'; readonly entry: number; readonly at: SimTime; readonly pattern: string; readonly endsAt: SimTime }
   | { readonly k: 'spinResolved'; readonly entry: number; readonly at: SimTime; readonly hit: boolean }
-  | { readonly k: 'jackpotStarted'; readonly entry: number; readonly at: SimTime; readonly kind: JackpotKind; readonly rounds: number; readonly bonusRounds?: number | undefined; readonly roundBonus?: number | undefined }
+  | { readonly k: 'jackpotStarted'; readonly entry: number; readonly at: SimTime; readonly kind: JackpotKind; readonly rounds: number; readonly bonusRounds?: number | undefined }
   | { readonly k: 'uwanose'; readonly entry: number; readonly at: SimTime; readonly addRounds: number; readonly totalRounds: number }
-  | { readonly k: 'jackpotEnded'; readonly entry: number; readonly at: SimTime; readonly payout: number; readonly bonus?: number | undefined }
+  | { readonly k: 'jackpotEnded'; readonly entry: number; readonly at: SimTime; readonly payout: number }
   | { readonly k: 'modeChanged'; readonly to: LotteryMode; readonly at: SimTime; readonly stRemaining: number }
   | { readonly k: 'noticeSpawned'; readonly id: number; readonly at: SimTime; readonly effect: NoticeEffect }
   | { readonly k: 'noticeExpired'; readonly id: number; readonly at: SimTime; readonly effect: NoticeEffect }
@@ -124,23 +124,22 @@ export interface EngineConfig {
   readonly startMs?: SimTime | undefined;
 }
 
-/** 飛行中の玉（発射済み・センサー待ち）。 */
+/** 飛行中の玉（発射済み・センサー待ち。unit は発射時の単価。旧セーブには無い, D-090）。 */
 export interface PendingSensor {
   readonly ball: number;
   readonly fireAt: SimTime;
   readonly sensorAt: SimTime;
   readonly kind: 'start1' | 'out' | 'lost';
   readonly rate: number;
+  readonly unit?: number | undefined;
 }
 
-/** 累計（回転数・当たり・発射数・払出玉・大当たりボーナス）。 */
+/** 累計（回転数・当たり・発射数・払出玉）。 */
 export interface Totals {
   readonly spins: number;
   readonly jackpots: number;
   readonly fired: number;
   readonly payoutBalls: number;
-  /** 大当たりボーナスの合計（roundBonus×実ラウンド数。D-080）。 */
-  readonly bonusBalls: number;
   /** RUSH（st/lt）以外からの大当たり。 */
   readonly firstHits: number;
   /** RUSH 中の連チャンの最大（spins.chain の最大）。 */
@@ -183,12 +182,12 @@ export interface EngineSnapshot {
   readonly closes?: readonly CloseRecord[] | undefined;
   /** 次の自動保留の通し番号（古い複写には無い。無い時はRESERVE_SERIAL_BASEから）。 */
   readonly nextReserve?: number | undefined;
-  /** 大当たり中の1Rボーナス（jackpotStartedで決めた値。無い旧複写はnull扱い, D-080）。 */
-  readonly jackpotBonus?: number | null | undefined;
   /** 特別保留のストック数（古い複写には無い。無い時は0, D-081）。 */
   readonly bonusStock?: number | undefined;
   /** 特別保留の通し番号n（次に出すn。古い複写には無い。無い時は0, D-081）。 */
   readonly grantHoldSeq?: number | undefined;
+  /** オート打ちの投入額の蓄積（生産×share を unit で割る余り。無い旧複写は0, D-090）。 */
+  readonly autoAcc?: number | undefined;
 }
 
 /** 留守集計の複写（awayFromがnullなら留守中でない）。 */
@@ -196,7 +195,7 @@ export interface AwayTrackerSnapshot {
   readonly awayFrom: SimTime | null;
   readonly awayBalls: number;
   readonly awayFired: number;
-  /** 留守中に発射で消費した玉（Σrate）。無ければ totals.fired−awayFired（rate1前提）で読む。 */
+  /** 留守中に発射で消費した玉（Σunit。旧はΣrate）。無ければ totals.fired−awayFired（rate1前提）で読む。 */
   readonly awayConsumed?: number;
   readonly awayJackpots: number;
   readonly awayMaxChain: number;
@@ -228,8 +227,8 @@ export interface JackpotView {
   readonly endsAt: SimTime;
   /** 未告知の上乗せラウンド（告知前だけ。endsAt からの逆算用で、表示しない）。 */
   readonly hiddenRounds?: number | undefined;
-  /** 1Rの大当たりボーナス（経済つきのみ。無い時は出玉だけ, D-080）。 */
-  readonly roundBonus?: number | undefined;
+  /** 当たった保留の単価 unit（出玉の数え上げ用。不明・旧は rate, D-090）。 */
+  readonly unit?: number | undefined;
 }
 
 /** 役物表示（Lv・覚醒・次の価格・回転位相0..1・実効周期秒。位相と周期は描画用で at 基準。Lv0 は周期なし）。 */
@@ -255,8 +254,10 @@ export interface HallProjection {
   readonly fuelMs: number;
   readonly boostMs: number;
   readonly perSec: number;
-  /** 基準生産（大当たりボーナス・行動の即時報酬の単位。経済なしは0, D-080）。 */
+  /** 基準生産（行動の即時報酬・単価の単位。経済なしは0, D-080・D-090）。 */
   readonly refPerSec: number;
+  /** 発射単価の秒数（生産何秒ぶんか。経済なしは8, D-090）。 */
+  readonly shotS: number;
   /** 特別保留のストック数（EngineのbonusStock, D-081）。 */
   readonly bonusStock: number;
   readonly yakumono: readonly YakumonoView[];
@@ -276,6 +277,8 @@ export interface HallProjection {
   readonly shop?: ShopView | undefined;
   /** 解放済みのレート（昇順。経済なしは [1]）。 */
   readonly rates: readonly number[];
+  /** 解放済みレートの1発コスト（rates と同順。発射時の ref で変わる目安, D-090）。 */
+  readonly rateCosts: readonly number[];
 }
 
 /** 発射グリッドms（絶対時刻の倍数に揃える）。 */
@@ -382,11 +385,13 @@ export function projectSnapshot(
     const bonus = (j.bonusRounds === undefined ? 0 : j.bonusRounds);
     const hidden = j.uwanoseAt === null || j.uwanoseAt === undefined ? 0 : bonus;
     const shown = b.rounds + bonus - hidden;
-    const rb = snap.jackpotBonus === undefined || snap.jackpotBonus === null ? undefined : snap.jackpotBonus;
     const view: JackpotView = { entry: j.serial, kind: b.kind, rounds: shown, endsAt: j.endsAt };
     jackpot = hidden > 0 ? { ...view, hiddenRounds: hidden } : view;
-    if (rb !== undefined) {
-      jackpot = { ...jackpot, roundBonus: rb };
+    const ju = (j as { unit?: number; rate?: number }).unit !== undefined
+      ? (j as { unit?: number }).unit
+      : (j as { rate?: number }).rate;
+    if (ju !== undefined) {
+      jackpot = { ...jackpot, unit: ju };
     }
   }
   const spinSnap = snap.spin as { chain?: number; chainBalls?: number };
@@ -421,6 +426,7 @@ export function projectSnapshot(
     boostMs: 0,
     perSec: 0,
     refPerSec: 0,
+    shotS: 8,
     bonusStock: snap.bonusStock === undefined ? 0 : snap.bonusStock,
     yakumono: [],
     notice,
@@ -431,7 +437,6 @@ export function projectSnapshot(
       jackpots: snap.totals.jackpots,
       fired: snap.totals.fired,
       payoutBalls: snap.totals.payoutBalls,
-      bonusBalls: (snap.totals as Partial<Totals>).bonusBalls === undefined ? 0 : (snap.totals as Totals).bonusBalls,
       firstHits: (snap.totals as Partial<Totals>).firstHits === undefined ? 0 : (snap.totals as Totals).firstHits,
       maxChain: (snap.totals as Partial<Totals>).maxChain === undefined ? 0 : (snap.totals as Totals).maxChain,
     },
@@ -441,6 +446,7 @@ export function projectSnapshot(
     shoot: { on: snap.shootOn, rate: snap.shootRate },
     auto: { share: snap.autoShare, rate: snap.autoRate },
     rates: [1],
+    rateCosts: [1],
   };
 }
 
@@ -525,7 +531,7 @@ export class Engine {
   private awaySpinCandState: AwaySpinCandidate | null;
   private awayReplayState: AwayReplay | null;
   private lastSummaryState: AwaySummary | null;
-  private jackpotBonusState: number | null;
+  private autoAccState: number;
   private bonusStockState: number;
   private grantHoldSeqState: number;
 
@@ -559,7 +565,7 @@ export class Engine {
     this.ballsState = initialBalls;
     this.medalsState = initialMedals;
     this.fuelMsState = initialFuelMs;
-    this.totalsState = { spins: 0, jackpots: 0, fired: 0, payoutBalls: 0, bonusBalls: 0, firstHits: 0, maxChain: 0 };
+    this.totalsState = { spins: 0, jackpots: 0, fired: 0, payoutBalls: 0, firstHits: 0, maxChain: 0 };
     this.shootOnState = false;
     this.shootRateState = 1;
     this.autoShareState = 0;
@@ -588,7 +594,7 @@ export class Engine {
     this.awaySpinCandState = null;
     this.awayReplayState = null;
     this.lastSummaryState = null;
-    this.jackpotBonusState = null;
+    this.autoAccState = 0;
     this.bonusStockState = 0;
     this.grantHoldSeqState = 0;
     this.noticeCfgCache = this.readNoticeConfig();
@@ -1072,6 +1078,7 @@ export class Engine {
             out.push({ k: 'closed', at, regularPoints: r.gain });
             this.syncHoldMax();
             this.clearNailQCache();
+            this.autoAccState = 0;
           } else {
             out.push({ k: 'rejected', at, action: a.k, reason: r.reason });
           }
@@ -1241,6 +1248,7 @@ export class Engine {
             serial,
             cfg.bonus1In,
             weights,
+            this.readFreeUnit(),
           );
           this.ballsState = addAmount(this.ballsState, entry.hesoPayoutBalls);
           this.totalsState = {
@@ -1249,7 +1257,6 @@ export class Engine {
             jackpots: this.totalsState.jackpots,
             fired: this.totalsState.fired,
             payoutBalls: this.totalsState.payoutBalls + entry.hesoPayoutBalls,
-            bonusBalls: this.totalsState.bonusBalls,
           };
           this.noteEconomyGain(entry.hesoPayoutBalls);
           this.noteAwayHot(entry.serial, entry.hot);
@@ -1334,17 +1341,44 @@ export class Engine {
     return hook !== undefined && typeof hook === 'function';
   }
 
-  /** 1Rの大当たりボーナスを読む（経済なしはnullで従来どおり省略, D-080）。 */
-  private readJackpotRoundBonus(rate: number): number | null {
-    const hook = this.econHook('jackpotRoundBonus') as ((r: number) => number) | undefined;
+  /** 発射単価フックを持つか（IdleEconomy のみ。Stub は旧 share 間引き, D-090）。 */
+  private hasShotUnit(): boolean {
+    const hook = this.econHook('getShotUnit');
+    return hook !== undefined && typeof hook === 'function';
+  }
+
+  /** 1発の単価 unit を読む（経済なしは rate, D-090）。 */
+  private readShotUnit(rate: number): number {
+    const hook = this.econHook('getShotUnit') as ((r: number) => number) | undefined;
     if (hook === undefined || typeof hook !== 'function') {
-      return null;
+      if (Math.floor(rate) !== rate || rate < 1) {
+        throw new Error('invalid engine: bad rate');
+      }
+      return rate;
     }
     const v = (hook.bind(this.economy))(rate) as number;
-    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) {
-      throw new Error('invalid engine: bad round bonus');
+    if (typeof v !== 'number' || !Number.isFinite(v) || Math.floor(v) !== v || v < 1) {
+      throw new Error('invalid engine: bad shot unit');
     }
     return v;
+  }
+
+  /** 発射単価の秒数 shotS を読む（経済なしは8, D-090）。 */
+  private readShotS(): number {
+    const hook = this.econHook('getShotS') as (() => number) | undefined;
+    if (hook === undefined || typeof hook !== 'function') {
+      return 8;
+    }
+    const v = (hook.bind(this.economy))() as number;
+    if (typeof v !== 'number' || !Number.isFinite(v) || Math.floor(v) !== v || v < 1) {
+      throw new Error('invalid engine: bad shotS');
+    }
+    return v;
+  }
+
+  /** 無料保留の1パチ単価を読む（経済なしは1, D-090）。 */
+  private readFreeUnit(): number {
+    return this.readShotUnit(1);
   }
 
   /** 基準生産を読む（経済なしは0, D-080）。 */
@@ -1371,35 +1405,13 @@ export class Engine {
     }
   }
 
-  /** 同時刻の発射（600ms倍数のみ。前面shoot優先・autoはshare間引き・燃料0/止め打ち満タン/持ち玉<rateで停止・釘でout→start1・1発rate玉）。 */
-  private applyFiringAt(at: SimTime, out: SimEvent[]): void {
-    const rem = at - Math.floor(at / FIRE_INTERVAL_MS) * FIRE_INTERVAL_MS;
-    if (rem !== 0) {
-      return;
-    }
-    let rate = -1;
-    if (this.fgState && this.shootOnState) {
-      rate = this.shootRateState;
-    } else if (this.autoShareState > 0 && this.isAutoUnlocked()) {
-      if (this.isTomeuchiEnabled() && this.queue.isFull()) {
-        return;
-      }
-      if (this.fuelMsState <= 0 && this.hasEconomyTick()) {
-        return;
-      }
-      const n = Math.floor(at / FIRE_INTERVAL_MS);
-      if (Math.floor(n * this.autoShareState) !== Math.floor((n - 1) * this.autoShareState)) {
-        rate = this.autoRateState;
-      }
-    }
-    if (rate < 1 || this.ballsState < rate) {
-      return;
-    }
+  /** 1発を打つ（コスト unit を持ち玉から引き、飛行中に積む。unit==rate は省略, D-090）。 */
+  private fireOneBall(at: SimTime, out: SimEvent[], rate: number, unit: number): void {
     const ball = this.nextBallState;
     this.nextBallState = ball + 1;
-    this.ballsState = this.ballsState - rate;
+    this.ballsState = this.ballsState - unit;
     if (this.awayFromState !== null) {
-      this.awayConsumedState = this.awayConsumedState + rate;
+      this.awayConsumedState = this.awayConsumedState + unit;
     }
     this.totalsState = {
       ...this.totalsState,
@@ -1407,9 +1419,12 @@ export class Engine {
       jackpots: this.totalsState.jackpots,
       fired: this.totalsState.fired + 1,
       payoutBalls: this.totalsState.payoutBalls,
-      bonusBalls: this.totalsState.bonusBalls,
     };
-    out.push({ k: 'fired', ball, at, rate });
+    if (unit === rate) {
+      out.push({ k: 'fired', ball, at, rate });
+    } else {
+      out.push({ k: 'fired', ball, at, rate, unit });
+    }
     const key = atlasKeyForBall(this.seed, ball);
     if (key < 0 || key >= 65536) {
       throw new Error('invalid engine: atlas key out of range');
@@ -1427,7 +1442,61 @@ export class Engine {
         }
       }
     }
-    this.pendingState.push({ ball, fireAt: at, sensorAt: at + found.flightMs, kind, rate });
+    if (unit === rate) {
+      this.pendingState.push({ ball, fireAt: at, sensorAt: at + found.flightMs, kind, rate });
+    } else {
+      this.pendingState.push({ ball, fireAt: at, sensorAt: at + found.flightMs, kind, rate, unit });
+    }
+  }
+
+  /** 同時刻の発射（600ms倍数のみ。前面shootは即時・autoは生産×shareをunitで割る蓄積・燃料0/止め打ち満タン/持ち玉<unitで停止・釘でout→start1, D-090）。 */
+  private applyFiringAt(at: SimTime, out: SimEvent[]): void {
+    const rem = at - Math.floor(at / FIRE_INTERVAL_MS) * FIRE_INTERVAL_MS;
+    if (rem !== 0) {
+      return;
+    }
+    if (this.fgState && this.shootOnState) {
+      const rate = this.shootRateState;
+      const unit = this.readShotUnit(rate);
+      if (this.ballsState < unit) {
+        return;
+      }
+      this.fireOneBall(at, out, rate, unit);
+      return;
+    }
+    if (this.autoShareState > 0 && this.isAutoUnlocked()) {
+      if (this.isTomeuchiEnabled() && this.queue.isFull()) {
+        return;
+      }
+      if (this.fuelMsState <= 0 && this.hasEconomyTick()) {
+        return;
+      }
+      if (!this.hasShotUnit()) {
+        // 経済なし（Stub）は旧 share 間引き。
+        const n = Math.floor(at / FIRE_INTERVAL_MS);
+        if (Math.floor(n * this.autoShareState) !== Math.floor((n - 1) * this.autoShareState)) {
+          const rate = this.autoRateState;
+          if (this.ballsState < rate) {
+            return;
+          }
+          this.fireOneBall(at, out, rate, rate);
+        }
+        return;
+      }
+      const rate = this.autoRateState;
+      const unit = this.readShotUnit(rate);
+      const ref = this.readRefPerSec();
+      const invested = (ref * this.autoShareState * FIRE_INTERVAL_MS) / 1000;
+      this.autoAccState = this.autoAccState + invested;
+      if (this.autoAccState < unit) {
+        return;
+      }
+      if (this.ballsState < unit) {
+        return;
+      }
+      this.autoAccState = this.autoAccState - unit;
+      this.fireOneBall(at, out, rate, unit);
+    }
   }
 
   /** 同時刻のセンサーと保留取得（sensor→holdの順）。 */
@@ -1449,7 +1518,8 @@ export class Engine {
     for (let i = 0; i < hits.length; i = i + 1) {
       const h = hits[i] as PendingSensor;
       const mode = this.spins.mode;
-      const entry = drawHold(this.spec, this.patterns, this.seed, mode, h.ball, h.rate);
+      const unit = h.unit === undefined ? h.rate : h.unit;
+      const entry = drawHold(this.spec, this.patterns, this.seed, mode, h.ball, h.rate, unit);
       this.ballsState = addAmount(this.ballsState, entry.hesoPayoutBalls);
       this.totalsState = {
         ...this.totalsState,
@@ -1457,7 +1527,6 @@ export class Engine {
         jackpots: this.totalsState.jackpots,
         fired: this.totalsState.fired,
         payoutBalls: this.totalsState.payoutBalls + entry.hesoPayoutBalls,
-        bonusBalls: this.totalsState.bonusBalls,
       };
       this.noteEconomyGain(entry.hesoPayoutBalls);
       this.noteAwayHot(entry.serial, entry.hot);
@@ -1475,7 +1544,7 @@ export class Engine {
     return m === 'jitan' || m === 'st' || m === 'lt';
   }
 
-  /** 電サポ中の自動保留（玉を打たずに保留を上限まで足す。賞球なし・rate1の取得時判定）。 */
+  /** 電サポ中の自動保留（玉を打たずに保留を上限まで足す。賞球なし・無料は1パチ単価, D-090）。 */
   private fillReserveHolds(at: SimTime, out: SimEvent[]): void {
     if (!this.isSupportMode()) {
       return;
@@ -1488,7 +1557,8 @@ export class Engine {
       }
       this.nextReserveState = serial + 1;
       const mode = this.spins.mode;
-      const drawn = drawHold(this.spec, this.patterns, this.seed, mode, serial, 1);
+      const freeUnit = this.readFreeUnit();
+      const drawn = drawHold(this.spec, this.patterns, this.seed, mode, serial, 1, freeUnit);
       const entry: HoldEntry = { ...drawn, hesoPayoutBalls: 0 };
       this.noteAwayHot(entry.serial, entry.hot);
       if (this.queue.tryAdd(entry)) {
@@ -1515,7 +1585,7 @@ export class Engine {
       this.bonusStockState = this.bonusStockState - 1;
       const mode = this.spins.mode;
       const bonus1In = this.noticeCfgCache === null ? 10 : this.noticeCfgCache.bonus1In;
-      const entry = drawGrantHold(this.spec, this.patterns, this.seed, mode, n, serial, bonus1In);
+      const entry = drawGrantHold(this.spec, this.patterns, this.seed, mode, n, serial, bonus1In, this.readFreeUnit());
       this.noteAwayHot(entry.serial, entry.hot);
       if (this.queue.tryAdd(entry)) {
         out.push({ k: 'holdAdded', entry, at });
@@ -1542,24 +1612,16 @@ export class Engine {
             deferredMode = { k: 'modeChanged', to: e.to, at: e.at, stRemaining: e.stRemaining };
           } else {
             if (e.k === 'jackpotStarted') {
-              const rate = this.spins.jackpotRate as number;
-              const rb = this.readJackpotRoundBonus(rate);
-              this.jackpotBonusState = rb;
               this.totalsState = {
                 ...this.totalsState,
                 spins: this.totalsState.spins,
                 jackpots: this.totalsState.jackpots + 1,
                 fired: this.totalsState.fired,
                 payoutBalls: this.totalsState.payoutBalls,
-                bonusBalls: this.totalsState.bonusBalls,
                 firstHits: this.totalsState.firstHits + (fromRush ? 0 : 1),
               };
               this.noteAwayReplay(e.entry, e.kind, e.rounds);
-              if (rb === null) {
-                out.push(e);
-              } else {
-                out.push({ ...e, roundBonus: rb });
-              }
+              out.push(e);
             } else {
               out.push(e);
             }
@@ -1580,11 +1642,8 @@ export class Engine {
       }
       const endsAt = this.spins.jackpotEndsAt as SimTime | null;
       if (endsAt !== null && endsAt === at) {
-        const rateBefore = this.spins.jackpotRate as number;
-        const rb = this.jackpotBonusState;
-        const totalRoundsBefore = this.spins.jackpotTotalRounds as number;
-        const bonusBefore = rb === null ? 0 : rb * totalRoundsBefore;
-        const evs = this.spins.finishJackpot(at, rateBefore, bonusBefore);
+        const unitBefore = this.spins.jackpotUnit as number;
+        const evs = this.spins.finishJackpot(at, unitBefore);
         for (let i = 0; i < evs.length; i = i + 1) {
           const e = evs[i] as (typeof evs)[number] | undefined;
           if (e === undefined) {
@@ -1594,26 +1653,18 @@ export class Engine {
             deferredMode = { k: 'modeChanged', to: e.to, at: e.at, stRemaining: e.stRemaining };
           } else {
             if (e.k === 'jackpotEnded') {
-              const bonus = bonusBefore;
-              this.ballsState = addAmount(addAmount(this.ballsState, e.payout), bonus);
-              this.jackpotBonusState = null;
+              this.ballsState = addAmount(this.ballsState, e.payout);
               this.totalsState = {
                 ...this.totalsState,
                 spins: this.totalsState.spins,
                 jackpots: this.totalsState.jackpots,
                 fired: this.totalsState.fired,
                 payoutBalls: this.totalsState.payoutBalls + e.payout,
-                bonusBalls: this.totalsState.bonusBalls + bonus,
                 maxChain: this.spins.chain > this.totalsState.maxChain ? this.spins.chain : this.totalsState.maxChain,
               };
               this.noteEconomyGain(e.payout);
-              this.noteEconomyGain(bonus);
               this.noteAwayJackpot();
-              if (rb === null) {
-                out.push(e);
-              } else {
-                out.push({ ...e, bonus });
-              }
+              out.push(e);
             } else {
               out.push(e);
             }
@@ -1644,7 +1695,6 @@ export class Engine {
           jackpots: this.totalsState.jackpots,
           fired: this.totalsState.fired,
           payoutBalls: this.totalsState.payoutBalls,
-          bonusBalls: this.totalsState.bonusBalls,
         };
       }
     }
@@ -1707,9 +1757,9 @@ export class Engine {
       noticeInFgMs: this.noticeInFgMsState,
       activeNotice: activeCopy,
       nextReserve: this.nextReserveState,
-      jackpotBonus: this.jackpotBonusState,
       bonusStock: this.bonusStockState,
       grantHoldSeq: this.grantHoldSeqState,
+      autoAcc: this.autoAccState,
       away: {
         awayFrom: this.awayFromState,
         awayBalls: this.awayBallsState,
@@ -1795,11 +1845,13 @@ export class Engine {
     eng.ballsState = snap.balls;
     eng.medalsState = snap.medals;
     eng.fuelMsState = snap.fuelMs;
-    const oldTotals = snap.totals as Partial<Totals>;
+    const oldTotals = snap.totals as Partial<Totals> & { bonusBalls?: number };
     eng.closesState = snap.closes === undefined ? [] : snap.closes.slice();
+    // 旧 bonusBalls・jackpotBonus は読み捨て（D-090）。
+    const { bonusBalls: _dropBonus, ...restTotals } = snap.totals as Totals & { bonusBalls?: number };
+    void _dropBonus;
     eng.totalsState = {
-      ...snap.totals,
-      bonusBalls: oldTotals.bonusBalls === undefined ? 0 : oldTotals.bonusBalls,
+      ...restTotals,
       firstHits: oldTotals.firstHits === undefined ? 0 : oldTotals.firstHits,
       maxChain: oldTotals.maxChain === undefined ? 0 : oldTotals.maxChain,
     };
@@ -1851,16 +1903,7 @@ export class Engine {
     eng.noticeSeqState = snap.noticeSeq;
     eng.noticeInFgMsState = snap.noticeInFgMs;
     eng.activeNoticeState = snap.activeNotice === null ? null : { ...snap.activeNotice };
-    if (snap.jackpotBonus === undefined) {
-      eng.jackpotBonusState = null;
-    } else if (snap.jackpotBonus === null) {
-      eng.jackpotBonusState = null;
-    } else {
-      if (typeof snap.jackpotBonus !== 'number' || !Number.isFinite(snap.jackpotBonus) || snap.jackpotBonus < 0) {
-        throw new Error('invalid engine: snap.jackpotBonus must be finite >= 0');
-      }
-      eng.jackpotBonusState = snap.jackpotBonus;
-    }
+    // 旧 jackpotBonus は読み捨て（D-090）。
     if (snap.nextReserve === undefined) {
       eng.nextReserveState = RESERVE_SERIAL_BASE;
     } else {
@@ -1884,6 +1927,14 @@ export class Engine {
         throw new Error('invalid engine: snap.grantHoldSeq must be a non-negative int in range');
       }
       eng.grantHoldSeqState = snap.grantHoldSeq;
+    }
+    if (snap.autoAcc === undefined) {
+      eng.autoAccState = 0;
+    } else {
+      if (typeof snap.autoAcc !== 'number' || !Number.isFinite(snap.autoAcc) || snap.autoAcc < 0) {
+        throw new Error('invalid engine: snap.autoAcc must be finite >= 0');
+      }
+      eng.autoAccState = snap.autoAcc;
     }
     eng.awayFromState = away.awayFrom;
     eng.awayBallsState = away.awayBalls;
@@ -1927,11 +1978,17 @@ export class Engine {
   project(): HallProjection {
     const snapBase = projectSnapshot(this.snapshot(), this.spec, this.patterns);
     const ratesHook = this.econHook('getUnlockedRates') as (() => number[]) | undefined;
-    const base = ratesHook !== undefined && typeof ratesHook === 'function'
-      ? { ...snapBase, rates: (ratesHook.bind(this.economy))() }
-      : snapBase;
+    const rates = ratesHook !== undefined && typeof ratesHook === 'function'
+      ? (ratesHook.bind(this.economy))()
+      : [1];
+    const rateCosts: number[] = [];
+    for (let i = 0; i < rates.length; i = i + 1) {
+      rateCosts.push(this.readShotUnit(rates[i] as number));
+    }
+    const base = { ...snapBase, rates, rateCosts };
     const refPerSec = this.readRefPerSec();
-    const baseWithRef = { ...base, refPerSec };
+    const shotS = this.readShotS();
+    const baseWithRef = { ...base, refPerSec, shotS };
     const perSecHook = this.econHook('getPerSec') as
       | ((fg: boolean, fuelMs: number) => number)
       | undefined;

@@ -84,7 +84,7 @@ test('ゴールデン: script01のイベント列＋最終経済状態が固定'
   const { events, fullHash } = runScript();
   expect(events.length).toBeGreaterThan(60000);
   expect(events.filter((e) => e.k === 'noticeSpawned').length).toBeGreaterThan(0);
-  expect(fullHash.slice(0, 16)).toBe('613c145a8f8fd75b');
+  expect(fullHash.slice(0, 16)).toBe('5a70c4f721dd8dcc');
 });
 
 function t3Engine(seed: number): Engine {
@@ -221,11 +221,11 @@ test(
           spec,
           patterns,
           atlas,
-          initialBalls: 100000,
+          initialBalls: 10000000,
           initialMedals: 10,
           economy: new IdleEconomy(parseEconomy(JSON.parse(economyJson) as unknown)),
         },
-        [{ claimId: 'f', at: 0, fuelMs: 12 * 3600000, medals: 0 }],
+        [{ claimId: 'f', at: 0, fuelMs: 48 * 3600000, medals: 0 }],
         [
           { t: 0, k: 'buy', target: 'windmill', count: 10 },
           { t: 0, k: 'shoot', on: true, rate: 1 },

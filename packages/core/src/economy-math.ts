@@ -238,6 +238,21 @@ export function closeGain(
   return gain < 0 ? 0 : gain;
 }
 
+/** 発射単価 unit = floor(rate × refPerSec × shotS)、最低 rate（D-090。整数に切り捨て）。 */
+export function shotUnit(rate: number, refPerSec: number, shotS: number): number {
+  asNonNegativeInt(rate, 'rate');
+  if (rate < 1) {
+    fail('rate must be >= 1');
+  }
+  asNonNegativeFinite(refPerSec, 'refPerSec');
+  asNonNegativeInt(shotS, 'shotS');
+  if (shotS < 1) {
+    fail('shotS must be >= 1');
+  }
+  const raw = Math.floor(rate * refPerSec * shotS);
+  return raw < rate ? rate : raw;
+}
+
 /** 連日倍率 = 1 + perDay × min(days, maxDays)。 */
 export function streakMult(days: number, perDay: number, maxDays: number): number {
   asNonNegativeInt(days, 'days');

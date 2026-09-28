@@ -452,7 +452,7 @@ export function runEcon(
   const medalsPachinko = 0;
   let fuelGrantedMs = 0;
   let yakumonoBase = 0;
-  let bonusTotal = 0;
+  const bonusTotal = 0;
   let actionTotal = 0;
   let croonDay: number | null = null;
   let firstAwakenDay: number | null = null;
@@ -543,11 +543,9 @@ export function runEcon(
     next = next < dayEnd ? next : dayEnd;
     const total0 = econ.getTotalTotal();
     const payout0 = eng.project().totals.payoutBalls;
-    const bonus0 = eng.project().totals.bonusBalls;
     const evs: EngineSimEvent[] = eng.advance(next);
     const total1 = econ.getTotalTotal();
     const payout1 = eng.project().totals.payoutBalls;
-    const bonus1 = eng.project().totals.bonusBalls;
     let actionInInterval = 0;
     for (let i = 0; i < evs.length; i = i + 1) {
       const e = evs[i] as EngineSimEvent;
@@ -555,7 +553,7 @@ export function runEcon(
         actionInInterval = actionInInterval + (e.balls ?? 0);
       }
     }
-    const tick = total1 - total0 - (payout1 - payout0) - (bonus1 - bonus0) - actionInInterval;
+    const tick = total1 - total0 - (payout1 - payout0) - actionInInterval;
     if (tick > 0) {
       yakumonoBase = yakumonoBase + tick;
     }
@@ -567,8 +565,6 @@ export function runEcon(
       if (e.k === 'granted') {
         medalsActivity = medalsActivity + e.medals;
         fuelGrantedMs = fuelGrantedMs + e.fuelMs;
-      } else if (e.k === 'jackpotEnded') {
-        bonusTotal = bonusTotal + (e.bonus ?? 0);
       } else if (e.k === 'rejected' && e.action !== 'noticeTap') {
         throw new Error(`econ: unexpected reject ${e.action} ${e.reason} at ${e.at}`);
       }
@@ -625,7 +621,7 @@ export function runEcon(
   };
 }
 
-/** パチンコ期待値（1発あたり払い戻し）。背面オート share=1・レート1で hours 時間回す。 */
+/** パチンコ期待値（1玉あたり払い戻し＝出玉/投入玉。出玉だけ・レートによらない, D-090）。背面オート share=1・レート1で hours 時間回す。 */
 export function measurePachinkoEv(
   machine: string,
   seed: number,
@@ -643,13 +639,17 @@ export function measurePachinkoEv(
     : {};
   econ.restore({ ...econ.snapshot(), ...stages, autoOwned: true });
   const fuelMs = hours * 3600000;
-  const eng = new Engine({ seed, spec: mspec, patterns, atlas: buffer, initialBalls: 1e12, initialFuelMs: fuelMs, economy: econ }, [], [
+  const initialBalls = 1e12;
+  const eng = new Engine({ seed, spec: mspec, patterns, atlas: buffer, initialBalls, initialFuelMs: fuelMs, economy: econ }, [], [
     { t: 0, k: 'presence', fg: false },
     { t: 0, k: 'auto', share: 1, rate: 1 },
   ]);
   eng.advance(hours * 3600000);
   const totals = eng.project().totals;
-  return totals.fired > 0 ? totals.payoutBalls / totals.fired : 0;
+  const finalBalls = eng.project().balls;
+  // 投入玉＝初期−最終＋払い戻し（生産0のため。燃料はあるが役物なしで perSec=0）。
+  const cost = initialBalls - finalBalls + totals.payoutBalls;
+  return cost > 0 ? totals.payoutBalls / cost : 0;
 }
 
 function fmtNum(v: number): string {

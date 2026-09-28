@@ -4,8 +4,8 @@ import { Engine, type Action, type EngineSnapshot } from '@ph/core';
 import { getSnapshot, loadActions, loadLedger, type Db, type GameMeta } from '../platform/storage.ts';
 import { engineConfig } from './game-config.ts';
 
-/** 3 = P7-T7（大当たりボーナス・Totals bonusBalls・Projection refPerSec・EngineSnapshot jackpotBonus）。 */
-export const SNAPSHOT_VERSION = 3;
+/** 4 = P8-T8（単価 unit・Totals bonusBalls 廃止・EngineSnapshot jackpotBonus 廃止・autoAcc・IdleEconomy v5 レート移行）。 */
+export const SNAPSHOT_VERSION = 4;
 
 export type RestoredFrom = 'snapshot' | 'recompute';
 

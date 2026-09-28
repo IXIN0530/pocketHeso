@@ -7,8 +7,8 @@ import { LcdTimeline, applyLcdEvent, stateFromProjection, type LcdState } from '
 const R = DEFAULT_ROUND;
 const EMPTY: LcdState = { holds: [], spin: null, resolved: null, jackpot: null };
 
-const hold = (serial: number, rate?: number): HoldEntry =>
-  ({ serial, modeAtDraw: 'normal', isHit: true, branchIndex: 0, patternIndex: 0, color: 'white', hot: 0, hesoPayoutBalls: 3, rate }) as HoldEntry;
+const hold = (serial: number, rate?: number, unit?: number): HoldEntry =>
+  ({ serial, modeAtDraw: 'normal', isHit: true, branchIndex: 0, patternIndex: 0, color: 'white', hot: 0, hesoPayoutBalls: 3, rate, unit }) as HoldEntry;
 
 type Ev = Parameters<typeof applyLcdEvent>[1];
 const run = (s: LcdState, events: readonly Ev[]) => events.reduce(applyLcdEvent, s);
@@ -47,26 +47,26 @@ test('ラウンド: 始めは「大当たり」、アタッカーの玉と獲得
   expect(jackpotHud(s, 5000 + 251000, R)).toMatchObject({ round: 11, rounds: 20, bonus: { add: 10, t: 1000 } });
 });
 
-test('ラウンド・結果: 大当たりボーナス込みの獲得出玉（D-080）', () => {
+test('ラウンド・結果: 出玉は取得時の unit（D-090、ボーナスなし）', () => {
   let s = run(EMPTY, [
-    { k: 'holdAdded', entry: hold(1), at: 0 },
+    { k: 'holdAdded', entry: hold(1, 1, 8), at: 0 },
     { k: 'spinStarted', entry: 1, at: 0, pattern: 'normal_short', endsAt: 5000 },
     { k: 'spinResolved', entry: 1, at: 5000, hit: true },
-    { k: 'jackpotStarted', entry: 1, at: 5000, kind: 'kakuhen', rounds: 10, roundBonus: 180 },
+    { k: 'jackpotStarted', entry: 1, at: 5000, kind: 'kakuhen', rounds: 10 },
   ]);
   const at = (ms: number) => jackpotHud(s, 5000 + ms, R)!;
-  expect(at(10000)).toMatchObject({ round: 1, inRound: 5, balls: 5 * 15 + 180 * 0.5 });
-  expect(at(25000)).toMatchObject({ round: 2, inRound: 0, balls: 150 + 180 });
-  expect(at(10 * 25000 + 3000)).toMatchObject({ round: 10, inRound: 10, balls: 1500 + 1800 });
-  s = run(s, [{ k: 'jackpotEnded', entry: 1, at: 5000 + 250000, payout: 1500, bonus: 1800 } as never]);
-  expect(jackpotHud(s, 5000 + 250000 + 100, R)).toMatchObject({ k: 'result', payout: 3300, balls: 0 });
+  expect(at(10000)).toMatchObject({ round: 1, inRound: 5, balls: 5 * 15 * 8 });
+  expect(at(25000)).toMatchObject({ round: 2, inRound: 0, balls: 10 * 15 * 8 });
+  expect(at(10 * 25000 + 3000)).toMatchObject({ round: 10, inRound: 10, balls: 100 * 15 * 8 });
+  s = run(s, [{ k: 'jackpotEnded', entry: 1, at: 5000 + 250000, payout: 1500 * 8 } as never]);
+  expect(jackpotHud(s, 5000 + 250000 + 100, R)).toMatchObject({ k: 'result', payout: 12000, balls: 0 });
   s = run(s, [{ k: 'modeChanged', to: 'st', at: 5000 + 250000, stRemaining: 100 } as never]);
   expect(jackpotHud(s, 5000 + 250000 + 100, R)).toMatchObject({
     k: 'result',
     kind: 'rushIn',
-    payout: 3300,
+    payout: 12000,
     chain: 1,
-    balls: 3300,
+    balls: 12000,
   });
 });
 

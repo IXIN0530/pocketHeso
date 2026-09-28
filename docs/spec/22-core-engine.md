@@ -26,20 +26,20 @@ type Action  =
 ## イベント
 ```ts
 type SimEvent =
-  | { k: 'fired'; ball: number; at: SimTime; rate: number }
+  | { k: 'fired'; ball: number; at: SimTime; rate: number; unit?: number } // unit は発射時の単価（省略時は rate, D-090）
   | { k: 'sensor'; ball: number; at: SimTime; kind: 'start1'|'out'|'lost' }
   | { k: 'holdAdded'; entry: HoldEntry; at: SimTime } | { k: 'holdOverflow'; ball: number; at: SimTime }
   | { k: 'spinStarted'; entry: number; at: SimTime; pattern: PatternId; endsAt: SimTime }
   | { k: 'spinResolved'; entry: number; at: SimTime; hit: boolean }
-  | { k: 'jackpotStarted'; entry: number; at: SimTime; kind: JackpotKind; rounds: number; roundBonus?: number } // 1Rの大当たりボーナス（経済つきのみ）
-  | { k: 'jackpotEnded'; entry: number; at: SimTime; payout: number; bonus?: number }  // payout=出玉、bonus=roundBonus×実ラウンド数
+  | { k: 'jackpotStarted'; entry: number; at: SimTime; kind: JackpotKind; rounds: number }
+  | { k: 'jackpotEnded'; entry: number; at: SimTime; payout: number }  // payout=出玉（取得時の unit 込み, D-090）
   | { k: 'modeChanged'; to: Mode; at: SimTime; stRemaining: number }
   | { k: 'noticeSpawned' | 'noticeExpired'; id: number; at: SimTime; effect: NoticeEffect }
   | { k: 'granted'; claimId: string; at: SimTime; fuelMs: number; medals: number; balls?: number; bonusHolds?: number } // balls=即時の玉
   | { k: 'fuelEmpty' | 'fuelRefilled'; at: SimTime }
   | { k: 'closed'; at: SimTime; regularPoints: number; machineId?: string }  // 機種を変えた時だけ
   | { k: 'rejected'; at: SimTime; action: Action['k']; reason: string }
-type HoldEntry = { serial: number; hit: boolean; kind?: JackpotKind; pattern: PatternId; color: HoldColor; hot: number }
+type HoldEntry = { serial: number; hit: boolean; kind?: JackpotKind; pattern: PatternId; color: HoldColor; hot: number; unit?: number } // unit は取得時の単価（無い旧セーブは rate, D-090）
 type Mode = 'normal' | 'jitan' | 'st' | 'lt'  // spec/21 モード拡張節。stRemaining は jitan/st/lt の残り回転数（normal は 0）
 ```
 経済の毎秒の増減はイベントにしない（量が多い）。状態（`economy`）とスナップショットにだけ残す。

@@ -106,7 +106,8 @@ test('runEcon 7日: 閉店は獲得≥1のみ・玉内訳が累計と整合・�
   }
   const last = r.rows[6] as EconDayRow;
   expect(last.closes).toBe(r.closeHistory.length);
-  expect(r.bonus).toBeGreaterThan(0);
+  // D-090 で大当たりボーナス廃止のため bonus=0。
+  expect(r.bonus).toBe(0);
   expect(r.action).toBeGreaterThan(0);
   // 役物＋ボーナス＋出玉＋行動 = 全期間累計玉（予告のボーナス等も tick 側に入る）。
   expect((r.yakumono + r.bonus + r.payout + r.action) / last.totalTotal).toBeCloseTo(1, 9);

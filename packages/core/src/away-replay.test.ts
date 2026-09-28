@@ -9,7 +9,8 @@ import { Engine } from './engine.ts';
 
 const H = 3600000;
 const AWAY_FROM = 1000;
-const AWAY_TO = 6 * H;
+// オートは生産連動で遅いため 24H 回して複数当たりを出す（D-090）。
+const AWAY_TO = 24 * H;
 
 function loadMachine(): { spec: MachineSpec; patterns: PatternTable } {
   const spec = parseMachineText(readFileSync('../../resources/machines/light-middle-01.json', 'utf8'));
@@ -41,16 +42,15 @@ function config(seed: number) {
   return { seed, spec, patterns, atlas: ATLAS, initialBalls: 10000000, initialMedals: 0, economy: loadEconomy() };
 }
 
-/** オート（rate4）で打ちながら AWAY_FROM〜awayTo の間だけ背面にいるエンジン。 */
+/** オート（rate1）で打ちながら AWAY_FROM〜awayTo の間だけ背面にいるエンジン。 */
 function awayEngine(seed: number, awayTo = AWAY_TO): Engine {
   return new Engine(
     config(seed),
-    [{ claimId: 'fuel', at: 0, fuelMs: 12 * H, medals: 8 }],
+    [{ claimId: 'fuel', at: 0, fuelMs: 48 * H, medals: 0 }],
     [
       { t: 0, k: 'buy', target: 'windmill', count: 10 },
-      { t: 0, k: 'buy', target: 'rate', count: 1 },
       { t: 0, k: 'buy', target: 'auto', count: 1 },
-      { t: 0, k: 'auto', share: 1, rate: 4 },
+      { t: 0, k: 'auto', share: 1, rate: 1 },
       { t: AWAY_FROM, k: 'presence', fg: false },
       { t: awayTo, k: 'presence', fg: true },
     ],

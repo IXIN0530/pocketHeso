@@ -92,7 +92,7 @@ test('大当たりでメダルは増えず、累計獲得メダルは Grant で�
   expect(econ.getMedalsEarned()).toBe(3);
 });
 
-test('大当たりボーナスは jackpotStarted で決まり Ended で持ち玉に足す（D-080）', () => {
+test('出玉は取得時の unit で払い、ボーナスは無い（D-090）', () => {
   const econ = loadEconomy();
   const eng = autoEngine(econ);
   let sawStarted = false;
@@ -101,21 +101,20 @@ test('大当たりボーナスは jackpotStarted で決まり Ended で持ち玉
     for (const e of eng.advance(t)) {
       if (e.k === 'jackpotStarted') {
         sawStarted = true;
-        expect(e.roundBonus).toBe(econ.jackpotRoundBonus(1));
+        expect('roundBonus' in e).toBe(false);
       } else if (e.k === 'jackpotEnded') {
         sawEnded = true;
-        const started = eng.snapshot().totals;
-        expect(started.bonusBalls).toBeGreaterThanOrEqual(e.bonus ?? 0);
-        expect(e.bonus).toBeGreaterThan(0);
+        expect('bonus' in e).toBe(false);
+        expect(e.payout).toBeGreaterThan(0);
       }
     }
   }
   expect(sawStarted).toBe(true);
   expect(sawEnded).toBe(true);
-  expect(eng.project().totals.bonusBalls).toBeGreaterThan(0);
+  expect('bonusBalls' in eng.project().totals).toBe(false);
 });
 
-test('燃料0ではオートが発射せず、燃料が入れば再開し、手動は燃料0でも打てる（D-049）', () => {
+test('燃料0ではオートが発射せず、燃料が入れば再開し、手動は燃料0でも打てる（D-049・D-090）', () => {
   const econ = loadEconomy();
   const eng = makeEngine(
     econ,
@@ -128,14 +127,16 @@ test('燃料0ではオートが発射せず、燃料が入れば再開し、手�
   );
   const events = eng.advance(240000);
   expect(countIn(events, 'fired', 0, 60000)).toBe(0);
-  // 60000〜118800 の 600ms 格子（燃料は 119000 の tick で尽きる）
-  expect(countIn(events, 'fired', 60000, 120000)).toBe(99);
+  // オートは生産×share を unit で割るため 100発/分より遅い（ref=1・unit=8で約7〜8発/分, D-090）
+  const autoFired = countIn(events, 'fired', 60000, 120000);
+  expect(autoFired).toBeGreaterThan(0);
+  expect(autoFired).toBeLessThan(99);
   expect(events.filter((e) => e.k === 'fuelEmpty').map((e) => ('at' in e ? e.at : -1))).toEqual([119000]);
   expect(countIn(events, 'fired', 120000, 180000)).toBe(0);
   expect(countIn(events, 'fired', 180000, 240000)).toBe(100);
 });
 
-test('レート4: 1発4玉・出玉×4・大当たりボーナス×1.5（D-080）', () => {
+test('レート4: 1発は unit（rate×ref×8）・出玉は取得時の unit・無料は1パチ単価（D-090）', () => {
   const econ = loadEconomy();
   const initialBalls = 10000000;
   const eng = makeEngine(
@@ -143,14 +144,17 @@ test('レート4: 1発4玉・出玉×4・大当たりボーナス×1.5（D-080�
     [{ claimId: 'fuel', at: 0, fuelMs: 12 * H, medals: 8 }],
     [
       { t: 0, k: 'buy', target: 'rate', count: 1 },
+      { t: 0, k: 'buy', target: 'rate', count: 1 },
       { t: 0, k: 'shoot', on: true, rate: 4 },
     ],
     { seed: 3, balls: initialBalls },
   );
+  // 役物なし・ref=1なので unit4=32・無料 unit1=8
+  const unit4 = 4 * 1 * 8;
+  const freeUnit = 1 * 1 * 8;
   let rounds = 0;
-  let jackpotRate = 4;
-  let roundBonus = 0;
-  let sawBonus = false;
+  let useUnit = unit4;
+  let sawEnded = false;
   let sawReserveJackpot = false;
   const all: SimEvent[] = [];
   for (let t = 1000; t <= 6 * H; t = t + 1000) {
@@ -158,33 +162,32 @@ test('レート4: 1発4玉・出玉×4・大当たりボーナス×1.5（D-080�
       all.push(e);
       if (e.k === 'jackpotStarted') {
         rounds = e.rounds + (e.bonusRounds ?? 0);
-        // 自動保留（D-079）は無料のため rate1。大当たりの出玉・ボーナスも rate1。
-        jackpotRate = e.entry >= RESERVE_SERIAL_BASE ? 1 : 4;
-        if (jackpotRate === 1) {
+        // 自動保留（D-079）は無料のため 1パチ単価。
+        useUnit = e.entry >= RESERVE_SERIAL_BASE ? freeUnit : unit4;
+        if (useUnit === freeUnit) {
           sawReserveJackpot = true;
         }
-        roundBonus = e.roundBonus as number;
-        expect(roundBonus).toBe(econ.jackpotRoundBonus(jackpotRate));
+        expect('roundBonus' in e).toBe(false);
       } else if (e.k === 'jackpotEnded') {
-        expect(e.payout).toBe(rounds * 10 * 15 * jackpotRate);
-        expect(e.bonus).toBe(roundBonus * rounds);
-        sawBonus = true;
+        expect(e.payout).toBe(rounds * 10 * 15 * useUnit);
+        expect('bonus' in e).toBe(false);
+        sawEnded = true;
       }
     }
   }
-  expect(sawBonus).toBe(true);
+  expect(sawEnded).toBe(true);
   expect(sawReserveJackpot).toBe(true);
   const fired = all.filter((e) => e.k === 'fired');
   expect(fired.length).toBeGreaterThan(1000);
   expect(fired.every((e) => e.k === 'fired' && e.rate === 4)).toBe(true);
-  // 役物なし（生産0・基準1/秒）なので 玉 = 初期 − 4×発射 + 払い戻し（ヘソ＋出玉＋ボーナス）
+  // 役物なし（生産0・基準1/秒）なので 玉 = 初期 − unit×発射 + 払い戻し（ヘソ＋出玉）
   const snap = eng.snapshot();
-  expect(snap.balls).toBe(initialBalls - 4 * fired.length + snap.totals.payoutBalls + snap.totals.bonusBalls);
+  expect(snap.balls).toBe(initialBalls - unit4 * fired.length + snap.totals.payoutBalls);
   expect(eng.project().medals).toBe(0);
   expect(econ.getMedalsEarned()).toBe(8);
 });
 
-test('上乗せ込みの実ラウンド数でボーナス・rate100は×6・Stubは省略（D-080）', () => {
+test('上乗せ込みの実ラウンド数で出玉は unit×・Stubは unit=rate（D-090）', () => {
   const patterns = parsePatternsText(readFileSync('../../resources/machines/patterns.json', 'utf8'));
   const spec = parseMachine({
     id: 'test-bonus-01',
@@ -207,9 +210,10 @@ test('上乗せ込みの実ラウンド数でボーナス・rate100は×6・Stub
       { color: 'white', w_hit: 0, w_miss: 5 },
     ],
   });
-  // 役物なし（ref=1）・rate1: roundBonus=180・実10Rで bonus=1800・payout=1500
+  // 役物なし（ref=1）・rate1: unit=8・実10Rで payout=10*10*15*8=12000
   const econ = loadEconomy();
   expect(econ.getRefPerSec()).toBe(1);
+  expect(econ.getShotUnit(1)).toBe(8);
   const eng = new Engine(
     { seed: 1, spec, patterns, atlas: ATLAS, initialBalls: 1000000, initialMedals: 0, economy: econ },
     [{ claimId: 'fuel', at: 0, fuelMs: 12 * H, medals: 0 }],
@@ -219,30 +223,28 @@ test('上乗せ込みの実ラウンド数でボーナス・rate100は×6・Stub
       { t: 0, k: 'presence', fg: false },
     ],
   );
-  let startedBonus = -1;
-  let endedBonus = -1;
+  let sawStarted = false;
   let endedPayout = -1;
   for (let t = 1000; t <= 2 * H; t = t + 1000) {
     for (const e of eng.advance(t)) {
       if (e.k === 'jackpotStarted') {
-        startedBonus = e.roundBonus as number;
-        expect(startedBonus).toBe(180);
+        sawStarted = true;
+        expect('roundBonus' in e).toBe(false);
       } else if (e.k === 'jackpotEnded') {
-        endedBonus = e.bonus as number;
         endedPayout = e.payout;
+        expect('bonus' in e).toBe(false);
       }
     }
-    if (endedBonus >= 0) {
+    if (endedPayout >= 0) {
       break;
     }
   }
-  expect(startedBonus).toBe(180);
-  expect(endedPayout).toBe(10 * 10 * 15);
-  expect(endedBonus).toBe(180 * 10);
-  expect(eng.project().totals.bonusBalls).toBe(endedBonus);
-  // rate100 は ×6（1080・10Rで10800）
-  expect(econ.jackpotRoundBonus(100)).toBe(1 * 180 * 6);
-  // Stub（経済なし）では roundBonus/bonus を省略
+  expect(sawStarted).toBe(true);
+  expect(endedPayout).toBe(10 * 10 * 15 * 8);
+  expect('bonusBalls' in eng.project().totals).toBe(false);
+  // rate100 の unit は 100*1*8=800
+  expect(econ.getShotUnit(100)).toBe(800);
+  // Stub（経済なし）では unit=rate
   const stub = new Engine(
     { seed: 1, spec, patterns, atlas: ATLAS, initialBalls: 1000000 },
     [],
@@ -261,6 +263,7 @@ test('上乗せ込みの実ラウンド数でボーナス・rate100は×6・Stub
       } else if (e.k === 'jackpotEnded') {
         stubEnded = true;
         expect('bonus' in e).toBe(false);
+        expect(e.payout).toBe(10 * 10 * 15 * 1);
       }
     }
     if (stubEnded) {
@@ -269,12 +272,13 @@ test('上乗せ込みの実ラウンド数でボーナス・rate100は×6・Stub
   }
   expect(stubStarted).toBe(true);
   expect(stubEnded).toBe(true);
-  expect(stub.project().totals.bonusBalls).toBe(0);
+  expect('bonusBalls' in stub.project().totals).toBe(false);
   expect(stub.project().refPerSec).toBe(0);
 });
 
-test('決定論契約1/2: 大当たりボーナス込みで不揃い刻み・大当たり中の snapshot/restore が1回と一致', () => {
-  const until = 3 * H;
+test('決定論契約1/2: 単価込みで不揃い刻み・大当たり中の snapshot/restore が1回と一致', () => {
+  // オートは生産連動で遅いため 12H 回して大当たりを出す（D-090）。
+  const until = 12 * H;
   const a = autoEngine(loadEconomy(), 11);
   const once = a.advance(until);
   expect(once.filter((e) => e.k === 'jackpotStarted').length).toBeGreaterThan(0);
@@ -300,7 +304,7 @@ test('決定論契約1/2: 大当たりボーナス込みで不揃い刻み・大
   const { spec, patterns } = loadMachine();
   const econD = loadEconomy();
   const d = Engine.restore(c.snapshot(), { seed: 11, spec, patterns, atlas: ATLAS, economy: econD });
-  expect(c.snapshot().jackpotBonus).toBe((started as { roundBonus?: number } | undefined)?.roundBonus ?? null);
+  expect('jackpotBonus' in c.snapshot()).toBe(false);
   const tail = d.advance(until);
   expect([...head, ...tail]).toEqual(once);
   expect(d.snapshot()).toEqual(a.snapshot());
@@ -314,6 +318,7 @@ function awayRate4Engine(econ: IdleEconomy): Engine {
     [
       { t: 0, k: 'buy', target: 'windmill', count: 10 },
       { t: 0, k: 'buy', target: 'rate', count: 1 },
+      { t: 0, k: 'buy', target: 'rate', count: 1 },
       { t: 0, k: 'buy', target: 'auto', count: 1 },
       { t: 0, k: 'auto', share: 1, rate: 4 },
       { t: 1000, k: 'presence', fg: false },
@@ -323,8 +328,9 @@ function awayRate4Engine(econ: IdleEconomy): Engine {
   );
 }
 
-test('留守中サマリーの獲得玉は rate>1 でも 玉差分＋消費玉（Σrate）', () => {
-  const eng = awayRate4Engine(loadEconomy());
+test('留守中サマリーの獲得玉は rate>1 でも 玉差分＋消費玉（Σunit, D-090）', () => {
+  const econ = loadEconomy();
+  const eng = awayRate4Engine(econ);
   const head = eng.advance(1000);
   expect(head.filter((e) => e.k === 'rejected')).toEqual([]);
   const before = eng.snapshot();
@@ -332,21 +338,23 @@ test('留守中サマリーの獲得玉は rate>1 でも 玉差分＋消費玉�
   const after = eng.snapshot();
   eng.advance(H + 1);
   const fired = events.filter((e) => e.k === 'fired');
-  expect(fired.length).toBeGreaterThan(1000);
+  expect(fired.length).toBeGreaterThan(0);
   expect(fired.every((e) => e.k === 'fired' && e.rate === 4)).toBe(true);
+  const unit = econ.getShotUnit(4);
   const s = eng.awaySummary();
   expect(s).not.toBeNull();
-  expect(s?.gainedBalls).toBe(after.balls - before.balls + 4 * (after.totals.fired - before.totals.fired));
+  expect(s?.gainedBalls).toBe(after.balls - before.balls + unit * (after.totals.fired - before.totals.fired));
 });
 
 test('留守中の snapshot/restore で消費玉が引き継がれ、awayConsumed 無しの旧 snapshot は rate1 前提で読む', () => {
   const a = awayRate4Engine(loadEconomy());
   a.advance(H + 1);
   const { spec, patterns } = loadMachine();
-  const b = awayRate4Engine(loadEconomy());
+  const econB = loadEconomy();
+  const b = awayRate4Engine(econB);
   b.advance(H / 2);
   const mid = b.snapshot();
-  expect(mid.away.awayConsumed).toBe(4 * (mid.totals.fired - mid.away.awayFired));
+  expect(mid.away.awayConsumed).toBe(econB.getShotUnit(4) * (mid.totals.fired - mid.away.awayFired));
   const econC = loadEconomy();
   const c = Engine.restore(mid, { seed: 3, spec, patterns, atlas: ATLAS, economy: econC });
   c.advance(H + 1);
@@ -358,12 +366,13 @@ test('留守中の snapshot/restore で消費玉が引き継がれ、awayConsume
   expect(legacy.snapshot().away.awayConsumed).toBe(mid.totals.fired - mid.away.awayFired);
 });
 
-test('持ち玉 < rate なら発射しない（手動・オートとも。持ち玉は負にならない）', () => {
+test('持ち玉 < unit なら発射しない（手動・オートとも。持ち玉は負にならない, D-090）', () => {
   const econ = loadEconomy();
   const eng = makeEngine(
     econ,
     [{ claimId: 'fuel', at: 0, fuelMs: 12 * H, medals: 8 }],
     [
+      { t: 0, k: 'buy', target: 'rate', count: 1 },
       { t: 0, k: 'buy', target: 'rate', count: 1 },
       { t: 0, k: 'shoot', on: true, rate: 4 },
     ],
@@ -382,7 +391,7 @@ test('持ち玉 < rate なら発射しない（手動・オートとも。持ち
       { t: 0, k: 'auto', share: 1, rate: 1 },
       { t: 0, k: 'presence', fg: false },
     ],
-    { seed: 3, balls: 50000 + 5 }, // オート購入50,000玉の残り5玉
+    { seed: 3, balls: 50000 + 1000 }, // オート購入50,000玉の残り1000玉（unit=8で打てる）
   );
   let firedAuto = 0;
   for (let t = 1000; t <= 10 * 60000; t = t + 1000) {

@@ -31,8 +31,10 @@ export interface HoldEntry {
   readonly color: LotteryHoldColor;
   readonly hot: number;
   readonly hesoPayoutBalls: number;
-  /** 打ったレート（1 は省略。大当たりの出玉とボーナス倍率に使う, D-080）。 */
+  /** 打ったレート（1 は省略。表示・旧セーブ用。払い出しは unit）。 */
   readonly rate?: number | undefined;
+  /** 発射時の単価 unit＝floor(rate×ref×shotS)（取得時の ref で固定。旧セーブには無い, D-090）。 */
+  readonly unit?: number | undefined;
 }
 
 /** 抽選モードに対応する確率表を返す。 */
@@ -64,6 +66,14 @@ function assertRate(rate: number): number {
     throw new Error('invalid lottery: rate must be a positive int');
   }
   return rate;
+}
+
+/** 単価 unit（1発のコスト・賞球と出玉の掛け率）を検証する。 */
+function assertUnit(unit: number): number {
+  if (typeof unit !== 'number' || !Number.isFinite(unit) || Math.floor(unit) !== unit || unit < 1) {
+    throw new Error('invalid lottery: unit must be a positive int');
+  }
+  return unit;
 }
 
 /** 通し番号（RNG の entrySerial）を検証する。 */
@@ -159,7 +169,7 @@ function bonusThresholdU32(bonus1In: number): number {
   return Math.floor(4294967296 / bonus1In);
 }
 
-/** 予告の特別変動1回（当否1/10は `notice` ストリームの3手目、枝・パターン・色は bonusSerial の各ストリーム）。 */
+/** 予告の特別変動1回（当否1/10は `notice` ストリームの3手目、枝・パターン・色は bonusSerial の各ストリーム。無料は1パチ単価, D-090）。 */
 export function drawBonusHold(
   spec: MachineSpec,
   patterns: PatternTable,
@@ -169,6 +179,7 @@ export function drawBonusHold(
   bonusSerial: number,
   bonus1In: number,
   effectWeights: readonly number[],
+  unit?: number,
 ): HoldEntry {
   modeOf(spec, mode);
   assertSerial(noticeId);
@@ -199,10 +210,14 @@ export function drawBonusHold(
     throw new Error('invalid lottery: color index out of range');
   }
   const hot = holdHot(patternRow.hot, color);
+  if (unit !== undefined) {
+    assertUnit(unit);
+    return { serial: bonusSerial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0, unit };
+  }
   return { serial: bonusSerial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0 };
 }
 
-/** 行動の特別保留1件（当たり1/10は `grantHold` ストリーム、枝・パターン・色は serial の各ストリーム。賞球なし・rate1, D-081）。 */
+/** 行動の特別保留1件（当たり1/10は `grantHold` ストリーム、枝・パターン・色は serial の各ストリーム。賞球なし・無料は1パチ単価, D-081・D-090）。 */
 export function drawGrantHold(
   spec: MachineSpec,
   patterns: PatternTable,
@@ -211,6 +226,7 @@ export function drawGrantHold(
   grantIndex: number,
   serial: number,
   bonus1In: number,
+  unit?: number,
 ): HoldEntry {
   modeOf(spec, mode);
   assertSerial(grantIndex);
@@ -235,10 +251,14 @@ export function drawGrantHold(
     throw new Error('invalid lottery: color index out of range');
   }
   const hot = holdHot(patternRow.hot, color);
+  if (unit !== undefined) {
+    assertUnit(unit);
+    return { serial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0, unit };
+  }
   return { serial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0 };
 }
 
-/** ヘソ入賞時の取得時判定（当否・振分け・パターン・色を全部確定）。 */
+/** ヘソ入賞時の取得時判定（当否・振分け・パターン・色を全部確定。賞球と出玉は取得時の unit, D-090）。 */
 export function drawHold(
   spec: MachineSpec,
   patterns: PatternTable,
@@ -246,6 +266,7 @@ export function drawHold(
   mode: LotteryMode,
   serial: number,
   rate: number,
+  unit?: number,
 ): HoldEntry {
   const modeObj = modeOf(spec, mode);
   assertSerial(serial);
@@ -270,14 +291,34 @@ export function drawHold(
     throw new Error('invalid lottery: color index out of range');
   }
   const hot = holdHot(patternRow.hot, color);
-  const entry: HoldEntry = { serial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: spec.hesoPayout * rate };
-  return rate === 1 ? entry : { ...entry, rate };
+  const useUnit = unit === undefined ? rate : assertUnit(unit);
+  const entry: HoldEntry = { serial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: spec.hesoPayout * useUnit, unit: useUnit };
+  // rate1 は省略（旧 toEqual 互換）。unit は常に持つ（旧セーブには無い）。
+  const withRate = rate === 1 ? entry : { ...entry, rate };
+  // unit が rate と同じ（Stub・旧挙動）の時は省略して旧形に寄せる。
+  if (useUnit === rate) {
+    const { unit: _drop, ...rest } = withRate;
+    void _drop;
+    return rest;
+  }
+  return withRate;
 }
 
-/** ヘソ賞球（`heso_payout × rate`。満タン時も支払う）。 */
-export function hesoPayoutBalls(spec: MachineSpec, rate: number): number {
-  assertRate(rate);
-  return spec.hesoPayout * rate;
+/** ヘソ賞球（`heso_payout × unit`。満タン時も支払う。旧 rate と同じ検証, D-090）。 */
+export function hesoPayoutBalls(spec: MachineSpec, unit: number): number {
+  assertUnit(unit);
+  return spec.hesoPayout * unit;
+}
+
+/** 保留の単価を読む（無い旧セーブは rate・無ければ 1, D-090）。 */
+export function holdUnit(entry: HoldEntry): number {
+  if (entry.unit !== undefined) {
+    return entry.unit;
+  }
+  if (entry.rate !== undefined) {
+    return entry.rate;
+  }
+  return 1;
 }
 
 /** 振分け枝を取り出す（範囲外は投げる）。 */
@@ -305,10 +346,10 @@ export function jackpotTotalRounds(spec: MachineSpec, branchIndex: number): numb
   return b.rounds + bonus;
 }
 
-/** 大当たり出玉（`(rounds + bonus_rounds) × count × payout_per_ball × rate`）。 */
-export function jackpotPayoutBalls(spec: MachineSpec, branchIndex: number, rate: number): number {
-  assertRate(rate);
+/** 大当たり出玉（`(rounds + bonus_rounds) × count × payout_per_ball × unit`。取得時の unit, D-090）。 */
+export function jackpotPayoutBalls(spec: MachineSpec, branchIndex: number, unit: number): number {
+  assertUnit(unit);
   const b = branchAt(spec, branchIndex);
   const bonus = b.bonusRounds === undefined ? 0 : b.bonusRounds;
-  return (b.rounds + bonus) * spec.roundCount * spec.payoutPerBall * rate;
+  return (b.rounds + bonus) * spec.roundCount * spec.payoutPerBall * unit;
 }

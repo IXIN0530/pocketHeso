@@ -15,8 +15,10 @@ export interface LcdHold {
   readonly addedAt: number | null;
   /** 灰色で点滅している（変化する保留, D-075）。shownLcdState だけが付ける。 */
   readonly blink?: boolean;
-  /** 玉のレート（大当たりの出玉の数え上げ用。不明・1 は省略）。 */
+  /** 玉のレート（旧セーブ用。不明・1 は省略）。 */
   readonly rate?: number;
+  /** 玉の単価 unit（出玉の数え上げ用。不明は rate, D-090）。 */
+  readonly unit?: number;
 }
 
 export interface LcdSpin {
@@ -33,6 +35,7 @@ export interface LcdSpin {
   /** 変動開始で保留が割れる（D-075）。shownLcdState が付ける（演出プレビューは指定できる）。 */
   readonly breaks?: boolean;
   readonly rate?: number;
+  readonly unit?: number;
 }
 
 export interface LcdJackpot {
@@ -46,10 +49,10 @@ export interface LcdJackpot {
   readonly endsAt?: number | null;
   /** 未告知の上乗せラウンド（Projection から作った上乗せ前だけ。開始の逆算用で、表示しない）。 */
   readonly hiddenRounds?: number;
-  /** 当たった保留のレート（出玉の数え上げ用。不明は 1）。 */
+  /** 当たった保留のレート（旧セーブ用。不明は 1）。 */
   readonly rate?: number;
-  /** 1Rの大当たりボーナス（経済つきのみ。無い時は出玉だけ, D-080）。 */
-  readonly roundBonus?: number;
+  /** 当たった保留の単価 unit（出玉の数え上げ用。不明は rate, D-090）。 */
+  readonly unit?: number;
   /** 上乗せ（LT）の時刻と足したラウンド数。 */
   readonly bonus?: { readonly at: number; readonly add: number } | null;
 }
@@ -85,7 +88,7 @@ export interface LcdState {
   readonly holds: readonly LcdHold[];
   readonly spin: LcdSpin | null;
   /** 直前に止まった変動（図柄の停止に使う）。 */
-  readonly resolved: { readonly entry: number; readonly hit: boolean; readonly rate?: number } | null;
+  readonly resolved: { readonly entry: number; readonly hit: boolean; readonly rate?: number; readonly unit?: number } | null;
   readonly jackpot: LcdJackpot | null;
   /** 今のモードと連チャン（省略は通常）。 */
   readonly rush?: LcdRush;
@@ -159,11 +162,10 @@ export function stateFromProjection(p: HallProjection): LcdState {
           startAt: null,
           endsAt: p.jackpot.endsAt,
           ...(p.jackpot.hiddenRounds !== undefined ? { hiddenRounds: p.jackpot.hiddenRounds } : {}),
-          ...(p.jackpot.roundBonus !== undefined ? { roundBonus: p.jackpot.roundBonus } : {}),
+          ...(p.jackpot.unit !== undefined ? { unit: p.jackpot.unit } : {}),
         }
       : null,
     // Core の chain は RUSH に入った当たりを 0 と数える。chainBalls は RUSH に入った当たりの出玉を含まない（目安）。
-    // chainBalls は継続分のボーナス込み（D-080）。突入分のボーナスはイベントで足す。
     rush: { mode: p.mode, chain: isRush(p.mode) ? p.chain + 1 : 0, balls: isRush(p.mode) ? p.chainBalls : 0 },
     result: null,
   };
@@ -183,6 +185,7 @@ export function applyLcdEvent(s: LcdState, e: LcdEvent): LcdState {
             hit: e.entry.isHit,
             addedAt: e.at,
             ...(e.entry.rate !== undefined && e.entry.rate !== 1 ? { rate: e.entry.rate } : {}),
+            ...(e.entry.unit !== undefined ? { unit: e.entry.unit } : {}),
           },
         ],
       };
@@ -201,15 +204,23 @@ export function applyLcdEvent(s: LcdState, e: LcdEvent): LcdState {
           hit: h?.hit ?? null,
           addedAt: h?.addedAt ?? null,
           ...(h?.rate !== undefined ? { rate: h.rate } : {}),
+          ...(h?.unit !== undefined ? { unit: h.unit } : {}),
         },
       };
     }
     case 'spinResolved': {
       const rate = s.spin?.entry === e.entry ? s.spin.rate : undefined;
-      return { ...s, spin: null, resolved: { entry: e.entry, hit: e.hit, ...(rate !== undefined ? { rate } : {}) } };
+      const unit = s.spin?.entry === e.entry ? s.spin.unit : undefined;
+      return {
+        ...s,
+        spin: null,
+        resolved: { entry: e.entry, hit: e.hit, ...(rate !== undefined ? { rate } : {}), ...(unit !== undefined ? { unit } : {}) },
+      };
     }
     case 'jackpotStarted': {
-      const rate = s.resolved?.entry === e.entry ? (s.resolved.rate ?? 1) : 1;
+      const r = s.resolved?.entry === e.entry ? s.resolved : undefined;
+      const rate = r?.rate ?? 1;
+      const unit = r?.unit ?? rate;
       return {
         ...s,
         jackpot: {
@@ -219,7 +230,7 @@ export function applyLcdEvent(s: LcdState, e: LcdEvent): LcdState {
           startAt: e.at,
           endsAt: null,
           rate,
-          ...(e.roundBonus !== undefined ? { roundBonus: e.roundBonus } : {}),
+          unit,
           bonus: null,
         },
         result: null,
@@ -233,8 +244,8 @@ export function applyLcdEvent(s: LcdState, e: LcdEvent): LcdState {
       return { ...s, jackpot: { ...s.jackpot, rounds: e.totalRounds, hiddenRounds: 0, bonus: { at: e.at, add: e.addRounds } } };
     case 'jackpotEnded': {
       // モードが変わらない時（通常 → 通常）はモード変更が来ないので、ここで今のモードのまま決めておく。
-      // payout はボーナス込み（出玉＋bonus, D-080）。
-      const got = e.payout + (e.bonus ?? 0);
+      // payout は取得時の unit 込み（D-090）。
+      const got = e.payout;
       const from = s.rush ?? NORMAL;
       const { rush, result } = settle(from, from.mode, got, e.at, 0);
       return { ...s, jackpot: null, rush, result };

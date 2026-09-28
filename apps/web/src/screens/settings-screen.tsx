@@ -86,7 +86,7 @@ export function SettingsScreen() {
               {p.rates.length > 1 && (
                 <Segmented
                   label="オート打ちのレート"
-                  options={p.rates.map((r) => [r, `${r}パチ`] as const)}
+                  options={p.rates.map((r, i) => [r, `${r}パチ 1発${p.rateCosts[i] ?? r}玉`] as const)}
                   value={p.auto.rate}
                   onChange={(rate) => send({ k: 'auto', share: p.auto.share, rate })}
                 />

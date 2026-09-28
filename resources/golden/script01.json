@@ -4,7 +4,7 @@
   "patterns": "patterns.json",
   "atlas": "default",
   "economy": "default.json",
-  "initialBalls": 100000,
+  "initialBalls": 10000000,
   "initialMedals": 10,
   "initialFuelMs": 43200000,
   "until": 21600000,

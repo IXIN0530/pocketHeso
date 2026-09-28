@@ -105,10 +105,9 @@ export interface EconomyProdRef {
   readonly minPerSec: number;
 }
 
-/** 大当たりボーナス（1Rの値＝refPerSec×roundS×レート倍率, D-080）。 */
-export interface EconomyJackpotBonus {
-  readonly roundS: number;
-  readonly multByRate: readonly number[];
+/** パチンコの発射単価（1発＝生産 shotS 秒ぶん × レート, D-090）。 */
+export interface EconomyPachinko {
+  readonly shotS: number;
 }
 
 /** claims 節の数値（連日倍率。燃料換算は claims 側）。 */
@@ -130,7 +129,7 @@ export interface EconomySpec {
   readonly notice: EconomyNotice;
   readonly close: EconomyClose;
   readonly prodRef: EconomyProdRef;
-  readonly jackpotBonus: EconomyJackpotBonus;
+  readonly pachinko: EconomyPachinko;
   readonly claims: EconomyClaims;
 }
 
@@ -389,13 +388,8 @@ export function parseEconomy(json: unknown): EconomySpec {
   if (!(minPerSec > 0 && minPerSec <= 1000)) {
     fail('prod_ref.min_per_sec out of range');
   }
-  const jb = asRecord(o['jackpot_bonus'], 'jackpot_bonus');
-  const roundS = asIntRange(jb['round_s'], 'jackpot_bonus.round_s', 1, 3600000);
-  const multByRate = asNumberArray(jb['mult_by_rate'], 'jackpot_bonus.mult_by_rate');
-  if (multByRate.length !== rates.length) {
-    fail('jackpot_bonus.mult_by_rate must match upgrades.rate_unlock.rates');
-  }
-  checkAscending(multByRate, 'jackpot_bonus.mult_by_rate', 1, 1000);
+  const pk = asRecord(o['pachinko'], 'pachinko');
+  const shotS = asIntRange(pk['shot_s'], 'pachinko.shot_s', 1, 3600);
   const claims = asRecord(o['claims'], 'claims');
   const streakPerDay = asNumber(claims['streak_per_day'], 'claims.streak_per_day');
   if (streakPerDay < 0 || streakPerDay > 1) {
@@ -443,7 +437,7 @@ export function parseEconomy(json: unknown): EconomySpec {
     },
     close: { requiredRunTotal, divisor, medalsPerPoint, regularMult, startBalls },
     prodRef: { minPerSec },
-    jackpotBonus: { roundS, multByRate },
+    pachinko: { shotS },
     claims: { streakPerDay, streakMaxDays },
   };
 }

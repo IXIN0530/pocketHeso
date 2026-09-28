@@ -23,8 +23,9 @@
     "hold_plus": { "stages": 2, "costs": [100000, 1000000] },
     "auto": { "cost": 50000 },
     "tomeuchi": { "cost": 200000 },
-    "rate_unlock": { "rates": [1, 4, 10, 40, 100, 400, 1000], "medal_costs": [8, 20, 80, 200, 800, 2000] }
+    "rate_unlock": { "rates": [1, 2, 4, 10, 20, 40, 100], "medal_costs": [3, 5, 8, 12, 20, 30] }
   },
+  "pachinko": { "shot_s": 8 },
   "notice": {
     "min_fg_ms": 300000,
     "max_fg_ms": 900000,
@@ -40,7 +41,6 @@
   },
   "close": { "required_run_total": 10000000000, "divisor": 12000000000, "medals_per_point": 28, "regular_mult": 1.0, "start_balls": 100 },
   "prod_ref": { "min_per_sec": 1 },
-  "jackpot_bonus": { "round_s": 180, "mult_by_rate": [1, 1.5, 2.5, 4, 6, 9, 12] },
   "claims": {
     "streak_per_day": 0.05,
     "streak_max_days": 20,

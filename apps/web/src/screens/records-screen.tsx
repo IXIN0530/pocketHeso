@@ -87,8 +87,6 @@ export function RecordsScreen() {
             <dd>{formatNum(t.fired)}発</dd>
             <dt>出玉</dt>
             <dd>{formatNum(t.payoutBalls)}玉</dd>
-            <dt>大当たりボーナス</dt>
-            <dd>{formatNum(t.bonusBalls)}玉</dd>
           </dl>
         </section>
       )}

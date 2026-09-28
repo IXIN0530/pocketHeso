@@ -38,7 +38,7 @@ const fuel = (at: number): ClaimRecord => ({
   day: '2026-09-26',
   amount: 1000,
   trust: 1,
-  grant: { claimId: `health:steps:2026-09-26:${at}`, at, fuelMs: 60 * MIN, medals: 0 },
+  grant: { claimId: `health:steps:2026-09-26:${at}`, at, fuelMs: 60 * MIN, medals: 0, prodMin: 2000 },
 });
 
 /** 画面と同じ流れ: 1Hz の前進結果を積み、「時計 − 表示の遅れ」を 100ms 刻みで進めて状態の移り変わりを集める。 */
@@ -58,12 +58,13 @@ test('保留が増減し、変動の開始で先頭が1つ消化される（取�
   let maxHolds = 0;
   let increases = 0;
   let consumed = 0;
-  // 初期の持ち玉（100玉）は2分ほどで打ち切るので、seed を変えた4台ぶんを合わせて見る。
+  // 単価8玉のため初期100玉だけでは足りず、受け取りで玉を足してから打つ（4台ぶんを合わせる）。
   for (let n = 0; n < 4; n++) {
     const db = await openStorage(`t-lcd-${dbN++}`);
     const { host, boot } = await EngineHost.open(db, ATLAS, T0, () => seedN++);
     const tl = new LcdTimeline();
     tl.push(boot.projection, []);
+    await host.receive([fuel(T0)], false, T0 + 500);
     const r = await host.act({ k: 'shoot', on: true, rate: 1 }, T0 + 1000);
     tl.push(r.projection, r.events);
     await watch(host, tl, T0 + 2000, T0 + 6 * MIN, (prev, next) => {

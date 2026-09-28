@@ -149,11 +149,12 @@ export function HallScreen({ active = true }: { active?: boolean }) {
             {p.rates.length > 1 && (
               <Segmented
                 label="レート"
-                options={p.rates.map((r) => [r, `${r}パチ`] as const)}
+                options={p.rates.map((r, i) => [r, `${r}パチ 1発${formatNum(p.rateCosts[i] ?? r)}玉`] as const)}
                 value={p.shoot.rate}
                 onChange={(r) => send({ k: 'shoot', on: p.shoot.on, rate: r })}
               />
             )}
+            <p className={styles.state}>1発 {formatNum(p.rateCosts[p.rates.indexOf(p.shoot.rate)] ?? p.shoot.rate)}玉（生産{p.shotS}秒 × {p.shoot.rate}パチ）</p>
           </div>
         </>
       )}

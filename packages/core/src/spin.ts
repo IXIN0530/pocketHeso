@@ -52,8 +52,10 @@ export interface ActiveSpin {
   readonly patternIndex: number;
   readonly startedAt: SimTime;
   readonly endsAt: SimTime;
-  /** 打ったレート（1 は省略, D-050）。 */
+  /** 打ったレート（1 は省略, D-050。旧セーブ用）。 */
   readonly rate?: number | undefined;
+  /** 発射時の単価 unit（取得時の ref で固定。旧セーブには無い, D-090）。 */
+  readonly unit?: number | undefined;
 }
 
 /** 大当たり中の内容（スナップショット用。uwanoseAtは未放出の上乗せ通知時刻。なし・放出済みはnull）。 */
@@ -64,8 +66,10 @@ export interface ActiveJackpot {
   readonly endsAt: SimTime;
   readonly bonusRounds: number;
   readonly uwanoseAt: SimTime | null;
-  /** 打ったレート（1 は省略, D-050）。 */
+  /** 打ったレート（1 は省略, D-050。旧セーブ用）。 */
   readonly rate?: number | undefined;
+  /** 発射時の単価 unit（取得時の ref で固定。旧セーブには無い, D-090）。 */
+  readonly unit?: number | undefined;
 }
 
 /** 状態の複写（`restore` で復元）。 */
@@ -102,6 +106,14 @@ function assertRate(rate: number): number {
     throw new Error('invalid spin: rate must be a positive int');
   }
   return rate;
+}
+
+/** 単価 unit を検証する。 */
+function assertUnit(unit: number): number {
+  if (typeof unit !== 'number' || !Number.isFinite(unit) || Math.floor(unit) !== unit || unit < 1) {
+    throw new Error('invalid spin: unit must be a positive int');
+  }
+  return unit;
 }
 
 /** 保留数を検証する。 */
@@ -239,10 +251,21 @@ export class SpinMachine {
     return this.jackpotState === null ? null : this.jackpotState.endsAt;
   }
 
-  /** 大当たり中の打ったレート（大当たり中でなければ `null`）。 */
+  /** 大当たり中の打ったレート（大当たり中でなければ `null`。旧セーブ用）。 */
   get jackpotRate(): number | null {
     if (this.jackpotState === null) {
       return null;
+    }
+    return this.jackpotState.rate === undefined ? 1 : this.jackpotState.rate;
+  }
+
+  /** 大当たり中の単価 unit（大当たり中でなければ `null`。無い旧ジャックポットは rate, D-090）。 */
+  get jackpotUnit(): number | null {
+    if (this.jackpotState === null) {
+      return null;
+    }
+    if (this.jackpotState.unit !== undefined) {
+      return this.jackpotState.unit;
     }
     return this.jackpotState.rate === undefined ? 1 : this.jackpotState.rate;
   }
@@ -300,6 +323,9 @@ export class SpinMachine {
     if (entry.rate !== undefined) {
       assertRate(entry.rate);
     }
+    if (entry.unit !== undefined) {
+      assertUnit(entry.unit);
+    }
     const baseMs = spinDurationMs(this.patterns, entry.patternIndex, holdCount);
     const durationMs = durationScale === 1 ? baseMs : Math.floor(baseMs * durationScale);
     if (durationMs < 1) {
@@ -317,6 +343,7 @@ export class SpinMachine {
       startedAt: at,
       endsAt,
       ...(entry.rate === undefined || entry.rate === 1 ? {} : { rate: entry.rate }),
+      ...(entry.unit === undefined ? {} : { unit: entry.unit }),
     };
     this.nowMsState = at;
     return [{ k: 'spinStarted', entry: entry.serial, at, pattern: row.id, endsAt }];
@@ -369,6 +396,7 @@ export class SpinMachine {
         bonusRounds: bonus,
         uwanoseAt: pendingUwanose,
         ...(active.rate === undefined ? {} : { rate: active.rate }),
+        ...(active.unit === undefined ? {} : { unit: active.unit }),
       };
       this.activeState = null;
       this.nowMsState = at;
@@ -412,13 +440,10 @@ export class SpinMachine {
     return [{ k: 'uwanose', entry: jackpot.serial, at, addRounds: bonus, totalRounds }];
   }
 
-  /** 大当たりを消化する（`at` は終了予定時刻と一致させる。bonus は大当たりボーナスで chainBalls に足す, D-080）。 */
-  finishJackpot(at: SimTime, rate: number, bonus = 0): SpinEvent[] {
+  /** 大当たりを消化する（`at` は終了予定時刻と一致させる。出玉は取得時の unit, D-090）。 */
+  finishJackpot(at: SimTime, unit: number): SpinEvent[] {
     assertTime(at, 'at');
-    assertRate(rate);
-    if (typeof bonus !== 'number' || !Number.isFinite(bonus) || bonus < 0) {
-      throw new Error('invalid spin: bonus must be finite >= 0');
-    }
+    assertUnit(unit);
     const jackpot = this.jackpotState;
     if (jackpot === null) {
       throw new Error('invalid spin: not in jackpot');
@@ -436,7 +461,7 @@ export class SpinMachine {
     if (b === undefined) {
       throw new Error('invalid spin: branchIndex out of range');
     }
-    const payout = jackpotPayoutBalls(this.spec, jackpot.branchIndex, rate);
+    const payout = jackpotPayoutBalls(this.spec, jackpot.branchIndex, unit);
     const ended: SpinEvent = { k: 'jackpotEnded', entry: jackpot.serial, at, payout };
     const nextMode: LotteryMode = b.next === undefined ? defaultNextForKind(b.kind) : b.next;
     const nextSt = spinsForMode(this.spec, nextMode);
@@ -446,7 +471,7 @@ export class SpinMachine {
     this.nowMsState = at;
     if (willRush && wasRush) {
       this.chainState = this.chainState + 1;
-      this.chainBallsState = this.chainBallsState + payout + bonus;
+      this.chainBallsState = this.chainBallsState + payout;
     } else if (willRush && !wasRush) {
       this.chainState = 0;
       this.chainBallsState = 0;
@@ -493,6 +518,7 @@ export class SpinMachine {
         bonusRounds: bonus,
         uwanoseAt: pending,
         ...(j.rate === undefined ? {} : { rate: assertRate(j.rate) }),
+        ...(j.unit === undefined ? {} : { unit: assertUnit(j.unit) }),
       };
     }
     const s = snap as SpinSnapshot & { chain?: number; chainBalls?: number };
