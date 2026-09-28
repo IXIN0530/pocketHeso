@@ -87,7 +87,7 @@ export function AboutSheet({ onDismiss }: { onDismiss: () => void }) {
       <p>セーブはこの端末の中だけにあります。機種変更や故障に備えて、設定のセーブから書き出しておいてください。</p>
       <p className={styles.note}>
         ソース: <a className={styles.link} href={REPO_URL}>{REPO_URL}</a>
-        （ライセンスは正式公開までに決めます）
+        （MIT License）
       </p>
       <div className={styles.row}>
         <button className={styles.button} onClick={onDismiss}>
