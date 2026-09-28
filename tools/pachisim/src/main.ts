@@ -8,7 +8,7 @@ import {
   parseAtlasArgs,
   writeAtlasFile,
 } from './atlas.ts';
-import { ECON_PROFILES, formatEcon, lastRegular, measurePachinkoEv, parseEconArgs, runEcon } from './econ.ts';
+import { ECON_PROFILES, burstStats, formatEcon, hatsuariProdHours, lastRegular, measurePachinkoEv, parseEconArgs, runEcon } from './econ.ts';
 import { formatHolds, parseHoldsArgs, runHolds } from './holds.ts';
 import { formatReports, parseRunArgs, runMachines } from './run.ts';
 
@@ -82,13 +82,14 @@ function run(argv: string[]): void {
   console.log(formatReports(reports));
 }
 
-/** 経済試算（`pnpm sim econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--json]`）。 */
+/** 経済試算（`pnpm sim econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--play-rate <r>] [--play-min <m>] [--json]`）。 */
 function econ(argv: string[]): void {
   const args = parseEconArgs(argv);
-  const result = runEcon(args.profile, args.days, args.seed, args.machine, args.economy);
+  const play = { rate: args.playRate, min: args.playMin };
+  const result = runEcon(args.profile, args.days, args.seed, args.machine, args.economy, play);
   const standard = ECON_PROFILES.find((p) => p.id === 'standard');
   const baseline =
-    args.profile.id === 'heavy' && standard !== undefined ? runEcon(standard, args.days, args.seed, args.machine, args.economy) : null;
+    args.profile.id === 'heavy' && standard !== undefined ? runEcon(standard, args.days, args.seed, args.machine, args.economy, play) : null;
   const ev =
     args.evHours > 0
       ? {
@@ -97,10 +98,38 @@ function econ(argv: string[]): void {
         }
       : null;
   if (args.json) {
-    console.log(JSON.stringify({ ...result, ev, baselineRegular: baseline === null ? null : lastRegular(baseline) }, null, 2));
+    const h1 = hatsuariProdHours(args.machine, 1, args.economy);
+    const h100 = hatsuariProdHours(args.machine, 100, args.economy);
+    const burst = burstStats(args.machine, args.economy);
+    console.log(
+      JSON.stringify(
+        { ...result, ev, baselineRegular: baseline === null ? null : lastRegular(baseline), play, hatsuari: { rate1h: h1.hours, rate100h: h100.hours, avg: h1.avg }, burst },
+        null,
+        2,
+      ),
+    );
     return;
   }
   console.log(formatEcon(result, ev, baseline));
+  // P8-T9 その2・その3（前面の打ち方のバランス。3機種とも確認する）。
+  const h1 = hatsuariProdHours(args.machine, 1, args.economy);
+  const h100 = hatsuariProdHours(args.machine, 100, args.economy);
+  const okH1 = h1.hours >= 4 && h1.hours <= 8;
+  const okH100 = h100.hours >= 400 && h100.hours <= 800;
+  console.log(
+    `play: rate1 hatsuari ${h1.hours.toFixed(2)}h (target 4-8h: ${okH1 ? 'OK' : 'NG'}) / rate100 ${h100.hours.toFixed(0)}h (target 400-800h: ${okH100 ? 'OK' : 'NG'}) (avg ${h1.avg.toFixed(0)} balls)`,
+  );
+  const burst = burstStats(args.machine, args.economy);
+  const okBurst = burst.avgMin >= 2 && burst.avgMin <= 5;
+  console.log(
+    `burst: 56h holdings + rate100 until broke avg ${burst.avgMin.toFixed(2)}min (target 2-5min: ${okBurst ? 'OK' : 'NG'}) / hatsuari prob ${(burst.hatsuariProb * 100).toFixed(1)}% (100 trials seeds 1-100)`,
+  );
+  if (args.playMin > 0) {
+    const okMin = result.minBalls > 0;
+    console.log(
+      `front play: rate${play.rate} x ${play.min}min/day x ${args.days}d min balls ${result.minBalls.toFixed(0)} (${okMin ? 'OK not broke' : 'NG broke'})`,
+    );
+  }
 }
 
 /** 保留色の実測（`pnpm sim holds [--spins <n>] [--seed <s>] [--machine <id>]... [--json]`）。許容幅を外れたら終了コード 1。 */
@@ -134,6 +163,6 @@ switch (command) {
     break;
   default:
     console.log(
-      'usage: pachisim <version|bench [count]|atlas --board <id> [--jobs <n>]|run --balls <n> --seed <s> [--machine <id>]... [--json]|econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--json]|holds [--spins <n>] [--seed <s>] [--machine <id>]... [--json]>',
+      'usage: pachisim <version|bench [count]|atlas --board <id> [--jobs <n>]|run --balls <n> --seed <s> [--machine <id>]... [--json]|econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--play-rate <r>] [--play-min <m>] [--json]|holds [--spins <n>] [--seed <s>] [--machine <id>]... [--json]>',
     );
 }

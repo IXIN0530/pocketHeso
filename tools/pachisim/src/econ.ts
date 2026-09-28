@@ -15,11 +15,11 @@ import {
   type Grant,
   type IdleEconomySnapshot,
 } from '@ph/core';
-import { loadRunAtlas, loadRunMachine } from './run.ts';
+import { loadRunAtlas, loadRunMachine, computeTheory } from './run.ts';
 
 const ECONOMY_URL = new URL('../../../resources/economy/default.json', import.meta.url);
 const ECON_USAGE =
-  'usage: pachisim econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--json]';
+  'usage: pachisim econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--play-rate <r>] [--play-min <m>] [--json]';
 
 const MIN_MS = 60000;
 const DAY_MS = 86400000;
@@ -84,6 +84,9 @@ export interface EconArgs {
   /** 経済定義 JSON（省略時は resources/economy/default.json。調整案の比較用）。 */
   readonly economy: URL;
   readonly evHours: number;
+  /** 前面で打つ打ち方（P8-T9）。rate は 1〜100 の整数、min は 1日あたり前面で打つ分（0 は追加なし）。 */
+  readonly playRate: number;
+  readonly playMin: number;
   readonly json: boolean;
 }
 
@@ -95,6 +98,8 @@ export function parseEconArgs(argv: string[]): EconArgs {
   let machine = ECON_DEFAULT_MACHINE;
   let economy = ECONOMY_URL;
   let evHours = 1000;
+  let playRate = 1;
+  let playMin = 0;
   let json = false;
   for (let i = 0; i < argv.length; i = i + 1) {
     const a = argv[i] as string;
@@ -118,16 +123,27 @@ export function parseEconArgs(argv: string[]): EconArgs {
       economy = pathToFileURL(v);
     } else if (a === '--ev-hours') {
       evHours = Math.floor(Number(v));
+    } else if (a === '--play-rate') {
+      playRate = Math.floor(Number(v));
+    } else if (a === '--play-min') {
+      playMin = Math.floor(Number(v));
     } else {
       throw new Error(ECON_USAGE);
     }
     i = i + 1;
   }
   const profile = ECON_PROFILES.find((p) => p.id === profileId);
-  if (profile === undefined || !(days >= 1 && days <= 365) || !(seed >= 0) || !(evHours >= 0)) {
+  if (
+    profile === undefined ||
+    !(days >= 1 && days <= 365) ||
+    !(seed >= 0) ||
+    !(evHours >= 0) ||
+    !(playRate >= 1 && playRate <= 100) ||
+    !(playMin >= 0 && playMin <= 1440)
+  ) {
     throw new Error(ECON_USAGE);
   }
-  return { profile, days, seed, machine, economy, evHours, json };
+  return { profile, days, seed, machine, economy, evHours, playRate, playMin, json };
 }
 
 /** sim内の換算 Tier（claims と同じ逓減。層違反を避けるため自前実装, D-081）。 */
@@ -213,8 +229,15 @@ export interface EconInput {
 }
 
 /** プロファイルから Grant と前面切替の列を作る（時刻順。claims と同じ換算を自前実装, D-081）。 */
-export function buildEconInputs(profile: EconProfile, days: number, params: SimClaimParams = simClaimParams()): EconInput[] {
+export function buildEconInputs(
+  profile: EconProfile,
+  days: number,
+  params: SimClaimParams = simClaimParams(),
+  play: { rate: number; min: number } = { rate: 1, min: 0 },
+): EconInput[] {
   const out: EconInput[] = [];
+  /** 追加の前面プレー（P8-T9。19:00 開始で play.min 分。既存セッションと重なっても fg=true の重複は無害）。 */
+  const PLAY_START_MIN = 19 * 60;
   for (let d = 0; d < days; d = d + 1) {
     const base = d * DAY_MS;
     const dayStr = econDayString(d);
@@ -278,6 +301,10 @@ export function buildEconInputs(profile: EconProfile, days: number, params: SimC
       const withProd: Grant = prodMin > 0 ? { ...grantBase, prodMin } : grantBase;
       const grant: Grant = bonusHolds > 0 ? { ...withProd, bonusHolds } : withProd;
       items.push({ min: gymEnd, input: { t: at, grant } });
+    }
+    if (play.min > 0) {
+      items.push({ min: PLAY_START_MIN, input: { t: base + PLAY_START_MIN * MIN_MS, fg: true } });
+      items.push({ min: PLAY_START_MIN + play.min, input: { t: base + (PLAY_START_MIN + play.min) * MIN_MS, fg: false } });
     }
     items.sort((a, b) => a.min - b.min);
     for (let i = 0; i < items.length; i = i + 1) {
@@ -346,6 +373,8 @@ export interface EconResult {
   readonly bonus: number;
   readonly payout: number;
   readonly action: number;
+  /** 全ステップの持ち玉の最小値（P8-T9 の「7日間で 0 に落ちない」判定用）。 */
+  readonly minBalls: number;
 }
 
 /** 買える候補（安い順に買う単純戦略用）。 */
@@ -416,7 +445,9 @@ function topIndex(s: IdleEconomySnapshot): number {
 
 /**
  * 行動プロファイルで N 日回す（P3-T4）。単純戦略: 予告は即タップ・閉店可能なら即閉店・覚醒可能なら下位から覚醒・
- * 玉で買えるものを安い順に買う（オート解放後は BUY_RESERVE を残す）・前面は手動打ち、オート解放後は share=1。レートは 1 固定（D-034）。
+ * 玉で買えるものを安い順に買う（オート解放後は BUY_RESERVE を残す）・前面は手動打ち、オート解放後は share=1。
+ * P8-T9: play.min>0 の時は 19:00 から play.min 分だけ前面で play.rate（既定1）で打つ。play.rate>1 の時は
+ * バランス試算のためレート解放を仮定する（メダル消費なし。実プレイでは解放が必要）。
  */
 export function runEcon(
   profile: EconProfile,
@@ -424,6 +455,7 @@ export function runEcon(
   seed: number,
   machine: string,
   economyUrl: URL = ECONOMY_URL,
+  play: { rate: number; min: number } = { rate: 1, min: 0 },
 ): EconResult {
   const economyText = readFileSync(economyUrl, 'utf8');
   const spec = parseEconomyText(economyText);
@@ -431,12 +463,23 @@ export function runEcon(
   const { spec: mspec, patterns } = loadRunMachine(machine);
   const { buffer } = loadRunAtlas();
   const econ = new IdleEconomy(spec);
+  // プレー用のレート解放（試算の仮定。実プレイはメダルで解放）。
+  if (play.rate > 1) {
+    const rates = spec.upgrades.rates;
+    let stage = 0;
+    for (let i = 0; i < rates.length; i = i + 1) {
+      if ((rates[i] as number) <= play.rate) {
+        stage = i;
+      }
+    }
+    econ.restore({ ...econ.snapshot(), rateStage: stage });
+  }
   const eng = new Engine(
     { seed, spec: mspec, patterns, atlas: buffer, initialBalls: econ.startBalls(), economy: econ },
     [],
     [{ t: 0, k: 'presence', fg: false }],
   );
-  const inputs = buildEconInputs(profile, days, simClaimParams(economyUrl));
+  const inputs = buildEconInputs(profile, days, simClaimParams(economyUrl), play);
   const end = days * DAY_MS;
   const rows: EconDayRow[] = [];
   const closeHistory: EconCloseEntry[] = [];
@@ -457,7 +500,9 @@ export function runEcon(
   let croonDay: number | null = null;
   let firstAwakenDay: number | null = null;
   let firstCloseDay: number | null = null;
+  let minBalls = econ.startBalls();
   const dayOf = (at: number): number => Math.floor(at / DAY_MS) + 1;
+  const shootRate = play.min > 0 ? play.rate : 1;
 
   while (t < end) {
     while (idx < inputs.length && (inputs[idx] as EconInput).t === t) {
@@ -525,7 +570,7 @@ export function runEcon(
     }
     const wantShoot: boolean = shootOn ? balls >= SHOOT_OFF_BELOW : balls >= SHOOT_ON_FROM;
     if (wantShoot !== shootOn) {
-      eng.appendAction({ t, k: 'shoot', on: wantShoot, rate: 1 });
+      eng.appendAction({ t, k: 'shoot', on: wantShoot, rate: shootRate });
       shootOn = wantShoot;
     }
     const wantAuto: boolean = s.autoOwned && wantShoot;
@@ -570,6 +615,10 @@ export function runEcon(
       }
     }
     t = next;
+    const nowBalls = eng.project().balls;
+    if (nowBalls < minBalls) {
+      minBalls = nowBalls;
+    }
     if (t === dayEnd) {
       const pe = eng.project();
       const se = econ.snapshot();
@@ -618,6 +667,7 @@ export function runEcon(
     bonus: bonusTotal,
     payout: lastPayout,
     action: lastAction,
+    minBalls,
   };
 }
 
@@ -652,6 +702,104 @@ export function measurePachinkoEv(
   return cost > 0 ? totals.payoutBalls / cost : 0;
 }
 
+/** 初当たり1回（連チャン込み）の平均出玉を生産時間に換算（P8-T9 その2）。理論値 avgPerHatsuari（unit=1）を使い、レート r での生産時間 = avg × r × shotS / 3600（ref が約分されレートによらない基準と同じ）。 */
+export function hatsuariProdHours(machine: string, rate: number, economyUrl: URL = ECONOMY_URL): { avg: number; hours: number } {
+  const espec = parseEconomyText(readFileSync(economyUrl, 'utf8'));
+  const { spec: mspec } = loadRunMachine(machine);
+  const { hesoRate } = loadRunAtlas();
+  const theory = computeTheory(mspec, hesoRate);
+  const hours = (theory.avgPerHatsuari * rate * espec.pachinko.shotS) / 3600;
+  return { avg: theory.avgPerHatsuari, hours };
+}
+
+/** 100パチのバースト1回（P8-T9 その3）。手持ち生産 initialProdHours 時間ぶんで rate を前面で打ち続け、尽きるまでの分と初当たりの有無を返す。上限 30分で打ち切る。 */
+export function runBurstOnce(
+  machine: string,
+  seed: number,
+  initialProdHours = 56,
+  rate = 100,
+  economyUrl: URL = ECONOMY_URL,
+): { minutes: number; hatsuari: boolean } {
+  const espec = parseEconomyText(readFileSync(economyUrl, 'utf8'));
+  const { spec: mspec, patterns } = loadRunMachine(machine);
+  const { buffer } = loadRunAtlas();
+  const econ = new IdleEconomy(espec);
+  const rates = espec.upgrades.rates;
+  let stage = 0;
+  for (let i = 0; i < rates.length; i = i + 1) {
+    if ((rates[i] as number) <= rate) {
+      stage = i;
+    }
+  }
+  econ.restore({ ...econ.snapshot(), rateStage: stage });
+  const ref = econ.getRefPerSec();
+  const initialBalls = initialProdHours * 3600 * ref;
+  const unit = econ.getShotUnit(rate);
+  const eng = new Engine(
+    { seed, spec: mspec, patterns, atlas: buffer, initialBalls, initialFuelMs: 10 * 3600000, economy: econ },
+    [],
+    [
+      { t: 0, k: 'presence', fg: true },
+      { t: 0, k: 'shoot', on: true, rate },
+    ],
+  );
+  const CAP_MS = 30 * 60000;
+  const STEP_MS = 600;
+  let t = 0;
+  while (t < CAP_MS) {
+    const next = t + STEP_MS;
+    eng.advance(next);
+    t = next;
+    const p = eng.project();
+    if (p.balls < unit && p.totals.jackpots === 0) {
+      // まだ当たりが無く持ち玉が1発に足りない：一旦打ち止めだが保留の払い出しで復活するかもしれないので、
+      // 追加で 60 秒だけ進めてそれでも足りなければ尽きたとみなす。
+      eng.advance(t + 60000);
+      t = t + 60000;
+      if (eng.project().balls < unit) {
+        break;
+      }
+    } else if (p.balls < unit) {
+      // 当たり後の持ち玉でも1発に足りなければ、保留消化を待たずに尽きたとみなす（連チャン中の出玉は既に反映済み）。
+      // ただし大当たり・変動が進行中なら終了まで待つため、追加で 5 分進めて判定する。
+      eng.advance(t + 300000);
+      t = t + 300000;
+      if (eng.project().balls < unit) {
+        break;
+      }
+      if (t >= CAP_MS) {
+        break;
+      }
+    }
+    if (p.totals.jackpots > 0 && p.balls < unit) {
+      break;
+    }
+  }
+  const capped = t >= CAP_MS;
+  const p = eng.project();
+  return { minutes: capped ? 30 : t / 60000, hatsuari: p.totals.jackpots > 0 };
+}
+
+/** バースト100試行（seed 1〜100 固定で決定論）の平均時間と初当たり確率（P8-T9 その3）。 */
+export function burstStats(
+  machine: string,
+  economyUrl: URL = ECONOMY_URL,
+  trials = 100,
+  initialProdHours = 56,
+  rate = 100,
+): { avgMin: number; hatsuariProb: number } {
+  let sum = 0;
+  let hits = 0;
+  for (let i = 1; i <= trials; i = i + 1) {
+    const r = runBurstOnce(machine, i, initialProdHours, rate, economyUrl);
+    sum = sum + r.minutes;
+    if (r.hatsuari) {
+      hits = hits + 1;
+    }
+  }
+  return { avgMin: sum / trials, hatsuariProb: hits / trials };
+}
+
 function fmtNum(v: number): string {
   if (v === 0) {
     return '0';
@@ -684,6 +832,7 @@ export function formatEcon(r: EconResult, ev: { init: number; full: number } | n
   }
   lines.push(`milestones: croon day ${r.croonDay ?? '-'} / first awaken day ${r.firstAwakenDay ?? '-'} / first close day ${r.firstCloseDay ?? '-'}`);
   lines.push(`medals: activity ${r.medalsActivity} / pachinko ${r.medalsPachinko} (pachinko always 0, D-049)`);
+  lines.push(`min balls: ${fmtNum(r.minBalls)} (${r.minBalls > 0 ? 'OK not broke' : 'NG broke'})`);
   const closeStr = r.closeHistory.length > 0 ? r.closeHistory.map((c) => `day${c.day}+${c.gain}`).join(', ') : '-';
   lines.push(`closes: ${closeStr}`);
   const grandTotal = r.yakumono + r.bonus + r.payout + r.action;

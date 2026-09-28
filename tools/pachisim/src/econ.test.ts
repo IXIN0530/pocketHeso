@@ -125,6 +125,7 @@ test('formatEcon: heavy は standard と常連Pを比べ、週次は (最上位�
   const res = (profileId: string, rows: EconDayRow[]): EconResult => ({
     profile: profileId, machine: 'light-middle-01', seed: 1, days: rows.length, rows, croonDay: 1, firstAwakenDay: 3,
     firstCloseDay: 7, medalsActivity: 0, medalsPachinko: 0, closeHistory: [{ day: 7, gain: 1 }], yakumono: 0, bonus: 0, payout: 0, action: 0,
+    minBalls: 100,
   });
   const heavy = res('heavy', [row(1, '-', 0, 3)]);
   const std = res('standard', [row(1, '-', 0, 2)]);
