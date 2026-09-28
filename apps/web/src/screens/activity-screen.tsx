@@ -109,10 +109,19 @@ export function ActivityScreen() {
     setSettings((s) => ({ ...s, [key]: value }));
   };
 
+  const onEnsureKey = async (): Promise<string> => {
+    if (settings.pairingKey !== undefined) {
+      return settings.pairingKey;
+    }
+    const key = generatePairingKey();
+    await saveSetting('pairingKey', key);
+    return key;
+  };
+
   const onCode = (text: string): string | null => {
     const key = settings.pairingKey;
     if (key === undefined) {
-      return '先にショートカット連携を始めてください';
+      return '先に「運動を受け取る」でショートカットを起動してください';
     }
     const r = planShortcut(ledger, text, key, Date.now());
     if (r.k === 'error') {
@@ -189,8 +198,15 @@ export function ActivityScreen() {
       </section>
       <ShortcutPanel
         pairingKey={settings.pairingKey}
-        onCreateKey={() => saveSetting('pairingKey', generatePairingKey())}
+        shortcutReadyAt={settings.shortcutReadyAt}
+        onEnsureKey={onEnsureKey}
         onCode={onCode}
+        onFirstSuccess={() => {
+          if (settings.shortcutReadyAt === undefined) {
+            void saveSetting('shortcutReadyAt', Date.now());
+          }
+        }}
+        onResetReady={() => void saveSetting('shortcutReadyAt', undefined)}
       />
       <CheckinPanel
         session={settings.session}

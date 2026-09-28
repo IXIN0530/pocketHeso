@@ -1,12 +1,21 @@
 import { expect, test, vi } from 'vitest';
 import { getFix } from './geo.ts';
-import { generatePairingKey, PAIRING_KEY_ALPHABET, shortcutUrl } from './shortcut.ts';
+import { generatePairingKey, isShortcutReady, PAIRING_KEY_ALPHABET, SHORTCUT_ICLOUD_URL, shortcutIcloudUrl, shortcutUrl } from './shortcut.ts';
 import { canQueryYolp, searchYolp, yolpUrl } from './yolp.ts';
 
 const fix = { lat: 35.1, lon: 139.2, accuracyM: 12 };
 
-test('shortcut URL runs "PocketHeso Sync"', () => {
-  expect(shortcutUrl()).toBe('shortcuts://run-shortcut?name=PocketHeso%20Sync');
+test('shortcut URL passes the key as text input', () => {
+  const url = shortcutUrl('abc+def/ghi?');
+  expect(url).toBe(`shortcuts://run-shortcut?name=PocketHeso%20Sync&input=text&text=${encodeURIComponent('abc+def/ghi?')}`);
+  expect(url).toContain('input=text&text=');
+});
+
+test('shortcut iCloud URL defaults to empty (until P8-T3) and ready flag is the presence of shortcutReadyAt', () => {
+  expect(SHORTCUT_ICLOUD_URL).toBe('');
+  expect(shortcutIcloudUrl()).toBe('');
+  expect(isShortcutReady(undefined)).toBe(false);
+  expect(isShortcutReady(123)).toBe(true);
 });
 
 test('pairing key is 16 chars from the alphabet and rejects biased bytes', () => {

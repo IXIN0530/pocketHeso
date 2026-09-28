@@ -102,7 +102,7 @@ function parseJson(text: string): { value: unknown; repaired: boolean } | null {
 /** 受け取りコードを検証し、日ごとの歩数・距離を返す（範囲外の項目は捨てて warnings に書く）。 */
 export function parseShortcutCode(text: string, pairingKey: string, now: SimTime): ParsedHealth | ClaimError {
   const code = text.trim();
-  const broken = error('format', '受け取りコードが壊れています。ショートカットをもう一度実行して貼り付けてください');
+  const broken = error('format', '受け取りコードが壊れています。もう一度 運動を受け取る を実行して貼り直してください');
   if (!code.startsWith(PREFIX)) {
     return broken;
   }
@@ -131,14 +131,14 @@ export function parseShortcutCode(text: string, pairingKey: string, now: SimTime
   }
   const expected = sha256Hex(new TextEncoder().encode(pairingKey.trim() + b64)).slice(0, 16);
   if (sig.toLowerCase() !== expected) {
-    return error('signature', 'ペアリング鍵が一致しません。設定の鍵をショートカットに入れ直してください');
+    return error('signature', 'ペアリング鍵が一致しません。ショートカットを追加し直してください');
   }
   const gen = typeof o['gen'] === 'string' ? parseGen(o['gen']) : null;
   if (gen === null || !Array.isArray(o['days'])) {
     return broken;
   }
   if (gen.atMs < now - FRESH_MS || gen.atMs > now + FRESH_MS) {
-    return error('stale', '古いコードです。ショートカットをもう一度実行してから貼り付けてください');
+    return error('stale', '古いコードです。もう一度 運動を受け取る を実行してすぐ貼ってください');
   }
 
   const warnings: string[] = [];

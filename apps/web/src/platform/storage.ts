@@ -19,8 +19,10 @@ export interface StoredSession {
 
 /** 設定（settings store に1項目1行で置く）。 */
 export interface Settings {
-  /** ショートカット連携のペアリング鍵（spec/31）。 */
+  /** ショートカット連携のペアリング鍵（spec/31。初回の受け取りで自動生成）。 */
   readonly pairingKey?: string | undefined;
+  /** ショートカットの受け取りに初めて成功した時刻（spec/31。無い間は準備の3手順）。 */
+  readonly shortcutReadyAt?: number | undefined;
   /** 進行中のチェックイン（同時に1つ）。 */
   readonly session?: StoredSession | undefined;
   /** 位置情報と YOLP 問い合わせの説明を読んだ（spec/32 のプライバシー）。 */
@@ -175,14 +177,16 @@ export async function putPlace(db: Db, place: OwnPlace): Promise<void> {
 }
 
 export async function loadSettings(db: Db): Promise<Settings> {
-  const [pairingKey, session, locationNoticeAck, lastExportAt] = await Promise.all([
+  const [pairingKey, shortcutReadyAt, session, locationNoticeAck, lastExportAt] = await Promise.all([
     db.get('settings', 'pairingKey'),
+    db.get('settings', 'shortcutReadyAt'),
     db.get('settings', 'session'),
     db.get('settings', 'locationNoticeAck'),
     db.get('settings', 'lastExportAt'),
   ]);
   return {
     pairingKey: pairingKey as string | undefined,
+    shortcutReadyAt: shortcutReadyAt as number | undefined,
     session: session as StoredSession | undefined,
     locationNoticeAck: locationNoticeAck as boolean | undefined,
     lastExportAt: lastExportAt as number | undefined,

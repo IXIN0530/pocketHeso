@@ -43,10 +43,14 @@ test('ledger is append-only and read in receivedAt order', async () => {
 
 test('settings, places and closing a session with its claims', async () => {
   const db = await openStorage('t-settings');
-  expect(await loadSettings(db)).toEqual({ pairingKey: undefined, session: undefined, locationNoticeAck: undefined });
+  expect(await loadSettings(db)).toEqual({ pairingKey: undefined, shortcutReadyAt: undefined, session: undefined, locationNoticeAck: undefined });
   await putSetting(db, 'pairingKey', 'abcdefghjkmnpqrs');
   await putSetting(db, 'session', session);
-  expect(await loadSettings(db)).toEqual({ pairingKey: 'abcdefghjkmnpqrs', session, locationNoticeAck: undefined });
+  expect(await loadSettings(db)).toEqual({ pairingKey: 'abcdefghjkmnpqrs', shortcutReadyAt: undefined, session, locationNoticeAck: undefined });
+  await putSetting(db, 'shortcutReadyAt', 123);
+  expect((await loadSettings(db)).shortcutReadyAt).toBe(123);
+  await putSetting(db, 'shortcutReadyAt', undefined);
+  expect((await loadSettings(db)).shortcutReadyAt).toBeUndefined();
   const place: OwnPlace = { placeId: 'p', name: 'ジム', kind: 'ジム', lat: 35, lon: 139, radiusM: 80 };
   await putPlace(db, place);
   expect(await loadPlaces(db)).toEqual([place]);

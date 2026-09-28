@@ -1,6 +1,7 @@
 import { parseShortcutCode } from '@ph/claims';
 import { useEffect, useRef, useState } from 'react';
 import { isStandalone } from '../platform/pwa.ts';
+import { shortcutUrl } from '../platform/shortcut.ts';
 import { decodeShortcutCode } from './shortcut-code.ts';
 import styles from './spike.module.css';
 
@@ -43,7 +44,7 @@ export function ShortcutSpike() {
   }, []);
 
   const open = () => {
-    const url = `shortcuts://run-shortcut?name=${encodeURIComponent(name)}`;
+    const url = shortcutUrl(key, name);
     openedAt.current = Date.now();
     add(`open ${url}`);
     window.location.href = url;
