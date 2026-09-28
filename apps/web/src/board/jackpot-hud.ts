@@ -59,7 +59,11 @@ export function jackpotHud(st: LcdState, now: number, r: JackpotRound): HudView 
     const round = Math.min(j.rounds, Math.floor(t / r.msPerRound) + 1);
     const within = round === j.rounds ? Math.min(t - (round - 1) * r.msPerRound, r.msPerRound) : t - (round - 1) * r.msPerRound;
     const inRound = Math.min(r.count, Math.floor((within / (r.msPerRound * OPEN_SHARE)) * r.count));
-    const balls = ((round - 1) * r.count + inRound) * r.payoutPerBall * (j.rate ?? 1);
+    const rate = j.rate ?? 1;
+    const payoutPart = ((round - 1) * r.count + inRound) * r.payoutPerBall * rate;
+    const rb = j.roundBonus ?? 0;
+    const bonusPart = rb * ((round - 1) + inRound / r.count);
+    const balls = payoutPart + bonusPart;
     const rush = st.rush;
     const bonusT = j.bonus ? now - j.bonus.at : -1;
     return {

@@ -16,7 +16,7 @@ import {
 
 /** IdleEconomy の複写（Engine の snapshot.economy に入る）。 */
 export interface IdleEconomySnapshot {
-  readonly v: 3;
+  readonly v: 4;
   readonly lv: readonly number[];
   readonly awakened: readonly number[];
   readonly idleStage: number;
@@ -37,8 +37,6 @@ export interface IdleEconomySnapshot {
   readonly feverMs: number;
   /** 累計獲得メダル（Grant でだけ増え、消費しても減らない。D-049）。 */
   readonly medalsEarned: number;
-  /** 大当たりフィーバー倍率（大当たり中でなければ 1。D-050）。 */
-  readonly jackpotFeverMult: number;
 }
 
 /** 役物表示（Lv・覚醒数・次の価格。描画と購入UIが見る）。 */
@@ -236,7 +234,6 @@ export class IdleEconomy implements EconomyPort {
   private boostOnState = true;
   private feverMsState = 0;
   private medalsEarnedState = 0;
-  private jackpotFeverMultState = 1;
 
   /** 仕様から価格表（growth^0..10000）を作る。 */
   constructor(spec: EconomySpec) {
@@ -249,7 +246,7 @@ export class IdleEconomy implements EconomyPort {
   /** 状態の複写。 */
   snapshot(): IdleEconomySnapshot {
     return {
-      v: 3,
+      v: 4,
       lv: [...this.lvState],
       awakened: [...this.awakenedState],
       idleStage: this.idleStageState,
@@ -269,17 +266,16 @@ export class IdleEconomy implements EconomyPort {
       boostOn: this.boostOnState,
       feverMs: this.feverMsState,
       medalsEarned: this.medalsEarnedState,
-      jackpotFeverMult: this.jackpotFeverMultState,
     };
   }
 
-  /** 複写から復元する（v1 は fever=0、v1/v2 は累計獲得メダル=0・大当たりフィーバーなしとして読む）。 */
+  /** 複写から復元する（v1 は fever=0、v1/v2 は累計獲得メダル=0、v3 以前の jackpotFeverMult は読んで捨てる）。 */
   restore(s: unknown): void {
     if (!isRecord(s)) {
       fail('snapshot must be an object');
     }
     const v = s['v'];
-    if (v !== 1 && v !== 2 && v !== 3) {
+    if (v !== 1 && v !== 2 && v !== 3 && v !== 4) {
       fail('snapshot version mismatch');
     }
     const lv = s['lv'];
@@ -334,13 +330,9 @@ export class IdleEconomy implements EconomyPort {
       }
     }
     let medalsEarned = 0;
-    let jackpotFeverMult = 1;
-    if (v === 3) {
+    if (v === 3 || v === 4) {
       medalsEarned = asNonNegInt(s['medalsEarned'] as number, 'medalsEarned');
-      jackpotFeverMult = asFinite(s['jackpotFeverMult'] as number, 'jackpotFeverMult');
-      if (jackpotFeverMult < 1) {
-        fail('jackpotFeverMult must be >= 1');
-      }
+      // v3 以前の jackpotFeverMult は読んで捨てる（D-080 で廃止）。
     }
     this.lvState = lvCopy;
     this.awakenedState = awCopy;
@@ -361,7 +353,6 @@ export class IdleEconomy implements EconomyPort {
     this.boostOnState = boostOn;
     this.feverMsState = feverMs;
     this.medalsEarnedState = medalsEarned;
-    this.jackpotFeverMultState = jackpotFeverMult;
   }
 
   /** 独立した複製。 */
@@ -461,7 +452,7 @@ export class IdleEconomy implements EconomyPort {
     if (this.feverMsState > 0) {
       feverF = this.spec.notice.feverMult;
     }
-    return base * regularF * streakF * boostF * feverF * this.jackpotFeverMultState * stateF;
+    return base * regularF * streakF * boostF * feverF * stateF;
   }
 
   /** フィーバー残量ms（前面・背面を問わずtickで減る）。 */
@@ -477,25 +468,33 @@ export class IdleEconomy implements EconomyPort {
     }
   }
 
-  /** 大当たりフィーバーの開始（打ったレートの倍率）と終了（null）。 */
-  onJackpotFever(rate: number | null): void {
-    if (rate === null) {
-      this.jackpotFeverMultState = 1;
-      return;
+  /** 基準生産（前面・燃料ありの値。ブースト・予告フィーバー・状態係数を含まず下限あり, D-080）。 */
+  getRefPerSec(): number {
+    const base = this.basePerSec();
+    const regularF = 1 + this.spec.close.regularMult * this.regularState;
+    const streakF = streakMult(
+      this.streakDaysState,
+      this.spec.claims.streakPerDay,
+      this.spec.claims.streakMaxDays,
+    );
+    const ref = base * regularF * streakF;
+    const min = this.spec.prodRef.minPerSec;
+    return ref > min ? ref : min;
+  }
+
+  /** 1Rの大当たりボーナス＝refPerSec×roundS×レート倍率（打ったレート。無料は rate1, D-080）。 */
+  jackpotRoundBonus(rate: number): number {
+    if (Math.floor(rate) !== rate || rate < 1) {
+      fail('jackpot rate must be a positive int');
     }
     const rates = this.spec.upgrades.rates;
     for (let i = 0; i < rates.length; i = i + 1) {
       if ((rates[i] as number) === rate) {
-        this.jackpotFeverMultState = this.spec.jackpotFever.multByRate[i] as number;
-        return;
+        const mult = this.spec.jackpotBonus.multByRate[i] as number;
+        return this.getRefPerSec() * this.spec.jackpotBonus.roundS * mult;
       }
     }
     fail('jackpot rate is not in rates');
-  }
-
-  /** 大当たりフィーバー倍率（大当たり中でなければ 1）。 */
-  getJackpotFeverMult(): number {
-    return this.jackpotFeverMultState;
   }
 
   /** 累計獲得メダル。 */

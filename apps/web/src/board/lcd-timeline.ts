@@ -46,6 +46,8 @@ export interface LcdJackpot {
   readonly endsAt?: number | null;
   /** 当たった保留のレート（出玉の数え上げ用。不明は 1）。 */
   readonly rate?: number;
+  /** 1Rの大当たりボーナス（経済つきのみ。無い時は出玉だけ, D-080）。 */
+  readonly roundBonus?: number;
   /** 上乗せ（LT）の時刻と足したラウンド数。 */
   readonly bonus?: { readonly at: number; readonly add: number } | null;
 }
@@ -143,9 +145,17 @@ export function stateFromProjection(p: HallProjection): LcdState {
       : null,
     resolved: null,
     jackpot: p.jackpot
-      ? { entry: p.jackpot.entry, kind: p.jackpot.kind, rounds: p.jackpot.rounds, startAt: null, endsAt: p.jackpot.endsAt }
+      ? {
+          entry: p.jackpot.entry,
+          kind: p.jackpot.kind,
+          rounds: p.jackpot.rounds,
+          startAt: null,
+          endsAt: p.jackpot.endsAt,
+          ...(p.jackpot.roundBonus !== undefined ? { roundBonus: p.jackpot.roundBonus } : {}),
+        }
       : null,
     // Core の chain は RUSH に入った当たりを 0 と数える。chainBalls は RUSH に入った当たりの出玉を含まない（目安）。
+    // chainBalls は継続分のボーナス込み（D-080）。突入分のボーナスはイベントで足す。
     rush: { mode: p.mode, chain: isRush(p.mode) ? p.chain + 1 : 0, balls: isRush(p.mode) ? p.chainBalls : 0 },
     result: null,
   };
@@ -192,14 +202,29 @@ export function applyLcdEvent(s: LcdState, e: LcdEvent): LcdState {
     }
     case 'jackpotStarted': {
       const rate = s.resolved?.entry === e.entry ? (s.resolved.rate ?? 1) : 1;
-      return { ...s, jackpot: { entry: e.entry, kind: e.kind, rounds: e.rounds, startAt: e.at, endsAt: null, rate, bonus: null }, result: null };
+      return {
+        ...s,
+        jackpot: {
+          entry: e.entry,
+          kind: e.kind,
+          rounds: e.rounds,
+          startAt: e.at,
+          endsAt: null,
+          rate,
+          ...(e.roundBonus !== undefined ? { roundBonus: e.roundBonus } : {}),
+          bonus: null,
+        },
+        result: null,
+      };
     }
     case 'uwanose':
       return s.jackpot ? { ...s, jackpot: { ...s.jackpot, rounds: e.totalRounds, bonus: { at: e.at, add: e.addRounds } } } : s;
     case 'jackpotEnded': {
       // モードが変わらない時（通常 → 通常）はモード変更が来ないので、ここで今のモードのまま決めておく。
+      // payout はボーナス込み（出玉＋bonus, D-080）。
+      const got = e.payout + (e.bonus ?? 0);
       const from = s.rush ?? NORMAL;
-      const { rush, result } = settle(from, from.mode, e.payout, e.at, 0);
+      const { rush, result } = settle(from, from.mode, got, e.at, 0);
       return { ...s, jackpot: null, rush, result };
     }
     case 'modeChanged': {

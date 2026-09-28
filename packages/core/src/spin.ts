@@ -255,6 +255,19 @@ export class SpinMachine {
     return this.jackpotState.uwanoseAt;
   }
 
+  /** 大当たり中の合計ラウンド数（基本＋上乗せ。大当たり中でなければ `null`, D-080 のボーナス計算用）。 */
+  get jackpotTotalRounds(): number | null {
+    if (this.jackpotState === null) {
+      return null;
+    }
+    const b = this.spec.jackpotSplit[this.jackpotState.branchIndex] as JackpotBranch | undefined;
+    if (b === undefined) {
+      throw new Error('invalid spin: branchIndex out of range');
+    }
+    const bonus = this.jackpotState.bonusRounds;
+    return b.rounds + bonus;
+  }
+
   /** 変動を開始する（待機中でなければ投げる。durationScale は変動短縮の倍率で1が等倍）。 */
   startSpin(entry: HoldEntry, at: SimTime, holdCount: number, durationScale = 1): SpinEvent[] {
     assertTime(at, 'at');
@@ -399,10 +412,13 @@ export class SpinMachine {
     return [{ k: 'uwanose', entry: jackpot.serial, at, addRounds: bonus, totalRounds }];
   }
 
-  /** 大当たりを消化する（`at` は終了予定時刻と一致させる）。 */
-  finishJackpot(at: SimTime, rate: number): SpinEvent[] {
+  /** 大当たりを消化する（`at` は終了予定時刻と一致させる。bonus は大当たりボーナスで chainBalls に足す, D-080）。 */
+  finishJackpot(at: SimTime, rate: number, bonus = 0): SpinEvent[] {
     assertTime(at, 'at');
     assertRate(rate);
+    if (typeof bonus !== 'number' || !Number.isFinite(bonus) || bonus < 0) {
+      throw new Error('invalid spin: bonus must be finite >= 0');
+    }
     const jackpot = this.jackpotState;
     if (jackpot === null) {
       throw new Error('invalid spin: not in jackpot');
@@ -430,7 +446,7 @@ export class SpinMachine {
     this.nowMsState = at;
     if (willRush && wasRush) {
       this.chainState = this.chainState + 1;
-      this.chainBallsState = this.chainBallsState + payout;
+      this.chainBallsState = this.chainBallsState + payout + bonus;
     } else if (willRush && !wasRush) {
       this.chainState = 0;
       this.chainBallsState = 0;

@@ -39,7 +39,8 @@
     "bonus_weight": 5
   },
   "close": { "required_run_total": 10000000000, "divisor": 12000000000, "medals_per_point": 7, "regular_mult": 1.0, "start_balls": 100 },
-  "jackpot_fever": { "mult_by_rate": [4.5, 5, 6, 8, 11, 16, 21] },
+  "prod_ref": { "min_per_sec": 1 },
+  "jackpot_bonus": { "round_s": 180, "mult_by_rate": [1, 1.5, 2.5, 4, 6, 9, 12] },
   "claims": {
     "streak_per_day": 0.05,
     "streak_max_days": 20,

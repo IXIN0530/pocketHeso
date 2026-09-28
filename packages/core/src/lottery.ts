@@ -31,7 +31,7 @@ export interface HoldEntry {
   readonly color: LotteryHoldColor;
   readonly hot: number;
   readonly hesoPayoutBalls: number;
-  /** 打ったレート（1 は省略。大当たりの出玉とフィーバー倍率に使う, D-050）。 */
+  /** 打ったレート（1 は省略。大当たりの出玉とボーナス倍率に使う, D-080）。 */
   readonly rate?: number | undefined;
 }
 

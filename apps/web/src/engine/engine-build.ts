@@ -4,8 +4,8 @@ import { Engine, type Action, type EngineSnapshot } from '@ph/core';
 import { getSnapshot, loadActions, loadLedger, type Db, type GameMeta } from '../platform/storage.ts';
 import { engineConfig } from './game-config.ts';
 
-/** 2 = P5-T4（統計に初当たり・最大連チャン）。 */
-export const SNAPSHOT_VERSION = 2;
+/** 3 = P7-T7（大当たりボーナス・Totals bonusBalls・Projection refPerSec・EngineSnapshot jackpotBonus）。 */
+export const SNAPSHOT_VERSION = 3;
 
 export type RestoredFrom = 'snapshot' | 'recompute';
 

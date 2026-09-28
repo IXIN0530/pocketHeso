@@ -47,6 +47,29 @@ test('ラウンド: 始めは「大当たり」、アタッカーの玉と獲得
   expect(jackpotHud(s, 5000 + 251000, R)).toMatchObject({ round: 11, rounds: 20, bonus: { add: 10, t: 1000 } });
 });
 
+test('ラウンド・結果: 大当たりボーナス込みの獲得出玉（D-080）', () => {
+  let s = run(EMPTY, [
+    { k: 'holdAdded', entry: hold(1), at: 0 },
+    { k: 'spinStarted', entry: 1, at: 0, pattern: 'normal_short', endsAt: 5000 },
+    { k: 'spinResolved', entry: 1, at: 5000, hit: true },
+    { k: 'jackpotStarted', entry: 1, at: 5000, kind: 'kakuhen', rounds: 10, roundBonus: 180 },
+  ]);
+  const at = (ms: number) => jackpotHud(s, 5000 + ms, R)!;
+  expect(at(10000)).toMatchObject({ round: 1, inRound: 5, balls: 5 * 15 + 180 * 0.5 });
+  expect(at(25000)).toMatchObject({ round: 2, inRound: 0, balls: 150 + 180 });
+  expect(at(10 * 25000 + 3000)).toMatchObject({ round: 10, inRound: 10, balls: 1500 + 1800 });
+  s = run(s, [{ k: 'jackpotEnded', entry: 1, at: 5000 + 250000, payout: 1500, bonus: 1800 } as never]);
+  expect(jackpotHud(s, 5000 + 250000 + 100, R)).toMatchObject({ k: 'result', payout: 3300, balls: 0 });
+  s = run(s, [{ k: 'modeChanged', to: 'st', at: 5000 + 250000, stRemaining: 100 } as never]);
+  expect(jackpotHud(s, 5000 + 250000 + 100, R)).toMatchObject({
+    k: 'result',
+    kind: 'rushIn',
+    payout: 3300,
+    chain: 1,
+    balls: 3300,
+  });
+});
+
 test('結果: RUSH 突入 → 継続（連チャン・出玉の合計）→ 回数切れで RUSH 終了', () => {
   let s = run(EMPTY, hitAndEnd(1, 0, 'kakuhen', 10, 1500, { to: 'st', spins: 100 }));
   const end1 = 5000 + 250000;

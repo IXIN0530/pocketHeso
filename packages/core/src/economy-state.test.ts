@@ -241,31 +241,42 @@ test('常連Pは行動由来が上限・生産×(1+1.0×P)（D-049）', () => {
   expect(econ.getPerSec(true, 1000)).toBe(econ.basePerSec() * 4);
 });
 
-test('大当たりフィーバーはレート別倍率・予告フィーバーと掛け算・snapshotに残る（D-050）', () => {
+test('大当たりボーナスは基準生産×180秒×レート倍率・役物なしは下限1/秒（D-080）', () => {
   const econ = loadEconomy();
-  econ.onBuy('windmill', 1, 1000, 0);
+  // 役物なしは下限 1/秒
+  expect(econ.getRefPerSec()).toBe(1);
+  expect(econ.jackpotRoundBonus(1)).toBe(1 * 180 * 1);
+  econ.onBuy('windmill', 10, 100000, 0);
+  const ref = econ.getRefPerSec();
+  expect(ref).toBeGreaterThan(1);
+  // rate1 の 10R で bonus = ref×1800
+  expect(econ.jackpotRoundBonus(1) * 10).toBe(ref * 1800);
+  // rate100 は ×6
+  expect(econ.jackpotRoundBonus(100)).toBe(ref * 180 * 6);
+  expect(econ.jackpotRoundBonus(4)).toBe(ref * 180 * 1.5);
+  expect(() => econ.jackpotRoundBonus(2)).toThrow();
+  // 予告フィーバーは生産に掛かるが基準生産には掛からない
   const base = econ.getPerSec(true, 1000);
-  econ.onJackpotFever(1);
-  expect(econ.getJackpotFeverMult()).toBe(4.5);
-  expect(econ.getPerSec(true, 1000)).toBe(base * 4.5);
   econ.onNoticeFever();
-  expect(econ.getPerSec(true, 1000)).toBe(base * 7 * 4.5);
-  econ.onJackpotFever(4);
-  expect(econ.getJackpotFeverMult()).toBe(5);
-  const copy = econ.fork();
-  expect(copy.getJackpotFeverMult()).toBe(5);
-  econ.onJackpotFever(null);
-  expect(econ.getJackpotFeverMult()).toBe(1);
-  expect(copy.getJackpotFeverMult()).toBe(5);
-  expect(() => econ.onJackpotFever(2)).toThrow();
-  // 旧版 snapshot（v2）は累計獲得メダル0・フィーバーなしで読む
-  const v2: Record<string, unknown> = { ...(copy.snapshot() as unknown as Record<string, unknown>), v: 2 };
-  delete v2['medalsEarned'];
-  delete v2['jackpotFeverMult'];
+  expect(econ.getPerSec(true, 1000)).toBe(base * 7);
+  expect(econ.getRefPerSec()).toBe(ref);
+  // 旧版 snapshot（v3・jackpotFeverMultあり）から restore しても落ちない
+  const v3: Record<string, unknown> = {
+    ...(econ.snapshot() as unknown as Record<string, unknown>),
+    v: 3,
+    jackpotFeverMult: 4.5,
+  };
   const old = loadEconomy();
-  old.restore(v2);
-  expect(old.getMedalsEarned()).toBe(0);
-  expect(old.getJackpotFeverMult()).toBe(1);
+  old.restore(v3);
+  expect(old.getRefPerSec()).toBe(ref);
+  expect(old.snapshot().v).toBe(4);
+  expect('jackpotFeverMult' in (old.snapshot() as unknown as Record<string, unknown>)).toBe(false);
+  // 旧版 snapshot（v2）は累計獲得メダル0で読む
+  const v2: Record<string, unknown> = { ...(econ.snapshot() as unknown as Record<string, unknown>), v: 2 };
+  delete v2['medalsEarned'];
+  const old2 = loadEconomy();
+  old2.restore(v2);
+  expect(old2.getMedalsEarned()).toBe(0);
 });
 
 test('連日は同日維持・翌日+1・空きリセット・不正無視', () => {

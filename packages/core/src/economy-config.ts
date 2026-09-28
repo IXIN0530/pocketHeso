@@ -100,8 +100,14 @@ export interface EconomyClose {
   readonly startBalls: Amount;
 }
 
-/** 大当たりフィーバー（大当たり中の生産倍率。rates と同じ並び, D-050）。 */
-export interface EconomyJackpotFever {
+/** 基準生産の下限（役物なしでも報酬を0にしない, D-080）。 */
+export interface EconomyProdRef {
+  readonly minPerSec: number;
+}
+
+/** 大当たりボーナス（1Rの値＝refPerSec×roundS×レート倍率, D-080）。 */
+export interface EconomyJackpotBonus {
+  readonly roundS: number;
   readonly multByRate: readonly number[];
 }
 
@@ -123,7 +129,8 @@ export interface EconomySpec {
   readonly upgrades: EconomyUpgrades;
   readonly notice: EconomyNotice;
   readonly close: EconomyClose;
-  readonly jackpotFever: EconomyJackpotFever;
+  readonly prodRef: EconomyProdRef;
+  readonly jackpotBonus: EconomyJackpotBonus;
   readonly claims: EconomyClaims;
 }
 
@@ -377,12 +384,18 @@ export function parseEconomy(json: unknown): EconomySpec {
     fail('close.regular_mult out of range');
   }
   const startBalls = asIntRange(cl['start_balls'], 'close.start_balls', 0, 1000000);
-  const jf = asRecord(o['jackpot_fever'], 'jackpot_fever');
-  const multByRate = asNumberArray(jf['mult_by_rate'], 'jackpot_fever.mult_by_rate');
-  if (multByRate.length !== rates.length) {
-    fail('jackpot_fever.mult_by_rate must match upgrades.rate_unlock.rates');
+  const pr = asRecord(o['prod_ref'], 'prod_ref');
+  const minPerSec = asNumber(pr['min_per_sec'], 'prod_ref.min_per_sec');
+  if (!(minPerSec > 0 && minPerSec <= 1000)) {
+    fail('prod_ref.min_per_sec out of range');
   }
-  checkAscending(multByRate, 'jackpot_fever.mult_by_rate', 1, 1000);
+  const jb = asRecord(o['jackpot_bonus'], 'jackpot_bonus');
+  const roundS = asIntRange(jb['round_s'], 'jackpot_bonus.round_s', 1, 3600000);
+  const multByRate = asNumberArray(jb['mult_by_rate'], 'jackpot_bonus.mult_by_rate');
+  if (multByRate.length !== rates.length) {
+    fail('jackpot_bonus.mult_by_rate must match upgrades.rate_unlock.rates');
+  }
+  checkAscending(multByRate, 'jackpot_bonus.mult_by_rate', 1, 1000);
   const claims = asRecord(o['claims'], 'claims');
   const streakPerDay = asNumber(claims['streak_per_day'], 'claims.streak_per_day');
   if (streakPerDay < 0 || streakPerDay > 1) {
@@ -429,7 +442,8 @@ export function parseEconomy(json: unknown): EconomySpec {
       bonusWeight,
     },
     close: { requiredRunTotal, divisor, medalsPerPoint, regularMult, startBalls },
-    jackpotFever: { multByRate },
+    prodRef: { minPerSec },
+    jackpotBonus: { roundS, multByRate },
     claims: { streakPerDay, streakMaxDays },
   };
 }

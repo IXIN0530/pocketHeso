@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 import type { MachineSpec, PatternTable } from './machine.ts';
-import { parseMachineText, parsePatternsText } from './machine.ts';
+import { parseMachine, parseMachineText, parsePatternsText } from './machine.ts';
 import { parseEconomy } from './economy-config.ts';
 import { IdleEconomy } from './economy-state.ts';
 import type { Action, Grant, SimEvent } from './engine.ts';
@@ -92,29 +92,27 @@ test('大当たりでメダルは増えず、累計獲得メダルは Grant で�
   expect(econ.getMedalsEarned()).toBe(3);
 });
 
-test('大当たりフィーバーは jackpotStarted〜Ended の間だけ掛かる（D-050）', () => {
+test('大当たりボーナスは jackpotStarted で決まり Ended で持ち玉に足す（D-080）', () => {
   const econ = loadEconomy();
   const eng = autoEngine(econ);
-  let inJackpot = false;
-  let checkedIn = 0;
-  let checkedOut = 0;
+  let sawStarted = false;
+  let sawEnded = false;
   for (let t = 1000; t <= 6 * H; t = t + 1000) {
     for (const e of eng.advance(t)) {
       if (e.k === 'jackpotStarted') {
-        inJackpot = true;
+        sawStarted = true;
+        expect(e.roundBonus).toBe(econ.jackpotRoundBonus(1));
       } else if (e.k === 'jackpotEnded') {
-        inJackpot = false;
+        sawEnded = true;
+        const started = eng.snapshot().totals;
+        expect(started.bonusBalls).toBeGreaterThanOrEqual(e.bonus ?? 0);
+        expect(e.bonus).toBeGreaterThan(0);
       }
     }
-    expect(econ.getJackpotFeverMult()).toBe(inJackpot ? 4.5 : 1);
-    if (inJackpot) {
-      checkedIn = checkedIn + 1;
-    } else {
-      checkedOut = checkedOut + 1;
-    }
   }
-  expect(checkedIn).toBeGreaterThan(100);
-  expect(checkedOut).toBeGreaterThan(100);
+  expect(sawStarted).toBe(true);
+  expect(sawEnded).toBe(true);
+  expect(eng.project().totals.bonusBalls).toBeGreaterThan(0);
 });
 
 test('燃料0ではオートが発射せず、燃料が入れば再開し、手動は燃料0でも打てる（D-049）', () => {
@@ -137,7 +135,7 @@ test('燃料0ではオートが発射せず、燃料が入れば再開し、手�
   expect(countIn(events, 'fired', 180000, 240000)).toBe(100);
 });
 
-test('レート4: 1発4玉・出玉×4・大当たりフィーバー×4（D-050）', () => {
+test('レート4: 1発4玉・出玉×4・大当たりボーナス×1.5（D-080）', () => {
   const econ = loadEconomy();
   const initialBalls = 10000000;
   const eng = makeEngine(
@@ -149,46 +147,133 @@ test('レート4: 1発4玉・出玉×4・大当たりフィーバー×4（D-050�
     ],
     { seed: 3, balls: initialBalls },
   );
-  let inJackpot = false;
   let rounds = 0;
   let jackpotRate = 4;
-  let sawFever = false;
+  let roundBonus = 0;
+  let sawBonus = false;
   let sawReserveJackpot = false;
   const all: SimEvent[] = [];
   for (let t = 1000; t <= 6 * H; t = t + 1000) {
     for (const e of eng.advance(t)) {
       all.push(e);
       if (e.k === 'jackpotStarted') {
-        inJackpot = true;
         rounds = e.rounds + (e.bonusRounds ?? 0);
-        // 自動保留（D-079）は無料のため rate1。大当たりの出玉・フィーバーも rate1。
+        // 自動保留（D-079）は無料のため rate1。大当たりの出玉・ボーナスも rate1。
         jackpotRate = e.entry >= RESERVE_SERIAL_BASE ? 1 : 4;
         if (jackpotRate === 1) {
           sawReserveJackpot = true;
         }
+        roundBonus = e.roundBonus as number;
+        expect(roundBonus).toBe(econ.jackpotRoundBonus(jackpotRate));
       } else if (e.k === 'jackpotEnded') {
-        inJackpot = false;
         expect(e.payout).toBe(rounds * 10 * 15 * jackpotRate);
+        expect(e.bonus).toBe(roundBonus * rounds);
+        sawBonus = true;
       }
     }
-    if (inJackpot) {
-      expect(econ.getJackpotFeverMult()).toBe(jackpotRate === 1 ? 4.5 : 5);
-      sawFever = true;
-    }
   }
-  expect(sawFever).toBe(true);
+  expect(sawBonus).toBe(true);
   expect(sawReserveJackpot).toBe(true);
   const fired = all.filter((e) => e.k === 'fired');
   expect(fired.length).toBeGreaterThan(1000);
   expect(fired.every((e) => e.k === 'fired' && e.rate === 4)).toBe(true);
-  // 役物なし（生産0）なので 玉 = 初期 − 4×発射 + 払い戻し（ヘソ＋出玉）
+  // 役物なし（生産0・基準1/秒）なので 玉 = 初期 − 4×発射 + 払い戻し（ヘソ＋出玉＋ボーナス）
   const snap = eng.snapshot();
-  expect(snap.balls).toBe(initialBalls - 4 * fired.length + snap.totals.payoutBalls);
+  expect(snap.balls).toBe(initialBalls - 4 * fired.length + snap.totals.payoutBalls + snap.totals.bonusBalls);
   expect(eng.project().medals).toBe(0);
   expect(econ.getMedalsEarned()).toBe(2);
 });
 
-test('決定論契約1/2: 大当たりフィーバー込みで不揃い刻み・大当たり中の snapshot/restore が1回と一致', () => {
+test('上乗せ込みの実ラウンド数でボーナス・rate100は×6・Stubは省略（D-080）', () => {
+  const patterns = parsePatternsText(readFileSync('../../resources/machines/patterns.json', 'utf8'));
+  const spec = parseMachine({
+    id: 'test-bonus-01',
+    version: 1,
+    tier: 'middle',
+    modes: {
+      normal: { jackpot_1_in: 2, spins: 0 },
+      st: { jackpot_1_in: 2, spins: 10 },
+    },
+    jackpot_split: [{ kind: 'tsujo', weight: 1, rounds: 4, bonus_rounds: 6 }],
+    round: { count: 10, payout_per_ball: 15, ms_per_round: 1000 },
+    heso_payout: 3,
+    hold_max: 4,
+    spin_patterns: 'patterns.json',
+    hold_colors: [
+      { color: 'blue', w_hit: 10, w_miss: 900 },
+      { color: 'green', w_hit: 20, w_miss: 70 },
+      { color: 'red', w_hit: 50, w_miss: 25 },
+      { color: 'gold', w_hit: 20, w_miss: 0 },
+      { color: 'white', w_hit: 0, w_miss: 5 },
+    ],
+  });
+  // 役物なし（ref=1）・rate1: roundBonus=180・実10Rで bonus=1800・payout=1500
+  const econ = loadEconomy();
+  expect(econ.getRefPerSec()).toBe(1);
+  const eng = new Engine(
+    { seed: 1, spec, patterns, atlas: ATLAS, initialBalls: 1000000, initialMedals: 0, economy: econ },
+    [{ claimId: 'fuel', at: 0, fuelMs: 12 * H, medals: 0 }],
+    [
+      { t: 0, k: 'buy', target: 'auto', count: 1 },
+      { t: 0, k: 'auto', share: 1, rate: 1 },
+      { t: 0, k: 'presence', fg: false },
+    ],
+  );
+  let startedBonus = -1;
+  let endedBonus = -1;
+  let endedPayout = -1;
+  for (let t = 1000; t <= 2 * H; t = t + 1000) {
+    for (const e of eng.advance(t)) {
+      if (e.k === 'jackpotStarted') {
+        startedBonus = e.roundBonus as number;
+        expect(startedBonus).toBe(180);
+      } else if (e.k === 'jackpotEnded') {
+        endedBonus = e.bonus as number;
+        endedPayout = e.payout;
+      }
+    }
+    if (endedBonus >= 0) {
+      break;
+    }
+  }
+  expect(startedBonus).toBe(180);
+  expect(endedPayout).toBe(10 * 10 * 15);
+  expect(endedBonus).toBe(180 * 10);
+  expect(eng.project().totals.bonusBalls).toBe(endedBonus);
+  // rate100 は ×6（1080・10Rで10800）
+  expect(econ.jackpotRoundBonus(100)).toBe(1 * 180 * 6);
+  // Stub（経済なし）では roundBonus/bonus を省略
+  const stub = new Engine(
+    { seed: 1, spec, patterns, atlas: ATLAS, initialBalls: 1000000 },
+    [],
+    [
+      { t: 0, k: 'auto', share: 1, rate: 1 },
+      { t: 0, k: 'presence', fg: false },
+    ],
+  );
+  let stubStarted = false;
+  let stubEnded = false;
+  for (let t = 1000; t <= 2 * H; t = t + 1000) {
+    for (const e of stub.advance(t)) {
+      if (e.k === 'jackpotStarted') {
+        stubStarted = true;
+        expect('roundBonus' in e).toBe(false);
+      } else if (e.k === 'jackpotEnded') {
+        stubEnded = true;
+        expect('bonus' in e).toBe(false);
+      }
+    }
+    if (stubEnded) {
+      break;
+    }
+  }
+  expect(stubStarted).toBe(true);
+  expect(stubEnded).toBe(true);
+  expect(stub.project().totals.bonusBalls).toBe(0);
+  expect(stub.project().refPerSec).toBe(0);
+});
+
+test('決定論契約1/2: 大当たりボーナス込みで不揃い刻み・大当たり中の snapshot/restore が1回と一致', () => {
   const until = 3 * H;
   const a = autoEngine(loadEconomy(), 11);
   const once = a.advance(until);
@@ -215,7 +300,7 @@ test('決定論契約1/2: 大当たりフィーバー込みで不揃い刻み・
   const { spec, patterns } = loadMachine();
   const econD = loadEconomy();
   const d = Engine.restore(c.snapshot(), { seed: 11, spec, patterns, atlas: ATLAS, economy: econD });
-  expect(econD.getJackpotFeverMult()).toBe(4.5);
+  expect(c.snapshot().jackpotBonus).toBe((started as { roundBonus?: number } | undefined)?.roundBonus ?? null);
   const tail = d.advance(until);
   expect([...head, ...tail]).toEqual(once);
   expect(d.snapshot()).toEqual(a.snapshot());
