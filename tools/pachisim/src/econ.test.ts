@@ -141,4 +141,16 @@ test('formatEcon: heavy は standard と常連Pを比べ、週次は (最上位�
   };
   expect(formatEcon(res('standard', weeks([10, 20, 30, 40])), null)).toContain('weekly top increasing: OK');
   expect(formatEcon(res('standard', weeks([10, 20, 30, 30])), null)).toContain('weekly top increasing: NG');
+  // 12週: 4週目→12週目の最高 perSec の伸びと (1+常連P) の伸びを比べる。
+  const long = (per12: number): EconDayRow[] => {
+    const out: EconDayRow[] = [];
+    for (let d = 0; d < 84; d = d + 1) {
+      const wk = Math.floor(d / 7) + 1;
+      out.push({ ...row(d + 1, 'shima', d, wk === 12 ? 11 : wk === 4 ? 3 : 0), perSecFg: wk === 12 ? per12 : wk === 4 ? 100 : 1 });
+    }
+    return out;
+  };
+  expect(formatEcon(res('standard', long(300)), null)).toContain('12w perSec growth >= (1+P) growth (week4->12): OK (x3.00 vs x3.00, P 3->11)');
+  expect(formatEcon(res('standard', long(299)), null)).toContain('12w perSec growth >= (1+P) growth (week4->12): NG');
+  expect(formatEcon(res('standard', weeks([10, 20, 30, 40])), null)).not.toContain('12w perSec');
 });

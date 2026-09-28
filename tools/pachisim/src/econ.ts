@@ -747,6 +747,26 @@ export function formatEcon(r: EconResult, ev: { init: number; full: number } | n
       const weekStr = weekTop.map((v, k) => `${v}:${weekLv[k]}`).join('/');
       lines.push(`  weekly top increasing: ${topUp ? 'OK' : 'NG'} (${weekStr}) / weekly perSec increasing: ${perUp ? 'OK' : 'NG'}`);
     }
+    if (r.days >= 84) {
+      // 4週目→12週目で、週の最高 perSec の伸びが (1 + 常連P) の伸び以上か（倍率式が鈍っていないか, spec/23）。
+      const weekMax = (wk: number): { per: number; reg: number } => {
+        let per = 0;
+        let reg = 0;
+        for (let i = wk * 7 - 7; i < wk * 7 && i < r.rows.length; i = i + 1) {
+          const w = r.rows[i] as EconDayRow;
+          per = w.perSecFg > per ? w.perSecFg : per;
+          reg = w.regular;
+        }
+        return { per, reg };
+      };
+      const w4 = weekMax(4);
+      const w12 = weekMax(12);
+      const perGrowth = w4.per > 0 ? w12.per / w4.per : 0;
+      const regGrowth = (1 + w12.reg) / (1 + w4.reg);
+      lines.push(
+        `  12w perSec growth >= (1+P) growth (week4->12): ${perGrowth >= regGrowth ? 'OK' : 'NG'} (x${perGrowth.toFixed(2)} vs x${regGrowth.toFixed(2)}, P ${w4.reg}->${w12.reg})`,
+      );
+    }
   } else if (r.profile === 'none') {
     const ok = r.firstCloseDay === null ? r.days >= 60 : r.firstCloseDay > 60;
     lines.push(`  first close after day 60: ${ok ? 'OK' : r.firstCloseDay === null ? 'NG (run --days >= 61)' : 'NG'}`);
