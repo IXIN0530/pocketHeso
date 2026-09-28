@@ -117,6 +117,25 @@ test('Projection から作った大当たりは終了予定から逆算、連チ
   expect(jackpotHud(s, 1_000_000 - 3 * R.msPerRound + 1000, R)).toMatchObject({ k: 'round', round: 8, chain: 4 });
 });
 
+test('Projection の上乗せ前（LT）は基本ラウンドだけ見せ、未告知の上乗せ込みの終了予定から開始を逆算する', () => {
+  // 基本10R＋未告知10R。終了予定は20R分先。開始から3R目の途中。
+  const startAt = 1_000_000;
+  const endsAt = startAt + 20 * R.msPerRound;
+  let s = stateFromProjection({
+    holds: [],
+    mode: 'lt',
+    chain: 1,
+    chainBalls: 0,
+    jackpot: { entry: 9, kind: 'kakuhen', rounds: 10, hiddenRounds: 10, endsAt },
+  } as never);
+  const t = startAt + 2 * R.msPerRound + 1000;
+  expect(jackpotHud(s, t, R)).toMatchObject({ k: 'round', round: 3, rounds: 10, bonus: null });
+  // 告知が来たら合計へ（開始の逆算は変わらない）。
+  const uwAt = startAt + 10 * R.msPerRound;
+  s = applyLcdEvent(s, { k: 'uwanose', entry: 9, at: uwAt, addRounds: 10, totalRounds: 20 } as Ev);
+  expect(jackpotHud(s, uwAt + 1000, R)).toMatchObject({ k: 'round', round: 11, rounds: 20, bonus: { add: 10, t: 1000 } });
+});
+
 test('Timeline: 大当たりのイベントとモード変更が表示時刻で届き、Projection と合う', () => {
   const tl = new LcdTimeline();
   const proj = (over: object) => ({ holds: [], mode: 'normal', chain: 0, chainBalls: 0, ...over }) as never;

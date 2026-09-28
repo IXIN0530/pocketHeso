@@ -4,9 +4,61 @@ import type { MachineSpec, PatternTable } from './machine.ts';
 import { parseMachineText, parsePatternsText } from './machine.ts';
 import { parseEconomy } from './economy-config.ts';
 import { IdleEconomy } from './economy-state.ts';
-import { drawGrantHold } from './lottery.ts';
-import type { Grant, SimEvent } from './engine.ts';
-import { Engine, GRANT_HOLD_SERIAL_BASE } from './engine.ts';
+import { drawBonusHold, drawGrantHold } from './lottery.ts';
+import type { Action, Grant, SimEvent } from './engine.ts';
+import { BONUS_SERIAL_BASE, Engine, GRANT_HOLD_SERIAL_BASE, RESERVE_SERIAL_BASE } from './engine.ts';
+
+const H = 3600000;
+
+/** 特別保留（1.5e9〜2e9未満）の通し番号か。 */
+function isGrantSerial(serial: number): boolean {
+  return serial >= GRANT_HOLD_SERIAL_BASE && serial < RESERVE_SERIAL_BASE;
+}
+
+/** イベント列のうち特別保留の holdAdded の数。 */
+function countGrantAdded(evs: readonly SimEvent[]): number {
+  let n = 0;
+  for (const e of evs) {
+    if (e.k === 'holdAdded' && isGrantSerial(e.entry.serial)) {
+      n = n + 1;
+    }
+  }
+  return n;
+}
+
+/** レート4を解放して前面で打ち続ける（燃料12h・メダル8で rate4 を買う）。 */
+function rate4Setup(extraGrants: Grant[]): { grants: Grant[]; actions: Action[] } {
+  return {
+    grants: [{ claimId: 'fuel', at: 0, fuelMs: 12 * H, medals: 8 }, ...extraGrants],
+    actions: [
+      { t: 0, k: 'buy', target: 'rate', count: 1 },
+      { t: 0, k: 'shoot', on: true, rate: 4 },
+    ],
+  };
+}
+
+/** 無料の保留の当たりが rate1（出玉・ボーナスとも）で、打った rate4 の当たりは rate4 であることを確かめる。 */
+function expectFreeHitsAtRate1(evs: readonly SimEvent[], econ: IdleEconomy, isFree: (serial: number) => boolean): number {
+  let freeHits = 0;
+  let rounds = 0;
+  let rate = 1;
+  let roundBonus = 0;
+  for (const e of evs) {
+    if (e.k === 'jackpotStarted') {
+      rounds = e.rounds + (e.bonusRounds ?? 0);
+      rate = isFree(e.entry) ? 1 : 4;
+      if (isFree(e.entry)) {
+        freeHits = freeHits + 1;
+      }
+      roundBonus = e.roundBonus as number;
+      expect(roundBonus).toBe(econ.jackpotRoundBonus(rate));
+    } else if (e.k === 'jackpotEnded') {
+      expect(e.payout).toBe(rounds * 10 * 15 * rate);
+      expect(e.bonus).toBe(roundBonus * rounds);
+    }
+  }
+  return freeHits;
+}
 
 function loadMachine(): { spec: MachineSpec; patterns: PatternTable } {
   const spec = parseMachineText(readFileSync('../../resources/machines/light-middle-01.json', 'utf8'));
@@ -105,21 +157,73 @@ test('特別保留: 保留満タンでも失われず空きに入る', () => {
     [{ t: 0, k: 'shoot', on: false, rate: 1 }],
   );
   // 保留上限4（既定）を超える分はストックに残る。
-  eng.advance(1000);
+  const evs = eng.advance(1000);
   const p = eng.project();
-  // 保留は上限まで、残りはストック（変動中の1件を含む）。
   expect(p.holds.length).toBeLessThanOrEqual(4);
-  const inSpin = p.spin === undefined ? 0 : 1;
-  expect(p.holds.length + inSpin + p.bonusStock).toBe(10);
-  // 変動が進んで空きができたらストックから入る（失われない）。
-  const beforeStock = p.bonusStock;
-  expect(beforeStock).toBeGreaterThan(0);
-  eng.advance(600000);
-  const p2 = eng.project();
-  // 消化が進み、ストックが減っている（全部は無くならない場合もあるが、合計は保存される）。
-  const totalHoldsSeen = p2.holds.length + p2.bonusStock;
-  expect(totalHoldsSeen).toBeLessThanOrEqual(10);
-  expect(p2.bonusStock).toBeLessThan(beforeStock);
+  expect(p.bonusStock).toBeGreaterThan(0);
+  // 保留に入った数＋ストック＝受け取った数（満タンで捨てない）。
+  expect(countGrantAdded(evs) + p.bonusStock).toBe(10);
+  // 変動が進んで空きができたらストックから入る。最後は全部が保留に入る。
+  const all = [...evs];
+  for (let t = 2000; t <= H; t = t + 1000) {
+    for (const e of eng.advance(t)) {
+      all.push(e);
+    }
+    expect(countGrantAdded(all) + eng.project().bonusStock).toBe(10);
+  }
+  expect(eng.project().bonusStock).toBe(0);
+  expect(countGrantAdded(all)).toBe(10);
+});
+
+test('特別保留: 大当たり中に受け取ったストックも失われない（snapshot→restoreを挟んでも）', () => {
+  const { spec, patterns } = loadMachine();
+  const atlas = loadAtlas();
+  const TOTAL = 30;
+  const mk = (): Engine =>
+    new Engine(
+      { seed: 66, spec, patterns, atlas, initialBalls: 100000, economy: loadEconomy() },
+      [{ claimId: 'fill', at: 0, fuelMs: 0, medals: 0, bonusHolds: TOTAL }],
+      [{ t: 0, k: 'shoot', on: false, rate: 1 }],
+    );
+  // 最初の大当たりの開始時刻を探す（特別保留の当たり）。
+  const probe = mk().advance(4 * H);
+  const js = probe.find((e) => e.k === 'jackpotStarted');
+  if (js === undefined || js.k !== 'jackpotStarted') {
+    throw new Error('no jackpot');
+  }
+  expect(isGrantSerial(js.entry)).toBe(true);
+  const mid = js.at + 1000;
+  const a = mk();
+  const head = a.advance(mid);
+  expect(a.snapshot().spin.jackpot).not.toBeNull();
+  const stockBefore = a.project().bonusStock;
+  expect(stockBefore).toBeGreaterThan(0);
+  expect(countGrantAdded(head) + stockBefore).toBe(TOTAL);
+  // 大当たり中に2つ受け取る（保留は満タンなのでストックに積まれる）。
+  a.appendGrant({ claimId: 'mid', at: mid, fuelMs: 0, medals: 0, bonusHolds: 2 });
+  const step = a.advance(mid + 1000);
+  expect(a.snapshot().spin.jackpot).not.toBeNull();
+  expect(step.some((e) => e.k === 'granted' && e.claimId === 'mid')).toBe(true);
+  // 大当たり中は保留が消化されず満タンのまま（ストックが減らない）。
+  expect(a.project().bonusStock).toBe(stockBefore + 2);
+  expect(countGrantAdded(head) + countGrantAdded(step) + a.project().bonusStock).toBe(TOTAL + 2);
+  // 大当たり中の複写から restore しても、ストックは消えず最後まで全部が保留に入る。
+  const snap = a.snapshot();
+  expect(snap.bonusStock).toBe(a.project().bonusStock);
+  const b = Engine.restore(snap, { seed: 66, spec, patterns, atlas, economy: loadEconomy() });
+  const seen = [...head, ...step];
+  for (let t = mid + 2000; t <= 4 * H; t = t + 1000) {
+    const evA = a.advance(t);
+    const evB = b.advance(t);
+    expect(evB).toEqual(evA);
+    for (const e of evB) {
+      seen.push(e);
+    }
+    expect(countGrantAdded(seen) + b.project().bonusStock).toBe(TOTAL + 2);
+  }
+  expect(b.snapshot()).toEqual(a.snapshot());
+  expect(b.project().bonusStock).toBe(0);
+  expect(countGrantAdded(seen)).toBe(TOTAL + 2);
 });
 
 test('決定論: prodMin/bonusHolds込みで1回vs1秒刻み・snapshot/restoreが一致', () => {
@@ -214,8 +318,48 @@ test('drawGrantHold: 賞球なし・serialとRNGが通し番号で決まる', ()
   expect(hits).toBeLessThan(140);
 });
 
-test('無料の保留の当たりはrate1扱い（grant holdにrateなし）', () => {
-  const grants: Grant[] = [{ claimId: 'g', at: 0, fuelMs: 0, medals: 0, bonusHolds: 1 }];
-  expect(grants[0]?.bonusHolds).toBe(1);
-  expect(grants[0]?.prodMin).toBeUndefined();
+test('rate4で打っていても特別保留の当たりはrate1（出玉・大当たりボーナスとも）', () => {
+  const { spec, patterns } = loadMachine();
+  const econ = loadEconomy();
+  const { grants, actions } = rate4Setup([{ claimId: 'b', at: 0, fuelMs: 0, medals: 0, bonusHolds: 30 }]);
+  const eng = new Engine({ seed: 77, spec, patterns, atlas: loadAtlas(), initialBalls: 10000000, economy: econ }, grants, actions);
+  const evs = eng.advance(6 * H);
+  // 打った玉は rate4（テストが無意味でないことの確認）。
+  expect(econ.jackpotRoundBonus(4)).toBeGreaterThan(econ.jackpotRoundBonus(1));
+  expect(evs.some((e) => e.k === 'fired' && e.rate === 4)).toBe(true);
+  const freeHits = expectFreeHitsAtRate1(evs, econ, (serial) => serial >= GRANT_HOLD_SERIAL_BASE);
+  expect(evs.some((e) => e.k === 'jackpotStarted' && isGrantSerial(e.entry))).toBe(true);
+  expect(freeHits).toBeGreaterThan(0);
+});
+
+test('rate4で打っていても予告のボーナス保留の当たりはrate1（出玉・大当たりボーナスとも）', () => {
+  const { spec, patterns } = loadMachine();
+  const atlas = loadAtlas();
+  const seed = 88;
+  // 当たりになる予告の番号を探す（重みは default.json の fever/rush/bonus）。
+  let entry = null;
+  for (let n = 0; n < 1000 && entry === null; n = n + 1) {
+    const e = drawBonusHold(spec, patterns, seed, 'normal', n, BONUS_SERIAL_BASE + n, 10, [50, 45, 5]);
+    if (e.isHit) {
+      entry = e;
+    }
+  }
+  if (entry === null) {
+    throw new Error('no hit bonus hold');
+  }
+  expect(entry.rate).toBeUndefined();
+  const { grants, actions } = rate4Setup([]);
+  const base = new Engine({ seed, spec, patterns, atlas, initialBalls: 10000000, economy: loadEconomy() }, grants, actions);
+  base.advance(1000);
+  const snap = base.snapshot();
+  expect(snap.spin.mode).toBe('normal');
+  // 予告のボーナス保留を先頭に入れた状態から続ける（前面で rate4 を打ち続ける）。
+  const econ = loadEconomy();
+  const eng = Engine.restore({ ...snap, holds: [entry] }, { seed, spec, patterns, atlas, economy: econ });
+  const evs = eng.advance(6 * H);
+  expect(econ.jackpotRoundBonus(4)).toBeGreaterThan(econ.jackpotRoundBonus(1));
+  expect(evs.some((e) => e.k === 'fired' && e.rate === 4)).toBe(true);
+  const bonusSerial = entry.serial;
+  expect(evs.some((e) => e.k === 'jackpotStarted' && e.entry === bonusSerial)).toBe(true);
+  expectFreeHitsAtRate1(evs, econ, (serial) => serial >= BONUS_SERIAL_BASE);
 });

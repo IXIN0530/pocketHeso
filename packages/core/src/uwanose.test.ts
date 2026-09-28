@@ -326,8 +326,8 @@ test('決定論契約1・2が上乗せを含む区間（大当たり中・LT中�
   expect(resumed2.snapshot()).toEqual(atUw.snapshot());
 });
 
-test('Engineのuwanose順序と投影chain（bonus機種でprojectにchainが載る）', () => {
-  const spec = parseMachine({
+function ltProjSpec(): MachineSpec {
+  return parseMachine({
     id: 'test-uwanose-proj',
     version: 1,
     tier: 'middle',
@@ -353,6 +353,10 @@ test('Engineのuwanose順序と投影chain（bonus機種でprojectにchainが載
       { color: 'white', w_hit: 0, w_miss: 5 },
     ],
   });
+}
+
+test('Engineのuwanose順序と投影chain（bonus機種でprojectにchainが載る）', () => {
+  const spec = ltProjSpec();
   const patterns = loadPatterns();
   const atlas = loadAtlas();
   const eng = new Engine({ seed: 7, spec, patterns, atlas, initialBalls: 100000 }, [], [{ t: 0, k: 'auto', share: 1, rate: 1 }]);
@@ -439,4 +443,33 @@ test('Engineのuwanose順序と投影chain（bonus機種でprojectにchainが載
   const proj = atCut.project();
   expect(proj.chain).toBe(chain);
   expect(proj.chainBalls).toBe(chainBalls);
+});
+
+test('投影: 上乗せの告知前は基本ラウンドだけ見せ、未告知分はhiddenRounds（告知後・restore後も一致）', () => {
+  const spec = ltProjSpec();
+  const patterns = loadPatterns();
+  const atlas = loadAtlas();
+  const actions: Action[] = [{ t: 0, k: 'auto', share: 1, rate: 1 }];
+  const mk = (): Engine => new Engine({ seed: 7, spec, patterns, atlas, initialBalls: 100000 }, [], actions);
+  const evs = mk().advance(3000000);
+  const uw = evs.find((e) => e.k === 'uwanose');
+  if (uw === undefined || uw.k !== 'uwanose') {
+    throw new Error('no uwanose');
+  }
+  const js = evs.find((e) => e.k === 'jackpotStarted' && e.entry === uw.entry);
+  if (js === undefined || js.k !== 'jackpotStarted') {
+    throw new Error('no jackpotStarted');
+  }
+  const endsAt = js.at + uw.totalRounds * 1000;
+  // 告知前: 基本ラウンドのみ・終了予定は上乗せ込み
+  const before = mk();
+  before.advance(js.at + 500);
+  expect(before.project().jackpot).toEqual({ entry: uw.entry, kind: js.kind, rounds: js.rounds, endsAt, hiddenRounds: uw.addRounds });
+  // snapshot→restore しても同じ（上乗せを先に見せない）
+  const restored = Engine.restore(before.snapshot(), { seed: 7, spec, patterns, atlas });
+  expect(restored.project().jackpot).toEqual(before.project().jackpot);
+  // 告知後: 合計ラウンド・hiddenRoundsなし
+  const after = mk();
+  after.advance(uw.at + 1);
+  expect(after.project().jackpot).toEqual({ entry: uw.entry, kind: js.kind, rounds: uw.totalRounds, endsAt });
 });

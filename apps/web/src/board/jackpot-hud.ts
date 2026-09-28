@@ -53,8 +53,8 @@ export type HudView =
 export function jackpotHud(st: LcdState, now: number, r: JackpotRound): HudView | null {
   const j = st.jackpot;
   if (j) {
-    // Projection から作った大当たりは開始が分からないので終了予定から逆算する（上乗せ前は目安）。
-    const start = j.startAt ?? (j.endsAt != null ? j.endsAt - j.rounds * r.msPerRound : now);
+    // Projection から作った大当たりは開始が分からないので終了予定から逆算する（終了予定は未告知の上乗せを含む）。
+    const start = j.startAt ?? (j.endsAt != null ? j.endsAt - (j.rounds + (j.hiddenRounds ?? 0)) * r.msPerRound : now);
     const t = Math.max(0, now - start);
     const round = Math.min(j.rounds, Math.floor(t / r.msPerRound) + 1);
     const within = round === j.rounds ? Math.min(t - (round - 1) * r.msPerRound, r.msPerRound) : t - (round - 1) * r.msPerRound;

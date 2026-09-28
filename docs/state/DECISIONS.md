@@ -86,3 +86,4 @@
 - D-083 | 2026-09-28 | 階段: ショートカットに「上った階数」（日の合計, JSON の任意項目 `fl`、無い旧ショートカットは0扱いで v は1のまま）を足し、10階ごとにメダル +1（1日30階まで）。燃料・即時の玉は出さない | 9/28 人間。iPhone 単体（気圧計）で記録される想定だが、ショートカットで読めるかは実機確認
 - D-084 | 2026-09-28 | P7-T7: 大当たりボーナス実装は IdleEconomy v4（fever廃止・旧v3は読捨て）・EngineSnapshotにjackpotBonus（旧はnull）・Totals bonusBalls・Stubは省略・web SNAPSHOT_VERSION 3。golden 613c145a8f8fd75b | 決定論1秒刻み・restore一致を確認し旧snapshotが落ちない最小形のため
 - D-085 | 2026-09-28 | P7-T8: 特別保留は grantHoldストリームで当否・serialのsplit/pattern/holdColorで枝型・Stubのbonus1In=10・snapshot bonusStock/grantHoldSeqは旧0読み・simはspec/10層違反のため@ph/claimsを使わず自前換算。golden不変613c145a8f8fd75b | 決定論と旧台帳・旧snapshotの互換を保つ最小形のため
+- D-086 | 2026-09-28 | P7-T7/T8 レビュー修正: JackpotView.rounds は「見せてよいラウンド数」（上乗せの告知前は基本のみ）に戻し、未告知の上乗せは hiddenRounds（endsAt からの逆算専用・表示しない）で渡す。golden 不変 | T7 で合計を出したため LT の復元直後に上乗せが先に見えた（spec/21「見せるのは後」）

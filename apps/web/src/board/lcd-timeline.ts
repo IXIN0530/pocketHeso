@@ -42,8 +42,10 @@ export interface LcdJackpot {
   readonly rounds: number;
   /** 開始の時刻（Projection から作った時は null）。 */
   readonly startAt?: number | null;
-  /** 終了予定（Projection から作った時だけ分かる）。 */
+  /** 終了予定（Projection から作った時だけ分かる。未告知の上乗せを含む）。 */
   readonly endsAt?: number | null;
+  /** 未告知の上乗せラウンド（Projection から作った上乗せ前だけ。開始の逆算用で、表示しない）。 */
+  readonly hiddenRounds?: number;
   /** 当たった保留のレート（出玉の数え上げ用。不明は 1）。 */
   readonly rate?: number;
   /** 1Rの大当たりボーナス（経済つきのみ。無い時は出玉だけ, D-080）。 */
@@ -151,6 +153,7 @@ export function stateFromProjection(p: HallProjection): LcdState {
           rounds: p.jackpot.rounds,
           startAt: null,
           endsAt: p.jackpot.endsAt,
+          ...(p.jackpot.hiddenRounds !== undefined ? { hiddenRounds: p.jackpot.hiddenRounds } : {}),
           ...(p.jackpot.roundBonus !== undefined ? { roundBonus: p.jackpot.roundBonus } : {}),
         }
       : null,
@@ -218,7 +221,11 @@ export function applyLcdEvent(s: LcdState, e: LcdEvent): LcdState {
       };
     }
     case 'uwanose':
-      return s.jackpot ? { ...s, jackpot: { ...s.jackpot, rounds: e.totalRounds, bonus: { at: e.at, add: e.addRounds } } } : s;
+      if (!s.jackpot) {
+        return s;
+      }
+      // 告知したので上乗せはもう隠れていない（合計ラウンドへ）。
+      return { ...s, jackpot: { ...s.jackpot, rounds: e.totalRounds, hiddenRounds: 0, bonus: { at: e.at, add: e.addRounds } } };
     case 'jackpotEnded': {
       // モードが変わらない時（通常 → 通常）はモード変更が来ないので、ここで今のモードのまま決めておく。
       // payout はボーナス込み（出玉＋bonus, D-080）。

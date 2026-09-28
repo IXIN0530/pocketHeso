@@ -222,8 +222,12 @@ export interface SpinView {
 export interface JackpotView {
   readonly entry: number;
   readonly kind: JackpotKind;
+  /** 見せてよいラウンド数（上乗せの告知前は基本ラウンドのみ、告知後は合計）。 */
   readonly rounds: number;
+  /** 終了予定（未告知の上乗せを含む）。 */
   readonly endsAt: SimTime;
+  /** 未告知の上乗せラウンド（告知前だけ。endsAt からの逆算用で、表示しない）。 */
+  readonly hiddenRounds?: number | undefined;
   /** 1Rの大当たりボーナス（経済つきのみ。無い時は出玉だけ, D-080）。 */
   readonly roundBonus?: number | undefined;
 }
@@ -374,12 +378,16 @@ export function projectSnapshot(
     if (b === undefined) {
       throw new Error('invalid engine: jackpot branchIndex out of range');
     }
+    // 上乗せ（LT）は告知（uwanose）まで見せない。未告知の分は hiddenRounds で渡す（spec/21）。
     const bonus = (j.bonusRounds === undefined ? 0 : j.bonusRounds);
-    const totalRounds = b.rounds + bonus;
+    const hidden = j.uwanoseAt === null || j.uwanoseAt === undefined ? 0 : bonus;
+    const shown = b.rounds + bonus - hidden;
     const rb = snap.jackpotBonus === undefined || snap.jackpotBonus === null ? undefined : snap.jackpotBonus;
-    jackpot = rb === undefined
-      ? { entry: j.serial, kind: b.kind, rounds: totalRounds, endsAt: j.endsAt }
-      : { entry: j.serial, kind: b.kind, rounds: totalRounds, endsAt: j.endsAt, roundBonus: rb };
+    const view: JackpotView = { entry: j.serial, kind: b.kind, rounds: shown, endsAt: j.endsAt };
+    jackpot = hidden > 0 ? { ...view, hiddenRounds: hidden } : view;
+    if (rb !== undefined) {
+      jackpot = { ...jackpot, roundBonus: rb };
+    }
   }
   const spinSnap = snap.spin as { chain?: number; chainBalls?: number };
   let notice: NoticeView | undefined;
