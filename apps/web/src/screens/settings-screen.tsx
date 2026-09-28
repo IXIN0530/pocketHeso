@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { CORE_VERSION } from '@ph/core';
 import { Segmented } from '../components/segmented.tsx';
 import { Switch } from '../components/switch.tsx';
@@ -9,9 +9,11 @@ import { clock, dbNameFor } from '../stores/clock.ts';
 import { act, resetGame, useEngine } from '../stores/engine.ts';
 import { setPrefs, usePrefs } from '../stores/prefs.ts';
 import { SPIKE_NAMES } from '../spikes/spike-names.ts';
-import { LogPanel } from './log-panel.tsx';
 import { SavePanel } from './save-panel.tsx';
 import styles from './activity.module.css';
+
+// 計測ログは正式版には含めない（D-087、lazy import ごと落とす）。
+const LogPanel = __DEV_TOOLS__ ? lazy(() => import('./log-panel.tsx').then((m) => ({ default: m.LogPanel }))) : null;
 
 /** オート打ちで選べる割合（発射の枠のうち何割を打つか, spec/22）。 */
 export const AUTO_SHARES: readonly (readonly [number, string])[] = [
@@ -65,7 +67,8 @@ export function SettingsScreen() {
 
   const autoOwned = (p?.shop?.upgrades.find((u) => u.id === 'auto')?.value ?? 0) > 0;
   const tomeuchi = (p?.shop?.upgrades.find((u) => u.id === 'tomeuchi')?.value ?? 0) > 0;
-  const debugDb = clock.scale !== 1;
+  // 正式版は常に 1（clock.ts）なので Debug の文言は出ない（D-087）。
+  const debugDb = __DEV_TOOLS__ && clock.scale !== 1;
 
   return (
     <div className={styles.screen}>
@@ -145,7 +148,11 @@ export function SettingsScreen() {
           )}
         </div>
       </section>
-      <LogPanel />
+      {__DEV_TOOLS__ && LogPanel && (
+        <Suspense>
+          <LogPanel />
+        </Suspense>
+      )}
       <section className={styles.card}>
         <h2>アプリ</h2>
         <dl className={styles.facts}>
@@ -153,10 +160,16 @@ export function SettingsScreen() {
           <dd>{isStandalone() ? 'ホーム画面（standalone）' : 'ブラウザ'}</dd>
           <dt>通信</dt>
           <dd>{online ? 'オンライン' : 'オフライン'}</dd>
-          <dt>Core</dt>
-          <dd>v{CORE_VERSION}</dd>
+          <dt>バージョン</dt>
+          <dd>v{__APP_VERSION__}</dd>
+          {__DEV_TOOLS__ && (
+            <>
+              <dt>Core</dt>
+              <dd>v{CORE_VERSION}</dd>
+            </>
+          )}
         </dl>
-        {__SHOW_SPIKES__ && (
+        {__DEV_TOOLS__ && (
           <ul className={styles.list}>
             {SPIKE_NAMES.map((name) => (
               <li key={name}>

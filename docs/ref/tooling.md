@@ -17,6 +17,7 @@
 | `scripts/test.sh core` | `pnpm --filter @ph/core --filter @ph/claims test`（Node, 決定論テスト含む） |
 | `scripts/test.sh all` | 全パッケージのテスト |
 | `scripts/sim.sh ...` | `pnpm --filter @ph/pachisim start ...`（tsx で実行）（Atlas 生成・統計・経済試算） |
+| `scripts/release-check.sh` | `PH_RELEASE=1` で web をビルドし正式版に開発用表示（Debug・spike・計測ログ）が無いこと、通常ビルドで残っていることを確認（P8-T1, D-087） |
 | `scripts/agy.sh [agy の引数]` | Antigravity CLI をリポジトリルートをワークスペースにして起動 |
 
 ## デプロイ

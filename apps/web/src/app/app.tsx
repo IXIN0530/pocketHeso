@@ -13,9 +13,10 @@ import { startEngine } from '../stores/engine.ts';
 import { usePreview } from '../stores/preview.ts';
 import styles from './app.module.css';
 
-// Debug 画面は `?debug=1` の時だけ読む（spec/40）。
-const DebugScreen = lazy(() => import('../screens/debug-screen.tsx'));
-const showDebug = typeof location !== 'undefined' && new URLSearchParams(location.search).get('debug') === '1';
+// Debug 画面は `?debug=1` の時だけ読む（spec/40）。正式版には含めない（D-087、lazy import ごと落とす）。
+const DebugScreen = __DEV_TOOLS__ ? lazy(() => import('../screens/debug-screen.tsx')) : null;
+const showDebug =
+  __DEV_TOOLS__ && typeof location !== 'undefined' && new URLSearchParams(location.search).get('debug') === '1';
 
 type Tab = 'hall' | 'shop' | 'activity' | 'records' | 'settings' | 'debug';
 
@@ -88,7 +89,7 @@ export function App() {
       {tab === 'activity' && <ActivityScreen />}
       {tab === 'records' && <RecordsScreen />}
       {tab === 'settings' && <SettingsScreen />}
-      {tab === 'debug' && (
+      {__DEV_TOOLS__ && tab === 'debug' && DebugScreen && (
         <Suspense>
           <DebugScreen />
         </Suspense>

@@ -35,8 +35,11 @@ export function makeClock(scale: number, real: () => number = Date.now): Clock {
   };
 }
 
-/** URL から時間倍率を読む（`?debug=1` が無い・不正な値は 1）。 */
+/** URL から時間倍率を読む（`?debug=1` が無い・不正な値は 1。正式版は常に 1, D-087）。 */
 export function debugScaleFrom(search: string): number {
+  if (!__DEV_TOOLS__) {
+    return 1;
+  }
   const q = new URLSearchParams(search);
   if (q.get('debug') !== '1') {
     return 1;

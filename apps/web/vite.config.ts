@@ -1,11 +1,25 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// ルート package.json の version を __APP_VERSION__ にする（P8-T1）。
+const rootPkg = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'), 'utf8')) as {
+  version?: string;
+};
+const appVersion = rootPkg.version ?? '0.0.0';
+// 正式版は dev と同じコードを定数で切り替える（D-087）: Vercel Production か PH_RELEASE=1 で false。
+const devTools = process.env.VERCEL_ENV !== 'production' && process.env.PH_RELEASE !== '1';
+
 // 配信は Vercel のルート `/`（D-021）。PWA は spec/41。
 export default defineConfig({
   // ホーム画面 Web アプリは start_url から起動し `?spike=` を保持しないため、本番以外では本体にスパイクへの入口を出す。
-  define: { __SHOW_SPIKES__: JSON.stringify(process.env.VERCEL_ENV !== 'production') },
+  define: {
+    __DEV_TOOLS__: JSON.stringify(devTools),
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
   // Engine Worker は module worker（spec/40）。
   worker: { format: 'es' },
   plugins: [

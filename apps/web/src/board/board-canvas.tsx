@@ -14,7 +14,8 @@ import type { FrameStats } from './frame-stats.ts';
 import styles from './board.module.css';
 
 const errText = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message}` : String(e));
-const showStats = new URLSearchParams(location.search).get('debug') === '1';
+// 正式版は `?debug=1` でも重ねない（D-087）。
+const showStats = __DEV_TOOLS__ && new URLSearchParams(location.search).get('debug') === '1';
 const byPattern = new Map<string, PatternInfo>(
   (patternsJson as readonly { id: string; hot: number; ms: number }[]).map((p) => [p.id, { hot: p.hot, ms: p.ms }]),
 );
@@ -97,7 +98,7 @@ export function BoardCanvas({ active = true }: { active?: boolean }) {
   return (
     <div className={styles.frame}>
       <div ref={hostRef} className={styles.canvas} />
-      {stats && (
+      {__DEV_TOOLS__ && stats && (
         <p className={styles.stats}>
           {stats.fps.toFixed(0)} fps · p95 {stats.p95Ms.toFixed(0)}ms · {stats.calls} calls · x{clock.scale}
         </p>

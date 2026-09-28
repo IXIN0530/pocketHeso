@@ -8,8 +8,7 @@ export const YOLP_TIMEOUT_MS = 15000;
 /** 施設一覧の下に出すクレジット（利用規約）。 */
 export const YOLP_CREDIT = { text: 'Webサービス by Yahoo! JAPAN', href: 'https://developer.yahoo.co.jp/sitemap/' } as const;
 
-/** プレビューで Vercel の環境変数が無いとき、spike: geo で入れた ID を使う（この端末の localStorage のみ）。 */
-const SPIKE_APPID_KEY = 'ph.spike.yolpAppid';
+/** プレビューで Vercel の環境変数が無いとき、spike: geo で入れた ID を使う（この端末の localStorage のみ。正式版は使わない, D-087）。 */
 
 /** Client ID（ビルド時の VITE_YOLP_APPID）。無ければ null（YOLP を使わず登録地点だけで判定）。 */
 export function yolpAppId(): string | null {
@@ -17,12 +16,15 @@ export function yolpAppId(): string | null {
   if (env !== undefined && env.trim() !== '') {
     return env.trim();
   }
-  try {
-    const v = localStorage.getItem(SPIKE_APPID_KEY)?.trim();
-    return v ? v : null;
-  } catch {
-    return null;
+  if (__DEV_TOOLS__) {
+    try {
+      const v = localStorage.getItem('ph.spike.yolpAppid')?.trim();
+      return v ? v : null;
+    } catch {
+      return null;
+    }
   }
+  return null;
 }
 
 export function yolpUrl(appid: string, fix: Fix, callback: string): string {
