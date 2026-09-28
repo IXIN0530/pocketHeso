@@ -12,7 +12,7 @@
 | P5 | P5-app.md | 両方 | React 画面・Three.js 描画・保存・PWA | 大 |
 | P6 | P6-presentation.md | 両方 | 演出・音・光・予告・留守中リプレイ | 中 |
 | P7 | P7-soak-tune.md | Claude Code | 1週間の実運用・バランス調整（大当たりボーナス・行動の即時報酬・階段・遠征・新台入替） | 中 |
-| P8 | P8-distribution.md | どちらでも | README・ショートカット配布・任意の Web Push | 小 |
+| P8 | P8-release.md | Muse Spark | 正式版（開発用表示を本番から除く）・ショートカットを iCloud リンク1つで・初回案内・README・main へのリリース・任意の Web Push | 中 |
 
 並行可能: P1〜P3（Muse）と P4-T1〜T3（Claude。claims は Core の型だけに依存）。P5 は P2-T5 完了が前提。
 

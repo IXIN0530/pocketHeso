@@ -5,8 +5,10 @@
 - Vercel（Hobby, D-021）。GitHub 連携で `main` への push が本番、`dev` などへの push がプレビュー（URL は push ごとに発行）。
   ルート `/` で配信するので Vite の `base` は既定のまま。設定はリポジトリ直下の `vercel.json`。
 - プレビューと本番はオリジンが違う → 保存領域（IndexedDB）も別。プレビューで試したデータは本番に混ざらない。
+- **正式版（D-087）**: `main` は `dev` の fast-forward のまま、ビルド時の定数 `__DEV_TOOLS__`（Vercel の Production か `PH_RELEASE=1` で false）で
+  Debug・spike・計測ログを本番バンドルから落とす。`scripts/release-check.sh` で確認。版は `v1.x.y` タグ＋ルート `package.json` の version。
 - `manifest.webmanifest`: `display: standalone`、縦固定、アイコン 180/192/512、`start_url` と `scope` は `/`。
-- iOS はホーム画面に追加して使う（通常の Safari タブでも動くが、保存領域が別になる旨をオンボーディングで説明）。
+- iOS はホーム画面に追加して使う（通常の Safari タブでも動くが、保存領域が別になる旨を初回の案内で説明, P8-T4）。
 
 ## Service Worker（vite-plugin-pwa, injectManifest）
 - 役割: アプリ本体・Atlas・演出パックのプリキャッシュ（オフラインで起動できる）。Engine は回さない。

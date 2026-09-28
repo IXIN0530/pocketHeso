@@ -5,8 +5,10 @@
 - Last done: [P7-T10] 試算とバランス目標の確認（27条件の表 `docs/state/econ-20260928.md`・sim に12週の伸びの判定）
 - Next: P7-T11 階段 → T12 → T13 → P7-T2 1週間の実運用。並行で人間の実機確認（T7・T9）とバランスの判断（Blockers）
 - Owner hint: Claude Code
+- Parallel: P8 → `docs/plan/P8-release.md` / Next: P8-T1 / Owner: Muse Spark（OpenCode で `/next P8`。P7 と同時に走らせない。T3 は P7-T11 の後、T6 は人間の指示で）
 
 ## Blockers
+- ライセンスの選択（P8-T5 の前提。人間が決める）
 - 既定機種の人間確認待ち（light/rush/ltのどれを既定にするか。P3バランスに影響）
 - **バランス（P7-T10, 人間の判断待ち）**: 標準1〜7日の内訳 大当たり/行動 = light 12/66%・rush 24/58%・lt 47/39%（目標 各25〜45%）。原因は行動の即時が週「生産48時間ぶん」に対し燃料が週13.3時間で役物が約8時間ぶんしか回らないこと。初閉店 day5（メダル28枚/Pで決まる）、全強化EV 1.08〜1.23（D-079 の自動補充）も NG。値は変えていない。詳細と選択肢は `docs/state/econ-20260928.md`
 

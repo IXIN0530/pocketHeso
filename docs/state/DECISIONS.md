@@ -87,3 +87,5 @@
 - D-084 | 2026-09-28 | P7-T7: 大当たりボーナス実装は IdleEconomy v4（fever廃止・旧v3は読捨て）・EngineSnapshotにjackpotBonus（旧はnull）・Totals bonusBalls・Stubは省略・web SNAPSHOT_VERSION 3。golden 613c145a8f8fd75b | 決定論1秒刻み・restore一致を確認し旧snapshotが落ちない最小形のため
 - D-085 | 2026-09-28 | P7-T8: 特別保留は grantHoldストリームで当否・serialのsplit/pattern/holdColorで枝型・Stubのbonus1In=10・snapshot bonusStock/grantHoldSeqは旧0読み・simはspec/10層違反のため@ph/claimsを使わず自前換算。golden不変613c145a8f8fd75b | 決定論と旧台帳・旧snapshotの互換を保つ最小形のため
 - D-086 | 2026-09-28 | P7-T7/T8 レビュー修正: JackpotView.rounds は「見せてよいラウンド数」（上乗せの告知前は基本のみ）に戻し、未告知の上乗せは hiddenRounds（endsAt からの逆算専用・表示しない）で渡す。golden 不変 | T7 で合計を出したため LT の復元直後に上乗せが先に見えた（spec/21「見せるのは後」）
+- D-087 | 2026-09-28 | 正式版は dev と同じコードをビルド時の定数 `__DEV_TOOLS__`（Vercel Production か PH_RELEASE=1 で false）で切り替え、Debug・spike・計測ログを本番バンドルから落とす。main は dev の fast-forward のまま（別ブランチの差分を持たない） | 「dev には残し正式版から消す」を D-019 の ff 運用を崩さずに満たすため
+- D-088 | 2026-09-28 | ペアリング鍵は読み込み時の質問ではなく起動 URL の入力（`input=text&text=<鍵>`）で毎回渡す。iCloud リンクは全員共通、鍵は PWA が自動生成 | 利用者の「鍵を貼る」手順をなくすため。鍵は元々利用者から見えるもので秘匿の意味は無い（spec/31）
