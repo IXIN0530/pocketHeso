@@ -10,6 +10,7 @@ import { act, resetGame, useEngine } from '../stores/engine.ts';
 import { setPrefs, usePrefs } from '../stores/prefs.ts';
 import { SPIKE_NAMES } from '../spikes/spike-names.ts';
 import { SavePanel } from './save-panel.tsx';
+import { AboutSheet, OnboardingSheet, markOnboarded } from './onboarding-sheet.tsx';
 import styles from './activity.module.css';
 
 // 計測ログは正式版には含めない（D-087、lazy import ごと落とす）。
@@ -34,6 +35,7 @@ export function SettingsScreen() {
   const [busy, setBusy] = useState(false);
   const [resetStep, setResetStep] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
+  const [guide, setGuide] = useState<'guide' | 'about' | null>(null);
 
   const reload = useCallback(async (d: Db) => {
     setLastExportAt((await loadSettings(d)).lastExportAt);
@@ -155,6 +157,24 @@ export function SettingsScreen() {
       )}
       <section className={styles.card}>
         <h2>アプリ</h2>
+        <div className={styles.row}>
+          <button className={styles.sub} onClick={() => setGuide('guide')}>
+            はじめての案内をもう一度
+          </button>
+          <button className={styles.sub} onClick={() => setGuide('about')}>
+            このアプリについて
+          </button>
+        </div>
+        {guide === 'guide' && (
+          <OnboardingSheet
+            standalone={isStandalone()}
+            onDone={() => {
+              setGuide(null);
+              markOnboarded().catch(report);
+            }}
+          />
+        )}
+        {guide === 'about' && <AboutSheet onDismiss={() => setGuide(null)} />}
         <dl className={styles.facts}>
           <dt>起動方法</dt>
           <dd>{isStandalone() ? 'ホーム画面（standalone）' : 'ブラウザ'}</dd>

@@ -1,11 +1,12 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { TabBar } from '../components/tab-bar.tsx';
-import { setupServiceWorker } from '../platform/pwa.ts';
+import { isStandalone, setupServiceWorker } from '../platform/pwa.ts';
 import { ActivityScreen } from '../screens/activity-screen.tsx';
 import { AwayModal } from '../screens/away-modal.tsx';
 import { EngineStatus } from '../screens/engine-status.tsx';
 import { HallScreen } from '../screens/hall-screen.tsx';
+import { OnboardingGate } from '../screens/onboarding-sheet.tsx';
 import { RecordsScreen } from '../screens/records-screen.tsx';
 import { SettingsScreen } from '../screens/settings-screen.tsx';
 import { ShopScreen } from '../screens/shop-screen.tsx';
@@ -55,6 +56,8 @@ export function App() {
     document.startViewTransition(() => flushSync(swap));
   };
   const [applyUpdate, setApplyUpdate] = useState<(() => Promise<void>) | null>(null);
+  // ホーム画面追加の案内は起動時の値で決める（P8-T4）。
+  const [standalone] = useState(() => isStandalone());
 
   useEffect(() => {
     void startEngine();
@@ -96,6 +99,7 @@ export function App() {
       )}
       <TabBar tabs={TABS} value={tab} onChange={changeTab} />
       <AwayModal />
+      <OnboardingGate standalone={standalone} />
     </main>
   );
 }

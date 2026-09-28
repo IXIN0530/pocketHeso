@@ -27,6 +27,8 @@ export interface Settings {
   readonly session?: StoredSession | undefined;
   /** 位置情報と YOLP 問い合わせの説明を読んだ（spec/32 のプライバシー）。 */
   readonly locationNoticeAck?: boolean | undefined;
+  /** はじめての案内を閉じた時刻（spec/40・41。無い新規だけ案内を出す）。 */
+  readonly onboardedAt?: number | undefined;
   /** 最後にセーブを書き出した時刻（spec/41 の週1回の案内）。 */
   readonly lastExportAt?: number | undefined;
 }
@@ -177,11 +179,12 @@ export async function putPlace(db: Db, place: OwnPlace): Promise<void> {
 }
 
 export async function loadSettings(db: Db): Promise<Settings> {
-  const [pairingKey, shortcutReadyAt, session, locationNoticeAck, lastExportAt] = await Promise.all([
+  const [pairingKey, shortcutReadyAt, session, locationNoticeAck, onboardedAt, lastExportAt] = await Promise.all([
     db.get('settings', 'pairingKey'),
     db.get('settings', 'shortcutReadyAt'),
     db.get('settings', 'session'),
     db.get('settings', 'locationNoticeAck'),
+    db.get('settings', 'onboardedAt'),
     db.get('settings', 'lastExportAt'),
   ]);
   return {
@@ -189,6 +192,7 @@ export async function loadSettings(db: Db): Promise<Settings> {
     shortcutReadyAt: shortcutReadyAt as number | undefined,
     session: session as StoredSession | undefined,
     locationNoticeAck: locationNoticeAck as boolean | undefined,
+    onboardedAt: onboardedAt as number | undefined,
     lastExportAt: lastExportAt as number | undefined,
   };
 }
