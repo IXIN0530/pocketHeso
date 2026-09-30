@@ -120,7 +120,7 @@ test('runEcon 7日: 閉店は獲得≥1のみ・玉内訳が累計と整合・�
 test('formatEcon: heavy は standard と常連Pを比べ、週次は (最上位役物, Lv合計) の辞書順で上回るかを見る', () => {
   const row = (day: number, top: string, lvTotal: number, regular: number): EconDayRow => ({
     day, balls: 0, perSecFg: day, runTotal: 0, totalTotal: 0, regular, ballPts: 0, medalPts: 0, closes: 0, awakens: 0,
-    top, lvTotal, medals: 0, medalsActivity: 0, medalsPachinko: 0, jackpots: 0, fired: 0, payout: 0, yakumono: 0, bonus: 0, action: 0, fuelMin: 0,
+    top, lvTotal, medals: 0, medalsActivity: 0, medalsPachinko: 0, jackpots: 0, fired: 0, payout: 0, yakumono: 0, bonus: 0, action: 0, fuelMin: 0, achDone: 0, achMult: 1,
   });
   const res = (profileId: string, rows: EconDayRow[]): EconResult => ({
     profile: profileId, machine: 'light-middle-01', seed: 1, days: rows.length, rows, croonDay: 1, firstAwakenDay: 3,

@@ -346,6 +346,10 @@ export interface EconDayRow {
   /** 行動の即時報酬の合計（累計。grantedのballs, D-081）。 */
   readonly action: number;
   readonly fuelMin: number;
+  /** 達成した実績の数（一覧にある id だけ, spec/24）。 */
+  readonly achDone: number;
+  /** 実績の生産倍率 achMult。 */
+  readonly achMult: number;
 }
 
 /** 閉店1回分の記録（日は1始まり・gainは獲得常連P）。 */
@@ -646,6 +650,8 @@ export function runEcon(
         bonus: bonusTotal,
         action: actionTotal,
         fuelMin: fuelGrantedMs / MIN_MS,
+        achDone: se.achieved.length,
+        achMult: econ.achMult(),
       });
     }
   }
@@ -820,14 +826,14 @@ export function lastRegular(r: EconResult): number {
 export function formatEcon(r: EconResult, ev: { init: number; full: number } | null, baseline: EconResult | null = null): string {
   const lines: string[] = [];
   lines.push(`econ: profile=${r.profile} days=${r.days} machine=${r.machine} seed=${r.seed}`);
-  lines.push('day | balls | perSec(fg) | runTotal | total | regP(ball/med) | close | awaken | top | medals | yaku/bonus/payout/action | jackpot% | action% | jackpots | fuel(h,cum)');
+  lines.push('day | balls | perSec(fg) | runTotal | total | regP(ball/med) | close | awaken | top | medals | yaku/bonus/payout/action | jackpot% | action% | jackpots | fuel(h,cum) | ach(n/xmult)');
   for (let i = 0; i < r.rows.length; i = i + 1) {
     const w = r.rows[i] as EconDayRow;
     const total = w.yakumono + w.bonus + w.payout + w.action;
     const share = total > 0 ? ((w.bonus + w.payout) / total) * 100 : 0;
     const actionShare = total > 0 ? (w.action / total) * 100 : 0;
     lines.push(
-      `${w.day} | ${fmtNum(w.balls)} | ${fmtNum(w.perSecFg)} | ${fmtNum(w.runTotal)} | ${fmtNum(w.totalTotal)} | ${w.regular}(${w.ballPts}/${w.medalPts}) | ${w.closes} | ${w.awakens} | ${w.top} | ${w.medals} | ${fmtNum(w.yakumono)}/${fmtNum(w.bonus)}/${fmtNum(w.payout)}/${fmtNum(w.action)} | ${share.toFixed(1)} | ${actionShare.toFixed(1)} | ${w.jackpots} | ${(w.fuelMin / 60).toFixed(1)}`,
+      `${w.day} | ${fmtNum(w.balls)} | ${fmtNum(w.perSecFg)} | ${fmtNum(w.runTotal)} | ${fmtNum(w.totalTotal)} | ${w.regular}(${w.ballPts}/${w.medalPts}) | ${w.closes} | ${w.awakens} | ${w.top} | ${w.medals} | ${fmtNum(w.yakumono)}/${fmtNum(w.bonus)}/${fmtNum(w.payout)}/${fmtNum(w.action)} | ${share.toFixed(1)} | ${actionShare.toFixed(1)} | ${w.jackpots} | ${(w.fuelMin / 60).toFixed(1)} | ${w.achDone}/x${w.achMult.toFixed(2)}`,
     );
   }
   lines.push(`milestones: croon day ${r.croonDay ?? '-'} / first awaken day ${r.firstAwakenDay ?? '-'} / first close day ${r.firstCloseDay ?? '-'}`);
