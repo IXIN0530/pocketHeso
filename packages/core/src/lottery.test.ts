@@ -45,7 +45,7 @@ function expectedCounts(weights: readonly number[], total: number): number[] {
 }
 
 test(
-  '100万取得で当選率が 1/199.8 ±3σ（ST も同様）・色（モード別の表）と振分けも重みどおり',
+  '100万取得で当選率が 機種 JSON の確率 ±3σ（ST も同様）・色（モード別の表）と振分けも重みどおり',
   { timeout: 180000 },
   () => {
     const { spec, patterns } = loadMachine();
@@ -102,7 +102,7 @@ test(
       }
     }
 
-    const pN = 1 / 199.8;
+    const pN = 1 / spec.normal.jackpot1In;
     const expN = n * pN;
     const sdN = Math.sqrt(n * pN * (1 - pN));
     expect(hits).toBeGreaterThanOrEqual(Math.ceil(expN - 3 * sdN));
@@ -185,7 +185,7 @@ test('保留色の重みは取得時のモードの表（白も JSON に書く�
   const { spec } = loadMachine();
   // 並びは LOTTERY_HOLD_COLORS（青・緑・赤・金・白）。
   expect(holdColorWeights(spec, 'normal', true)).toEqual([10, 15, 40, 30, 5]);
-  expect(holdColorWeights(spec, 'normal', false)).toEqual([669, 302, 202, 26, 98801]);
+  expect(holdColorWeights(spec, 'normal', false)).toEqual([723, 326, 218, 28, 98705]);
   expect(holdColorWeights(spec, 'st', true)).toEqual([15, 15, 15, 15, 40]);
   expect(holdColorWeights(spec, 'st', false)).toEqual([2185, 716, 165, 20, 96914]);
   const noSt = parseMachineText(readFileSync('../../resources/machines/light-middle-01.json', 'utf8').replace('"hold_colors_st"', '"_unused"'));

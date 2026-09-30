@@ -935,11 +935,11 @@ export function formatEcon(r: EconResult, ev: { init: number; full: number } | n
     }
   }
   if (ev !== null) {
-    const lo = r.machine.startsWith('lt-') ? 0.7 : 0.8;
-    const okInit = ev.init >= lo && ev.init <= 0.9;
-    const okFull = ev.full <= 1.02;
+    const margin = r.machine.startsWith('lt-') ? 0.07 : 0.05;
+    const okInit = ev.init >= 1.1 - margin && ev.init <= 1.1 + margin;
+    const okFull = ev.full <= 1.3;
     lines.push(
-      `  pachinko EV init ${ev.init.toFixed(3)} (≈0.85: ${okInit ? 'OK' : 'NG'}) / all upgrades ${ev.full.toFixed(3)} (<=1.02: ${okFull ? 'OK' : 'NG'})`,
+      `  pachinko EV init ${ev.init.toFixed(3)} (≈1.10: ${okInit ? 'OK' : 'NG'}) / all upgrades ${ev.full.toFixed(3)} (<=1.30: ${okFull ? 'OK' : 'NG'})`,
     );
   }
   return lines.join('\n');

@@ -29,7 +29,7 @@ test('parseRunArgs は --balls/--seed を読み省略時は light/rush/lt の3�
   expect(() => parseRunArgs(['--balls', '10', '--seed', '1', '--unknown'])).toThrow();
 });
 
-test('理論値は STATUS の目安と一致する（light 9.74・rush 9.85・lt 9.88 付近）', () => {
+test('理論値は STATUS の目安と一致する（light 10.52・rush 10.51・lt 10.39 付近）', () => {
   const { hesoRate } = loadRunAtlas();
   const light = loadRunMachine('light-middle-01');
   const rush = loadRunMachine('rush-middle-01');
@@ -37,19 +37,19 @@ test('理論値は STATUS の目安と一致する（light 9.74・rush 9.85・lt
   const lt = computeTheory(light.spec, hesoRate);
   const rt = computeTheory(rush.spec, hesoRate);
   const ltt = computeTheory(ltm.spec, hesoRate);
-  expect(lt.hatsuari1In).toBeCloseTo(199.8, 6);
-  expect(rt.hatsuari1In).toBeCloseTo(349.9, 6);
-  expect(ltt.hatsuari1In).toBeCloseTo(349.9, 6);
+  expect(lt.hatsuari1In).toBeCloseTo(185, 6);
+  expect(rt.hatsuari1In).toBeCloseTo(328, 6);
+  expect(ltt.hatsuari1In).toBeCloseTo(337, 6);
   expect(lt.stContinuation).toBeGreaterThan(0.4);
   expect(lt.stContinuation).toBeLessThan(0.52);
   expect(rt.stContinuation).toBeGreaterThan(0.8);
   expect(rt.stContinuation).toBeLessThan(0.9);
-  expect(lt.perNormalSpin).toBeGreaterThan(9.0);
-  expect(lt.perNormalSpin).toBeLessThan(10.5);
-  expect(rt.perNormalSpin).toBeGreaterThan(9.0);
-  expect(rt.perNormalSpin).toBeLessThan(10.5);
-  expect(Math.abs(lt.perNormalSpin - 9.74) / 9.74).toBeLessThan(0.05);
-  expect(Math.abs(rt.perNormalSpin - 9.85) / 9.85).toBeLessThan(0.05);
+  expect(lt.perNormalSpin).toBeGreaterThan(9.5);
+  expect(lt.perNormalSpin).toBeLessThan(11);
+  expect(rt.perNormalSpin).toBeGreaterThan(9.5);
+  expect(rt.perNormalSpin).toBeLessThan(11);
+  expect(Math.abs(lt.perNormalSpin - 10.52) / 10.52).toBeLessThan(0.05);
+  expect(Math.abs(rt.perNormalSpin - 10.51) / 10.51).toBeLessThan(0.05);
   // lt-middle-01 は spec/21 の例どおり（P2-T9）
   expect(ltm.spec.jitan?.stSpins).toBe(100);
   expect(ltm.spec.st.stSpins).toBe(56);
@@ -66,9 +66,9 @@ test('理論値は STATUS の目安と一致する（light 9.74・rush 9.85・lt
   expect(ltt.ltArrivalPerRush).toBeLessThan(0.16);
   expect(ltt.ltArrivalPerHatsuari).toBeGreaterThan(0.02);
   expect(ltt.ltArrivalPerHatsuari).toBeLessThan(0.08);
-  expect(ltt.perNormalSpin).toBeGreaterThan(9.0);
-  expect(ltt.perNormalSpin).toBeLessThan(10.5);
-  expect(Math.abs(ltt.perNormalSpin - 9.88) / 9.88).toBeLessThan(0.05);
+  expect(ltt.perNormalSpin).toBeGreaterThan(9.5);
+  expect(ltt.perNormalSpin).toBeLessThan(11);
+  expect(Math.abs(ltt.perNormalSpin - 10.39) / 10.39).toBeLessThan(0.05);
   // 通常1回転あたり期待出玉は light の ±5% 以内（P2-T9 Accept）
   expect(Math.abs(ltt.perNormalSpin - lt.perNormalSpin) / lt.perNormalSpin).toBeLessThan(0.05);
   expect(Math.abs(rt.perNormalSpin - lt.perNormalSpin) / lt.perNormalSpin).toBeLessThan(0.05);

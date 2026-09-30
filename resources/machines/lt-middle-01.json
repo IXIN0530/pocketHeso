@@ -3,8 +3,8 @@
   "version": 1,
   "tier": "middle",
   "modes": {
-    "normal": { "jackpot_1_in": 349.9, "spins": 0 },
-    "jitan": { "jackpot_1_in": 349.9, "spins": 100 },
+    "normal": { "jackpot_1_in": 337.0, "spins": 0 },
+    "jitan": { "jackpot_1_in": 337.0, "spins": 100 },
     "st": { "jackpot_1_in": 39.9, "spins": 56 },
     "lt": { "jackpot_1_in": 39.9, "spins": 91 }
   },
@@ -22,11 +22,11 @@
   "hold_max": 4,
   "spin_patterns": "patterns.json",
   "hold_colors": [
-    { "color": "white", "w_hit": 5, "w_miss": 99317 },
-    { "color": "blue", "w_hit": 10, "w_miss": 381 },
-    { "color": "green", "w_hit": 15, "w_miss": 172 },
-    { "color": "red", "w_hit": 40, "w_miss": 115 },
-    { "color": "gold", "w_hit": 30, "w_miss": 15 }
+    { "color": "white", "w_hit": 5, "w_miss": 99290 },
+    { "color": "blue", "w_hit": 10, "w_miss": 396 },
+    { "color": "green", "w_hit": 15, "w_miss": 179 },
+    { "color": "red", "w_hit": 40, "w_miss": 119 },
+    { "color": "gold", "w_hit": 30, "w_miss": 16 }
   ],
   "hold_colors_st": [
     { "color": "white", "w_hit": 40, "w_miss": 96914 },

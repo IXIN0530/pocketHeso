@@ -91,9 +91,9 @@ test('runEcon は決定論で、メダル内訳の合計が残高＋覚醒消費
   expect(a.medalsActivity).toBe(14);
   expect(a.croonDay).toBe(1);
   expect(last === undefined ? 0 : last.medals).toBeLessThanOrEqual(a.medalsActivity + a.medalsPachinko);
-  const text = formatEcon(a, { init: 0.85, full: 1.0 });
+  const text = formatEcon(a, { init: 1.1, full: 1.2 });
   expect(text).toContain('croon on day 1: OK');
-  expect(text).toContain('pachinko EV init 0.850 (≈0.85: OK) / all upgrades 1.000 (<=1.02: OK)');
+  expect(text).toContain('pachinko EV init 1.100 (≈1.10: OK) / all upgrades 1.200 (<=1.30: OK)');
 }, 60000);
 
 test('runEcon 7日: 閉店は獲得≥1のみ・玉内訳が累計と整合・新目標行を出す', () => {

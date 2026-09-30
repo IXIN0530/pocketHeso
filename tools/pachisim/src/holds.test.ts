@@ -25,7 +25,7 @@ test('保留色の理論値: 通常時は 青7%・緑20%・赤50%・金85%、ST 
   expect(n['green']!.theoryRel).toBeCloseTo(0.2, 2);
   expect(n['red']!.theoryRel).toBeCloseTo(0.5, 2);
   expect(n['gold']!.theoryRel).toBeCloseTo(0.85, 2);
-  expect(Math.round(n['gold']!.theoryOneIn)).toBe(993);
+  expect(Math.round(n['gold']!.theoryOneIn)).toBe(953);
   const s = byColor('st');
   expect(s['blue']!.theoryRel).toBeCloseTo(0.15, 2);
   expect(s['green']!.theoryRel).toBeCloseTo(0.35, 2);

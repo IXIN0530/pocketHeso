@@ -86,7 +86,7 @@ test('変動パターン JSON を検証して読み込む', () => {
 test('resources/machines の JSON が検証を通る', () => {
   const machineText = readFileSync('../../resources/machines/light-middle-01.json', 'utf8');
   const spec = parseMachineText(machineText);
-  expect(spec.normal.thresholdU32).toBe(21496332);
+  expect(spec.normal.thresholdU32).toBe(23216039);
   const patternsText = readFileSync('../../resources/machines/patterns.json', 'utf8');
   expect(parsePatternsText(patternsText).length).toBe(5);
 });
@@ -179,6 +179,6 @@ test('weight_st はST中の振分け重み（省略時はweight）・同種別�
     { kind: 'kakuhen', weight: 35, weightSt: 0, rounds: 3 },
     { kind: 'tsujo', weight: 65, weightSt: 0, rounds: 3 },
   ]);
-  expect(rush.normal.jackpot1In).toBe(349.9);
+  expect(rush.normal.jackpot1In).toBe(328);
   expect(rush.st.stSpins).toBe(75);
 });
