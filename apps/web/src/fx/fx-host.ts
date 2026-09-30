@@ -145,6 +145,8 @@ export const playBreakCue = sideLane();
 export const playHesoCue = sideLane();
 /** 大当たり中のラウンド・上乗せと結果の告知の音（D-077）。次の変動の演出と重ねて鳴らす。 */
 export const playHudCue = sideLane();
+/** 実績達成のトーストの音（spec/24）。変動・大当たりの演出と重ねて鳴らす。 */
+export const playToastCue = sideLane();
 
 export function stopCue(): void {
   player.stop();

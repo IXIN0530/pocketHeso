@@ -90,6 +90,8 @@ export interface BootResult extends EngineView {
   readonly restoredFrom: RestoredFrom;
   /** 留守から戻った時の集計（背面のまま終了していた場合）。 */
   readonly away: AwaySummary | null;
+  /** 追いつきで出たイベントのうち画面に知らせるもの（実績の達成だけ, spec/24）。 */
+  readonly events: readonly EngineSimEvent[];
 }
 
 export class EngineHost {
@@ -156,19 +158,21 @@ export class EngineHost {
   ): Promise<{ boot: BootResult; at: number; catchUpMs: number; spanMs: number }> {
     const t = this.clamp(now);
     if (t === null) {
-      return { boot: { ...this.view(true), restoredFrom: from, away: null }, at: this.engine.nowMs, catchUpMs: 0, spanMs: 0 };
+      return { boot: { ...this.view(true), restoredFrom: from, away: null, events: [] }, at: this.engine.nowMs, catchUpMs: 0, spanMs: 0 };
     }
     const spanMs = t - this.engine.nowMs;
     const started = perf();
-    this.engine.advance(t);
+    const caught = this.engine.advance(t);
     const catchUpMs = perf() - started;
     let away: AwaySummary | null = null;
+    let later: readonly EngineSimEvent[] = [];
     if (!this.fg) {
-      await this.presence(true, t);
+      later = (await this.presence(true, t)).events;
       away = this.engine.awaySummary();
     }
     await this.saveSnapshot(t, true);
-    return { boot: { ...this.view(false), restoredFrom: from, away }, at: t, catchUpMs, spanMs };
+    const events = [...caught, ...later].filter((e) => e.k === 'achieved');
+    return { boot: { ...this.view(false), restoredFrom: from, away, events }, at: t, catchUpMs, spanMs };
   }
 
   private inputCount(): number {

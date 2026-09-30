@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { ClaimRecord } from '@ph/claims';
+import type { AchievementMetric, AchievementsView } from '@ph/core';
+import { ACHIEVEMENTS } from '../engine/achievement-defs.ts';
 import { loadLedger, openStorage } from '../platform/storage.ts';
+import { METRIC_LABEL, achievedCount, groupAchievements, multPercent } from '../stores/achievements.ts';
 import { describeRecord, formatFuel, formatProd } from '../stores/activity.ts';
 import { clock, dbNameFor } from '../stores/clock.ts';
 import { useEngine } from '../stores/engine.ts';
@@ -46,7 +49,55 @@ const dayLabel = (day: string) => {
   return `${Number(m)}/${Number(d)}`;
 };
 
-/** 記録画面（spec/40）: パチンコ統計、閉店履歴、日別の行動と獲得。 */
+/** 達成日（M/D）。 */
+const dateLabel = (ms: number) => {
+  const d = new Date(ms);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+};
+
+/** 指標の値（基準生産/秒だけ小数1桁）。 */
+const metricNum = (metric: AchievementMetric, n: number) => formatNum(n, metric === 'refPerSec' ? 1 : 0);
+
+/** 実績（spec/24 画面）: 達成数と生産 +n%、指標ごとに達成済み・次の1つの進捗・伏せた先。 */
+function AchievementsCard({ view }: { view: AchievementsView }) {
+  const groups = groupAchievements(view, ACHIEVEMENTS.list);
+  return (
+    <section className={styles.card}>
+      <h2>
+        実績 {achievedCount(view, ACHIEVEMENTS.list)} / {ACHIEVEMENTS.list.length}・生産 +{multPercent(view.mult)}%
+      </h2>
+      <ul className={styles.list}>
+        {groups.map((g) => (
+          <li key={g.metric} className={styles.achGroup}>
+            <small className={styles.note}>{METRIC_LABEL[g.metric]}</small>
+            {g.done.map((d) => (
+              <span key={d.id} className={styles.achDone}>
+                <span>★ {d.name}</span>
+                <small className={styles.note}>{dateLabel(d.at)}</small>
+              </span>
+            ))}
+            {g.next && (
+              <span className={styles.achNext}>
+                <span className={styles.achDone}>
+                  <span>☆ {g.next.name}</span>
+                  <small className={styles.note}>
+                    {metricNum(g.metric, g.next.value)} / {metricNum(g.metric, g.next.at)}
+                  </small>
+                </span>
+                <span className={styles.bar} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor(g.next.ratio * 100)}>
+                  <span style={{ width: `${g.next.ratio * 100}%` }} />
+                </span>
+              </span>
+            )}
+            {g.hidden > 0 && <small className={styles.note}>{'？？？ '.repeat(g.hidden).trim()}</small>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** 記録画面（spec/40）: 実績、パチンコ統計、閉店履歴、日別の行動と獲得。 */
 export function RecordsScreen() {
   const p = useEngine((s) => s.projection);
   const [days, setDays] = useState<DayRecord[] | null>(null);
@@ -69,6 +120,7 @@ export function RecordsScreen() {
   const t = p?.totals;
   return (
     <div className={styles.screen}>
+      {p && <AchievementsCard view={p.achievements} />}
       {t && (
         <section className={styles.card}>
           <h2>パチンコ</h2>

@@ -31,6 +31,12 @@ export function AwayModal() {
             </dd>
           </>
         )}
+        {away.achievements > 0 && (
+          <>
+            <dt>実績</dt>
+            <dd>+{away.achievements}</dd>
+          </>
+        )}
         <dt>燃料</dt>
         <dd>{away.fuelEmptyAt !== null ? `${formatTime(away.fuelEmptyAt, away.to)} に切れました` : fuelMs > 0 ? '最後まで持ちました' : '切れたままでした'}</dd>
       </dl>

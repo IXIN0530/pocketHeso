@@ -296,6 +296,13 @@
       "cues": [{ "at": 0, "kind": "sound", "bus": "se", "asset": "black" }]
     },
     {
+      "pattern": "achieved",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "hold_up" },
+        { "at": 0, "kind": "haptic", "pattern": [20] }
+      ]
+    },
+    {
       "pattern": "bonus_end",
       "cues": [{ "at": 0, "kind": "sound", "bus": "se", "asset": "hold_up" }]
     },

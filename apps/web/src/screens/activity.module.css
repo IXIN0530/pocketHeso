@@ -186,3 +186,44 @@
   text-align: center;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
 }
+
+/* 記録の実績（spec/24）。 */
+.achGroup {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #2c3160;
+}
+
+.achGroup:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.achDone {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.achNext {
+  display: grid;
+  gap: 4px;
+  color: #a8acc8;
+}
+
+.bar {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: #121630;
+  overflow: hidden;
+}
+
+.bar > span {
+  display: block;
+  height: 100%;
+  background: #e8b840;
+}
