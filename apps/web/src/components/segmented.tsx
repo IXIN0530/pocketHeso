@@ -9,17 +9,20 @@ export function Segmented<T extends string | number>({
   onChange,
   label,
   disabled = false,
+  dense = false,
 }: {
   options: readonly (readonly [T, string])[];
   value: T;
   onChange: (value: T) => void;
   label: string;
   disabled?: boolean;
+  /** 項目が多い時用: ボタンの最小幅を 0・左右の余白を狭くする。 */
+  dense?: boolean;
 }) {
   const index = options.findIndex(([v]) => v === value);
   return (
     <div
-      className={styles.segmented}
+      className={dense ? `${styles.segmented} ${styles.dense}` : styles.segmented}
       role="radiogroup"
       aria-label={label}
       style={{ '--n': options.length, '--i': Math.max(0, index) } as CSSProperties}

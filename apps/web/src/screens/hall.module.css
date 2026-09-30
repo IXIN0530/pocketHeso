@@ -190,6 +190,18 @@
   box-shadow: inset 0 0 0 2px #e8b840;
 }
 
+.rate {
+  display: grid;
+  flex-basis: 100%;
+  gap: 4px;
+  min-width: 0;
+}
+
+.rateLabel {
+  color: #a8acc8;
+  font-size: 11px;
+}
+
 .shoot:disabled {
   opacity: 0.6;
 }

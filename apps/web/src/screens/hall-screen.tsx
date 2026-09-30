@@ -147,12 +147,16 @@ export function HallScreen({ active = true }: { active?: boolean }) {
               {p.shoot.on ? '打っています — 止める' : '打つ'}
             </button>
             {p.rates.length > 1 && (
-              <Segmented
-                label="レート"
-                options={p.rates.map((r, i) => [r, `${r}パチ 1発${formatNum(p.rateCosts[i] ?? r)}玉`] as const)}
-                value={p.shoot.rate}
-                onChange={(r) => send({ k: 'shoot', on: p.shoot.on, rate: r })}
-              />
+              <div className={styles.rate}>
+                <span className={styles.rateLabel}>レート（パチ）</span>
+                <Segmented
+                  label="レート（パチ）"
+                  dense
+                  options={p.rates.map((r) => [r, String(r)] as const)}
+                  value={p.shoot.rate}
+                  onChange={(r) => send({ k: 'shoot', on: p.shoot.on, rate: r })}
+                />
+              </div>
             )}
             <p className={styles.state}>1発 {formatNum(p.rateCosts[p.rates.indexOf(p.shoot.rate)] ?? p.shoot.rate)}玉（生産{p.shotS}秒 × {p.shoot.rate}パチ）</p>
           </div>
