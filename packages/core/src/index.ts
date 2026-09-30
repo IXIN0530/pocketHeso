@@ -104,6 +104,9 @@ export { SpinMachine, jackpotBaseDurationMs, jackpotDurationMs, spinDurationMs }
 export type { EconomyPort } from './economy.ts';
 export { StubEconomy } from './economy.ts';
 export type {
+  AchievementRecord,
+  AchievementsView,
+  EngineAchievementMetrics,
   IdleEconomySnapshot,
   IdleYakumonoView,
   ShopCloseView,
@@ -134,6 +137,9 @@ export {
   yakumonoPrice,
 } from './economy-math.ts';
 export type {
+  AchievementDef,
+  AchievementMetric,
+  EconomyAchievements,
   EconomyAwaken,
   EconomyClaims,
   EconomyClose,
@@ -148,6 +154,7 @@ export type {
   EconomyYakumonoId,
 } from './economy-config.ts';
 export {
+  ACHIEVEMENT_METRICS,
   ECONOMY_YAKUMONO_IDS,
   parseEconomy,
   parseEconomyText,

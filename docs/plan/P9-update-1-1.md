@@ -43,8 +43,8 @@ Do:
 - spec/24 の判定規則をテストで固定: advance 1回と1秒刻みの一致／snapshot→restore 一致／旧 v5 から復元すると満たしている実績が最初の tick で達成／閉店しても達成と achMult が残る／
   achMult は達成の次の tick から効く／一覧から消えた id は数えない。golden の新ハッシュを DECISIONS に。
 Accept:
-- [ ] 上のテストが通る。`scripts/test.sh core`・`scripts/build.sh`・`scripts/test.sh all` が通る
-- [ ] 旧セーブ（v1.0.0 で書き出したもの）を読み込んで落ちない（web のテストに v4 のスナップショットを1つ足す）
+- [x] 上のテストが通る。`scripts/test.sh core`・`scripts/build.sh`・`scripts/test.sh all` が通る
+- [x] 旧セーブ（v1.0.0 で書き出したもの）を読み込んで落ちない（web のテストに v4 のスナップショットを1つ足す）
 
 ### P9-T4 実績の画面（記録タブ・トースト・留守中サマリー）
 Owner: Claude Code | Read: spec/24-core-achievements（画面節）, spec/40-app-ui（記録・ホール・操作感）, spec/43-presentation-effects（CueSheet） | 前提: P9-T3

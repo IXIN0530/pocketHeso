@@ -98,3 +98,4 @@
 - D-095 | 2026-09-30 | 永続の実績を Core に入れる（spec/24）。報酬は1個ごとに生産 +1%（加算、refPerSec にも掛ける）、閉店で保持、判定は economyTick の直後で達成は次の tick から効く。初期 44 個 | 9/30 人間: 報酬は「小さな永続生産倍率」を選択。メダル報酬は D-049（メダルは行動のみ）を崩すため不採用
 - D-096 | 2026-09-30 | ホールのレート選択は数字だけのセグメントを1行まるごと使い、1発のコストは下の行だけに出す | 4パチ解放以降「◯パチ 1発◯玉」がセグメントからはみ出すため（最大7項目を 375px に収める）
 - D-097 | 2026-09-30 | P9-T1 実装: 3機種 `ms_per_round` 5000・web の DEFAULT_ROUND 5000。golden 5a70c4f721dd8dcc → a009ee1ba27c3791。`sim run` は3機種とも T1 前と同一出力 | 大当たりの終了時刻が変わりイベント列の時刻が変わるため（出玉は不変）
+- D-098 | 2026-09-30 | P9-T3 実装: 実績は `achievements: { mult_per, list }`（id は `<metric>_<短縮>`、名前は仮の日本語）。IdleEconomy v6（achieved・awakenTotal）・EngineSnapshot away.awayAchieved・AwaySummary.achievements・web SNAPSHOT_VERSION 5（3・4 も読む）。v4/v5 の feverMs を読み捨てていた復元のバグも直す（v2 以降は読む）。golden a009ee1ba27c3791 → 23162bb518355b7f | 判定は指標ごとの未達成の最小しきい値で先に絞り、basePerSec をキャッシュして 24時間 advance を T3 前と同程度に保つため

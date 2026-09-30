@@ -48,6 +48,8 @@ function loadEconomy(): IdleEconomy {
   (json['close'] as Record<string, unknown>)['required_run_total'] = 1000000000;
   (json['close'] as Record<string, unknown>)['divisor'] = 1000000000;
   (json['close'] as Record<string, unknown>)['medals_per_point'] = 7;
+  // 実績の倍率が途中で入ると手計算がずれるので外す（実績は achievements.test.ts）。
+  (json['achievements'] as Record<string, unknown>)['list'] = [];
   return new IdleEconomy(parseEconomy(json));
 }
 
@@ -271,7 +273,7 @@ test('発射単価は rate×ref×shotS（切り捨て・最低 rate）・役物�
   const old = loadEconomy();
   old.restore(v3);
   expect(old.getRefPerSec()).toBe(ref);
-  expect(old.snapshot().v).toBe(5);
+  expect(old.snapshot().v).toBe(6);
   expect('jackpotFeverMult' in (old.snapshot() as unknown as Record<string, unknown>)).toBe(false);
   // 旧版 snapshot（v2）は累計獲得メダル0で読む
   const v2: Record<string, unknown> = { ...(econ.snapshot() as unknown as Record<string, unknown>), v: 2 };

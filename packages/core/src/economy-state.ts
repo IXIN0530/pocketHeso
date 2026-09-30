@@ -1,6 +1,6 @@
 /** 放置経済の状態遷移（spec/23・spec/22入力節。P3-T2）。 */
-import type { EconomySpec } from './economy-config.ts';
-import { ECONOMY_YAKUMONO_IDS } from './economy-config.ts';
+import type { AchievementDef, AchievementMetric, EconomySpec } from './economy-config.ts';
+import { ACHIEVEMENT_METRICS, ECONOMY_YAKUMONO_IDS } from './economy-config.ts';
 import type { EconomyPort } from './economy.ts';
 import {
   addAmount,
@@ -18,9 +18,30 @@ import {
 /** 旧レート表（D-090 前。[1,4,10,40,100,400,1000]。v4 以前の rateStage 移行用）。 */
 const LEGACY_RATES: readonly number[] = [1, 4, 10, 40, 100, 400, 1000];
 
+/** 達成した実績1件（達成時刻は economyTick の時刻, spec/24）。 */
+export interface AchievementRecord {
+  readonly id: string;
+  readonly at: number;
+}
+
+/** Engine が持つ実績の指標（Totals と閉店の記録から渡す）。 */
+export interface EngineAchievementMetrics {
+  readonly firstHits: number;
+  readonly jackpots: number;
+  readonly maxChain: number;
+  readonly closes: number;
+}
+
+/** 実績の表示（Projection の achievements。done は達成順、metrics は進捗表示用の今の値）。 */
+export interface AchievementsView {
+  readonly done: readonly AchievementRecord[];
+  readonly mult: number;
+  readonly metrics: Readonly<Record<AchievementMetric, number>>;
+}
+
 /** IdleEconomy の複写（Engine の snapshot.economy に入る）。 */
 export interface IdleEconomySnapshot {
-  readonly v: 5;
+  readonly v: 6;
   readonly lv: readonly number[];
   readonly awakened: readonly number[];
   readonly idleStage: number;
@@ -41,6 +62,10 @@ export interface IdleEconomySnapshot {
   readonly feverMs: number;
   /** 累計獲得メダル（Grant でだけ増え、消費しても減らない。D-049）。 */
   readonly medalsEarned: number;
+  /** 達成した実績（達成順。一覧から消えた id も残す, spec/24）。 */
+  readonly achieved: readonly AchievementRecord[];
+  /** 覚醒の累計回数（閉店で保持）。 */
+  readonly awakenTotal: number;
 }
 
 /** 役物表示（Lv・覚醒数・次の価格。描画と購入UIが見る）。 */
@@ -238,6 +263,16 @@ export class IdleEconomy implements EconomyPort {
   private boostOnState = true;
   private feverMsState = 0;
   private medalsEarnedState = 0;
+  private awakenTotalState = 0;
+  private achievedState: AchievementRecord[] = [];
+  /** 一覧の添字ごとの達成済み（achievedState から作る）。 */
+  private achievedFlags: boolean[];
+  /** 一覧にある達成の数（achMult に使う。一覧から消えた id は数えない）。 */
+  private achCountState = 0;
+  /** 指標ごとの未達成の最小しきい値（ACHIEVEMENT_METRICS の添字。無ければ -1）。毎秒の判定を軽くする。 */
+  private achMinAt: number[] = [];
+  /** basePerSec のキャッシュ（Lv・覚醒が変わる購入・覚醒・閉店・復元で捨てる。-1 は未計算）。 */
+  private basePerSecCache = -1;
 
   /** 仕様から価格表（growth^0..10000）を作る。 */
   constructor(spec: EconomySpec) {
@@ -245,12 +280,14 @@ export class IdleEconomy implements EconomyPort {
     this.priceTable = buildGrowthTable(spec.priceGrowth, 10000);
     this.lvState = [0, 0, 0, 0, 0, 0, 0, 0];
     this.awakenedState = [0, 0, 0, 0, 0, 0, 0, 0];
+    this.achievedFlags = [];
+    this.rebuildAchievedFlags();
   }
 
   /** 状態の複写。 */
   snapshot(): IdleEconomySnapshot {
     return {
-      v: 5,
+      v: 6,
       lv: [...this.lvState],
       awakened: [...this.awakenedState],
       idleStage: this.idleStageState,
@@ -270,16 +307,21 @@ export class IdleEconomy implements EconomyPort {
       boostOn: this.boostOnState,
       feverMs: this.feverMsState,
       medalsEarned: this.medalsEarnedState,
+      achieved: this.achievedState.map((r) => ({ id: r.id, at: r.at })),
+      awakenTotal: this.awakenTotalState,
     };
   }
 
-  /** 複写から復元する（v1 は fever=0、v1/v2 は累計獲得メダル=0、v3 以前の jackpotFeverMult は読んで捨てる、v4 以前は旧レート段を移行 D-090）。 */
+  /**
+   * 複写から復元する（v1 は fever=0、v1/v2 は累計獲得メダル=0、v3 以前の jackpotFeverMult は読んで捨てる、v4 以前は旧レート段を移行 D-090、
+   * v5 以前は実績なし・覚醒の累計＝今の周回の Σawakened, spec/24）。
+   */
   restore(s: unknown): void {
     if (!isRecord(s)) {
       fail('snapshot must be an object');
     }
     const v = s['v'];
-    if (v !== 1 && v !== 2 && v !== 3 && v !== 4 && v !== 5) {
+    if (v !== 1 && v !== 2 && v !== 3 && v !== 4 && v !== 5 && v !== 6) {
       fail('snapshot version mismatch');
     }
     const lv = s['lv'];
@@ -301,7 +343,7 @@ export class IdleEconomy implements EconomyPort {
     const rateStageRaw = asNonNegInt(s['rateStage'] as number, 'rateStage');
     // v4 以前は旧レート表 [1,4,10,40,100,400,1000] の段。旧の最大解放レートを新表のそれ以下の最大に丸める（400・1000→100, D-090）。
     let rateStage = rateStageRaw;
-    if (v !== 5) {
+    if (v !== 5 && v !== 6) {
       const oldRate = rateStageRaw < LEGACY_RATES.length ? (LEGACY_RATES[rateStageRaw] as number) : 1000;
       const news = this.spec.upgrades.rates;
       let mapped = 0;
@@ -340,19 +382,47 @@ export class IdleEconomy implements EconomyPort {
       fail('boostOn must be boolean');
     }
     let feverMs = 0;
-    if (v === 2 || v === 3) {
+    if (v !== 1 && s['feverMs'] !== undefined) {
       feverMs = asFinite(s['feverMs'] as number, 'feverMs');
       if (feverMs < 0) {
         fail('feverMs must be >= 0');
       }
     }
     let medalsEarned = 0;
-    if (v === 3 || v === 4 || v === 5) {
+    if (v === 3 || v === 4 || v === 5 || v === 6) {
       medalsEarned = asNonNegInt(s['medalsEarned'] as number, 'medalsEarned');
       // v3 以前の jackpotFeverMult は読んで捨てる（D-080 で廃止）。
     }
+    const achieved: AchievementRecord[] = [];
+    let awakenTotal = 0;
+    if (v === 6) {
+      const rawAch = s['achieved'];
+      if (!Array.isArray(rawAch)) {
+        fail('achieved must be an array');
+      }
+      for (let i = 0; i < rawAch.length; i = i + 1) {
+        const r = rawAch[i] as unknown;
+        if (!isRecord(r) || typeof r['id'] !== 'string' || r['id'].length === 0) {
+          fail('achieved[' + i + '].id must be a non-empty string');
+        }
+        const id = r['id'];
+        const at = asNonNegInt(r['at'] as number, 'achieved[' + i + '].at');
+        for (let k = 0; k < achieved.length; k = k + 1) {
+          if ((achieved[k] as AchievementRecord).id === id) {
+            fail('achieved[' + i + '].id duplicated');
+          }
+        }
+        achieved.push({ id, at });
+      }
+      awakenTotal = asNonNegInt(s['awakenTotal'] as number, 'awakenTotal');
+    } else {
+      for (let i = 0; i < 8; i = i + 1) {
+        awakenTotal = awakenTotal + (awCopy[i] as number);
+      }
+    }
     this.lvState = lvCopy;
     this.awakenedState = awCopy;
+    this.basePerSecCache = -1;
     this.idleStageState = idleStage;
     this.tankStageState = tankStage;
     this.nailStageState = nailStage;
@@ -370,6 +440,186 @@ export class IdleEconomy implements EconomyPort {
     this.boostOnState = boostOn;
     this.feverMsState = feverMs;
     this.medalsEarnedState = medalsEarned;
+    this.achievedState = achieved;
+    this.awakenTotalState = awakenTotal;
+    this.rebuildAchievedFlags();
+  }
+
+  /** 一覧の添字ごとの達成済みと、一覧にある達成の数を作り直す（反復は配列の添字順のみ）。 */
+  private rebuildAchievedFlags(): void {
+    const list = this.spec.achievements.list;
+    const flags: boolean[] = [];
+    let count = 0;
+    for (let i = 0; i < list.length; i = i + 1) {
+      const id = (list[i] as AchievementDef).id;
+      let done = false;
+      for (let k = 0; k < this.achievedState.length; k = k + 1) {
+        if ((this.achievedState[k] as AchievementRecord).id === id) {
+          done = true;
+          break;
+        }
+      }
+      flags.push(done);
+      if (done) {
+        count = count + 1;
+      }
+    }
+    this.achievedFlags = flags;
+    this.achCountState = count;
+    this.rebuildAchMinAt();
+  }
+
+  /** 指標ごとの未達成の最小しきい値を作り直す。 */
+  private rebuildAchMinAt(): void {
+    const list = this.spec.achievements.list;
+    const mins: number[] = [];
+    for (let m = 0; m < ACHIEVEMENT_METRICS.length; m = m + 1) {
+      mins.push(-1);
+    }
+    for (let i = 0; i < list.length; i = i + 1) {
+      if (this.achievedFlags[i] === true) {
+        continue;
+      }
+      const def = list[i] as AchievementDef;
+      for (let m = 0; m < ACHIEVEMENT_METRICS.length; m = m + 1) {
+        if (ACHIEVEMENT_METRICS[m] === def.metric) {
+          const cur = mins[m] as number;
+          if (cur < 0 || def.at < cur) {
+            mins[m] = def.at;
+          }
+          break;
+        }
+      }
+    }
+    this.achMinAt = mins;
+  }
+
+  /** 実績の生産倍率 achMult = 1 + mult_per × 達成数（一覧にある id だけ数える, spec/24）。 */
+  achMult(): number {
+    return 1 + this.spec.achievements.multPer * this.achCountState;
+  }
+
+  /** 覚醒の累計回数。 */
+  getAwakenTotal(): number {
+    return this.awakenTotalState;
+  }
+
+  /** 実績の指標1つの今の値（Engine 側の値は引数で受け取る）。 */
+  private metricValue(metric: AchievementMetric, eng: EngineAchievementMetrics): number {
+    switch (metric) {
+      case 'ballsTotal':
+        return this.totalTotalState;
+      case 'medalsEarned':
+        return this.medalsEarnedState;
+      case 'refPerSec':
+        return this.getRefPerSec();
+      case 'yakumono': {
+        let n = 0;
+        for (let i = 0; i < 8; i = i + 1) {
+          if ((this.lvState[i] as number) >= 1) {
+            n = n + 1;
+          }
+        }
+        return n;
+      }
+      case 'awakenTotal':
+        return this.awakenTotalState;
+      case 'rateStage':
+        return this.rateStageState;
+      case 'streakDays':
+        return this.streakDaysState;
+      case 'firstHits':
+        return eng.firstHits;
+      case 'jackpots':
+        return eng.jackpots;
+      case 'maxChain':
+        return eng.maxChain;
+      case 'closes':
+        return eng.closes;
+    }
+  }
+
+  /** 実績の指標の今の値（進捗表示用。Engine 側の値は引数で受け取る）。 */
+  achievementMetrics(eng: EngineAchievementMetrics): Record<AchievementMetric, number> {
+    return {
+      ballsTotal: this.metricValue('ballsTotal', eng),
+      medalsEarned: this.metricValue('medalsEarned', eng),
+      refPerSec: this.metricValue('refPerSec', eng),
+      yakumono: this.metricValue('yakumono', eng),
+      awakenTotal: this.metricValue('awakenTotal', eng),
+      rateStage: this.metricValue('rateStage', eng),
+      streakDays: this.metricValue('streakDays', eng),
+      firstHits: this.metricValue('firstHits', eng),
+      jackpots: this.metricValue('jackpots', eng),
+      maxChain: this.metricValue('maxChain', eng),
+      closes: this.metricValue('closes', eng),
+    };
+  }
+
+  /**
+   * economyTick の最後の実績判定（一覧を添字順に見て、未達成で 値 ≥ at のものを達成にする。
+   * achMult は次の tick から効く。達成した id を一覧の順で返す, spec/24）。
+   */
+  onAchievementTick(at: number, eng: EngineAchievementMetrics): string[] {
+    const list = this.spec.achievements.list;
+    if (this.achCountState >= list.length) {
+      return [];
+    }
+    // 毎秒呼ばれるので、まず指標ごとの未達成の最小しきい値に届いたものがあるかだけ見る（添字は ACHIEVEMENT_METRICS の順）。
+    const mins = this.achMinAt;
+    const reached = (i: number, value: number): boolean => {
+      const minAt = mins[i] as number;
+      return minAt > 0 && value >= minAt;
+    };
+    const any =
+      reached(0, this.totalTotalState) ||
+      reached(1, this.medalsEarnedState) ||
+      reached(4, this.awakenTotalState) ||
+      reached(5, this.rateStageState) ||
+      reached(6, this.streakDaysState) ||
+      reached(7, eng.firstHits) ||
+      reached(8, eng.jackpots) ||
+      reached(9, eng.maxChain) ||
+      reached(10, eng.closes) ||
+      ((mins[3] as number) > 0 && this.metricValue('yakumono', eng) >= (mins[3] as number)) ||
+      ((mins[2] as number) > 0 && this.getRefPerSec() >= (mins[2] as number));
+    if (!any) {
+      return [];
+    }
+    let ref = -1;
+    const out: string[] = [];
+    for (let i = 0; i < list.length; i = i + 1) {
+      if (this.achievedFlags[i] === true) {
+        continue;
+      }
+      const def = list[i] as AchievementDef;
+      let value: number;
+      if (def.metric === 'refPerSec') {
+        if (ref < 0) {
+          ref = this.getRefPerSec();
+        }
+        value = ref;
+      } else {
+        value = this.metricValue(def.metric, eng);
+      }
+      if (value >= def.at) {
+        this.achievedFlags[i] = true;
+        this.achievedState.push({ id: def.id, at });
+        out.push(def.id);
+      }
+    }
+    this.achCountState = this.achCountState + out.length;
+    this.rebuildAchMinAt();
+    return out;
+  }
+
+  /** 実績の表示（達成順・今の achMult・指標の今の値）。 */
+  getAchievementsView(eng: EngineAchievementMetrics): AchievementsView {
+    return {
+      done: this.achievedState.map((r) => ({ id: r.id, at: r.at })),
+      mult: this.achMult(),
+      metrics: this.achievementMetrics(eng),
+    };
   }
 
   /** 独立した複製。 */
@@ -420,8 +670,11 @@ export class IdleEconomy implements EconomyPort {
     return m;
   }
 
-  /** 役物ごとの毎秒生産（強化・覚醒・マイルストーン込み、状態係数なし）。 */
+  /** 役物ごとの毎秒生産（強化・覚醒・マイルストーン込み、状態係数なし。Lv・覚醒が変わるまでキャッシュ）。 */
   basePerSec(): number {
+    if (this.basePerSecCache >= 0) {
+      return this.basePerSecCache;
+    }
     let sum = 0;
     for (let i = 0; i < 8; i = i + 1) {
       const def = this.spec.yakumono[i];
@@ -442,10 +695,11 @@ export class IdleEconomy implements EconomyPort {
       const per = ((def as { yield: number }).yield * lv * this.yakumonoMult(i)) / period;
       sum = sum + per;
     }
+    this.basePerSecCache = sum;
     return sum;
   }
 
-  /** 現在の毎秒生産（常連・連日・ブースト・予告/大当たりフィーバー・状態係数込み）。 */
+  /** 現在の毎秒生産（常連・連日・実績・ブースト・予告フィーバー・状態係数込み）。 */
   getPerSec(fg: boolean, fuelMs: number): number {
     const base = this.basePerSec();
     if (base === 0) {
@@ -469,7 +723,7 @@ export class IdleEconomy implements EconomyPort {
     if (this.feverMsState > 0) {
       feverF = this.spec.notice.feverMult;
     }
-    return base * regularF * streakF * boostF * feverF * stateF;
+    return base * regularF * streakF * this.achMult() * boostF * feverF * stateF;
   }
 
   /** フィーバー残量ms（前面・背面を問わずtickで減る）。 */
@@ -485,7 +739,7 @@ export class IdleEconomy implements EconomyPort {
     }
   }
 
-  /** 基準生産（前面・燃料ありの値。ブースト・予告フィーバー・状態係数を含まず下限あり, D-080）。 */
+  /** 基準生産（前面・燃料ありの値。実績は含み、ブースト・予告フィーバー・状態係数を含まず下限あり, D-080・D-095）。 */
   getRefPerSec(): number {
     const base = this.basePerSec();
     const regularF = 1 + this.spec.close.regularMult * this.regularState;
@@ -494,7 +748,7 @@ export class IdleEconomy implements EconomyPort {
       this.spec.claims.streakPerDay,
       this.spec.claims.streakMaxDays,
     );
-    const ref = base * regularF * streakF;
+    const ref = base * regularF * streakF * this.achMult();
     const min = this.spec.prodRef.minPerSec;
     return ref > min ? ref : min;
   }
@@ -937,6 +1191,7 @@ export class IdleEconomy implements EconomyPort {
         return { ok: false, reason: 'insufficient-balls' };
       }
       this.lvState[yIdx] = lv + count;
+      this.basePerSecCache = -1;
       return { ok: true, balls: curBalls - price, medals: curMedals };
     }
     if (count !== 1) {
@@ -1057,6 +1312,8 @@ export class IdleEconomy implements EconomyPort {
     }
     this.lvState[idx] = 0;
     this.awakenedState[idx] = awakened + 1;
+    this.awakenTotalState = this.awakenTotalState + 1;
+    this.basePerSecCache = -1;
     return { ok: true, medals: curMedals - cost };
   }
 
@@ -1081,6 +1338,7 @@ export class IdleEconomy implements EconomyPort {
     this.regularState = this.regularState + gain;
     this.lvState = [0, 0, 0, 0, 0, 0, 0, 0];
     this.awakenedState = [0, 0, 0, 0, 0, 0, 0, 0];
+    this.basePerSecCache = -1;
     this.idleStageState = 0;
     this.tankStageState = 0;
     this.nailStageState = 0;

@@ -109,6 +109,38 @@ test('Accept: snapshot を壊しても再計算で同じ状態に起動できる
   }
 });
 
+test('旧版4（v1.0.0・IdleEconomy v5・実績なし）の snapshot から落ちずに起動し、満たしている実績が入る', async () => {
+  const db = await freshDb();
+  const { host } = await EngineHost.open(db, ATLAS, T0, seeds);
+  await host.receive([rec('health:steps:2026-09-26:1', T0 - 5000, 30 * MIN, 10)], false, T0 + 1000);
+  await host.presence(false, T0 + 5000);
+  const at = T0 + 15 * MIN;
+  const snap = (await getSnapshot(db, 'latest')) as { v: number; engine: Record<string, unknown> };
+  expect(snap.v).toBe(5);
+  const econ: Record<string, unknown> = { ...(snap.engine['economy'] as Record<string, unknown>), v: 5 };
+  delete econ['achieved'];
+  delete econ['awakenTotal'];
+  const away = { ...(snap.engine['away'] as Record<string, unknown>) };
+  delete away['awayAchieved'];
+  if (away['lastSummary'] !== null) {
+    const last = { ...(away['lastSummary'] as Record<string, unknown>) };
+    delete last['achievements'];
+    away['lastSummary'] = last;
+  }
+  await putSnapshot(db, 'latest', { ...snap, v: 4, engine: { ...snap.engine, economy: econ, away } });
+  const old = await EngineHost.open(db, ATLAS, at, seeds);
+  expect(old.boot.restoredFrom).toBe('snapshot');
+  const done = (await old.host.tick(at + 2000)).projection.achievements.done.map((d) => d.id);
+  expect(done.length).toBeGreaterThan(0);
+
+  // 通しで再計算した時と同じ実績がそろう（達成時刻は復元後の最初の tick になる）。
+  await putSnapshot(db, 'latest', 'garbage');
+  const fresh = await EngineHost.open(db, ATLAS, at, seeds);
+  expect(fresh.boot.restoredFrom).toBe('recompute');
+  const want = (await fresh.host.tick(at + 2000)).projection.achievements.done.map((d) => d.id);
+  expect(done.slice().sort()).toEqual(want.slice().sort());
+});
+
 test('背面のまま終了していたら起動時に前面へ戻して留守中サマリーを返す', async () => {
   const db = await freshDb();
   const { host } = await EngineHost.open(db, ATLAS, T0, seeds);

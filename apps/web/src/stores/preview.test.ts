@@ -13,6 +13,7 @@ const away: AwaySummary = {
   hottestEntry: 41,
   maxHot: 3,
   replay: { entry: 41, pattern: 'spsp_gekiatsu', color: 'red', hot: 3, startedAt: 500000, endsAt: 541200, kind: 'kakuhen', rounds: 10 },
+  achievements: 0,
 };
 
 test('留守中リプレイは Engine の保留の番号・パターン・実際の変動時間・大当たりの種類で流す', () => {

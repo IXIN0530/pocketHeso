@@ -31,7 +31,9 @@ function loadAtlas(): ArrayBuffer {
 }
 
 function loadEconomy(): IdleEconomy {
-  const json = JSON.parse(readFileSync('../../resources/economy/default.json', 'utf8')) as unknown;
+  const json = JSON.parse(readFileSync('../../resources/economy/default.json', 'utf8')) as Record<string, unknown>;
+  // 実績の倍率が途中で入ると手計算がずれるので外す（実績は achievements.test.ts）。
+  (json['achievements'] as Record<string, unknown>)['list'] = [];
   return new IdleEconomy(parseEconomy(json));
 }
 

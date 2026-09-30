@@ -116,6 +116,49 @@ export interface EconomyClaims {
   readonly streakMaxDays: number;
 }
 
+/** 実績の指標（spec/24。Engine 側の firstHits・jackpots・maxChain・closes を含む）。 */
+export type AchievementMetric =
+  | 'ballsTotal'
+  | 'medalsEarned'
+  | 'refPerSec'
+  | 'yakumono'
+  | 'awakenTotal'
+  | 'rateStage'
+  | 'streakDays'
+  | 'firstHits'
+  | 'jackpots'
+  | 'maxChain'
+  | 'closes';
+
+/** 既知の実績の指標（順序固定）。 */
+export const ACHIEVEMENT_METRICS: readonly AchievementMetric[] = [
+  'ballsTotal',
+  'medalsEarned',
+  'refPerSec',
+  'yakumono',
+  'awakenTotal',
+  'rateStage',
+  'streakDays',
+  'firstHits',
+  'jackpots',
+  'maxChain',
+  'closes',
+];
+
+/** 実績1件（at 以上で達成。name は表示名で Core は計算に使わない）。 */
+export interface AchievementDef {
+  readonly id: string;
+  readonly metric: AchievementMetric;
+  readonly at: number;
+  readonly name: string;
+}
+
+/** 実績（1個あたりの生産倍率の加算と一覧。一覧の順が判定順, spec/24）。 */
+export interface EconomyAchievements {
+  readonly multPer: number;
+  readonly list: readonly AchievementDef[];
+}
+
 /** 経済定義（検証済み）。 */
 export interface EconomySpec {
   readonly version: number;
@@ -131,6 +174,7 @@ export interface EconomySpec {
   readonly prodRef: EconomyProdRef;
   readonly pachinko: EconomyPachinko;
   readonly claims: EconomyClaims;
+  readonly achievements: EconomyAchievements;
 }
 
 function fail(message: string): never {
@@ -215,6 +259,47 @@ function isYakumonoId(value: string): value is EconomyYakumonoId {
     }
   }
   return false;
+}
+
+function isAchievementMetric(value: string): value is AchievementMetric {
+  for (let i = 0; i < ACHIEVEMENT_METRICS.length; i = i + 1) {
+    if (ACHIEVEMENT_METRICS[i] === value) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** 実績節を検証する（id 重複・未知の metric・at ≤ 0・mult_per が 0〜0.1 の外はエラー, spec/24）。 */
+function parseAchievements(value: unknown): EconomyAchievements {
+  const ao = asRecord(value, 'achievements');
+  const multPer = asNumber(ao['mult_per'], 'achievements.mult_per');
+  if (multPer < 0 || multPer > 0.1) {
+    fail('achievements.mult_per out of range');
+  }
+  const raw = asArray(ao['list'], 'achievements.list');
+  const list: AchievementDef[] = [];
+  for (let i = 0; i < raw.length; i = i + 1) {
+    const what = 'achievements.list[' + i + ']';
+    const r = asRecord(raw[i], what);
+    const id = asString(r['id'], what + '.id');
+    for (let k = 0; k < list.length; k = k + 1) {
+      if ((list[k] as AchievementDef).id === id) {
+        fail(what + '.id duplicated');
+      }
+    }
+    const metric = asString(r['metric'], what + '.metric');
+    if (!isAchievementMetric(metric)) {
+      fail(what + '.metric unknown');
+    }
+    const at = asPositive(r['at'], what + '.at');
+    const name = asString(r['name'], what + '.name');
+    if (name.length > 32) {
+      fail(what + '.name too long');
+    }
+    list.push({ id, metric, at, name });
+  }
+  return { multPer, list };
 }
 
 function asNumberArray(value: unknown, what: string): readonly number[] {
@@ -396,6 +481,7 @@ export function parseEconomy(json: unknown): EconomySpec {
     fail('claims.streak_per_day out of range');
   }
   const streakMaxDays = asIntRange(claims['streak_max_days'], 'claims.streak_max_days', 1, 365);
+  const achievements = parseAchievements(o['achievements']);
   return {
     version,
     priceGrowth,
@@ -439,6 +525,7 @@ export function parseEconomy(json: unknown): EconomySpec {
     prodRef: { minPerSec },
     pachinko: { shotS },
     claims: { streakPerDay, streakMaxDays },
+    achievements,
   };
 }
 

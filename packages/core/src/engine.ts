@@ -7,7 +7,7 @@ import { SpinMachine, type SpinSnapshot } from './spin.ts';
 import type { SimTime } from './spin.ts';
 import { ATLAS_ENTRY_BYTES, ATLAS_HEADER_BYTES, ATLAS_TOTAL_BYTES, atlasKeyForBall, decodeAtlasHeader } from './atlas.ts';
 import type { EconomyPort } from './economy.ts';
-import type { ShopView } from './economy-state.ts';
+import type { AchievementsView, EngineAchievementMetrics, ShopView } from './economy-state.ts';
 import { StubEconomy } from './economy.ts';
 import { addAmount } from './economy-math.ts';
 import { RNGStream } from './rng.ts';
@@ -64,6 +64,8 @@ export interface AwaySummary {
   readonly maxHot: number;
   /** 留守中に変動を始めて大当たりになった中で最も熱いもの（hot 最大・同点は先）。無ければ null。 */
   readonly replay: AwayReplay | null;
+  /** 留守中に達成した実績の数（旧版の複写には無いので 0, spec/24）。 */
+  readonly achievements: number;
 }
 
 /** 営業時間などの付与（spec/30が生成。燃料・メダル・連日を経済に渡す）。 */
@@ -108,7 +110,8 @@ export type SimEvent =
   | { readonly k: 'fuelEmpty'; readonly at: SimTime }
   | { readonly k: 'fuelRefilled'; readonly at: SimTime }
   | { readonly k: 'closed'; readonly at: SimTime; readonly regularPoints: number }
-  | { readonly k: 'rejected'; readonly at: SimTime; readonly action: Action['k']; readonly reason: string };
+  | { readonly k: 'rejected'; readonly at: SimTime; readonly action: Action['k']; readonly reason: string }
+  | { readonly k: 'achieved'; readonly id: string; readonly at: SimTime };
 
 /** Engineの設定（seed・機種・盤面Atlas・初期持ち玉。economyはP3差し込み口）。 */
 export interface EngineConfig {
@@ -207,6 +210,8 @@ export interface AwayTrackerSnapshot {
   readonly awaySpinCand?: AwaySpinCandidate | null;
   /** リプレイ候補。旧版の複写には無い。 */
   readonly awayReplay?: AwayReplay | null;
+  /** 留守中に達成した実績の数。旧版の複写には無い（0）。 */
+  readonly awayAchieved?: number | undefined;
   readonly lastSummary: AwaySummary | null;
 }
 
@@ -279,6 +284,8 @@ export interface HallProjection {
   readonly rates: readonly number[];
   /** 解放済みレートの1発コスト（rates と同順。発射時の ref で変わる目安, D-090）。 */
   readonly rateCosts: readonly number[];
+  /** 実績（達成順・今の achMult・進捗用の指標の値。経済なしは達成なし・倍率1, spec/24）。 */
+  readonly achievements: AchievementsView;
 }
 
 /** 発射グリッドms（絶対時刻の倍数に揃える）。 */
@@ -306,7 +313,8 @@ function copySummary(s: AwaySummary | null): AwaySummary | null {
     return null;
   }
   const replay = s.replay === undefined || s.replay === null ? null : { ...s.replay };
-  return { ...s, replay };
+  const achievements = typeof s.achievements === 'number' ? s.achievements : 0;
+  return { ...s, replay, achievements };
 }
 
 function assertTime(at: number, what: string): SimTime {
@@ -447,6 +455,23 @@ export function projectSnapshot(
     auto: { share: snap.autoShare, rate: snap.autoRate },
     rates: [1],
     rateCosts: [1],
+    achievements: {
+      done: [],
+      mult: 1,
+      metrics: {
+        ballsTotal: 0,
+        medalsEarned: 0,
+        refPerSec: 0,
+        yakumono: 0,
+        awakenTotal: 0,
+        rateStage: 0,
+        streakDays: 0,
+        firstHits: (snap.totals as Partial<Totals>).firstHits === undefined ? 0 : (snap.totals as Totals).firstHits,
+        jackpots: snap.totals.jackpots,
+        maxChain: (snap.totals as Partial<Totals>).maxChain === undefined ? 0 : (snap.totals as Totals).maxChain,
+        closes: snap.closes === undefined ? 0 : snap.closes.length,
+      },
+    },
   };
 }
 
@@ -530,6 +555,7 @@ export class Engine {
   private awayMaxHotState: number;
   private awaySpinCandState: AwaySpinCandidate | null;
   private awayReplayState: AwayReplay | null;
+  private awayAchievedState: number;
   private lastSummaryState: AwaySummary | null;
   private autoAccState: number;
   private bonusStockState: number;
@@ -593,6 +619,7 @@ export class Engine {
     this.awayMaxHotState = -1;
     this.awaySpinCandState = null;
     this.awayReplayState = null;
+    this.awayAchievedState = 0;
     this.lastSummaryState = null;
     this.autoAccState = 0;
     this.bonusStockState = 0;
@@ -1127,6 +1154,7 @@ export class Engine {
     this.awayMaxHotState = -1;
     this.awaySpinCandState = null;
     this.awayReplayState = null;
+    this.awayAchievedState = 0;
   }
 
   /** 留守を終える（presence true時。集計をlastSummaryに保存）。 */
@@ -1147,6 +1175,7 @@ export class Engine {
       hottestEntry: this.awayHottestEntryState,
       maxHot: this.awayMaxHotState < 0 ? 0 : this.awayMaxHotState,
       replay: this.awayReplayState,
+      achievements: this.awayAchievedState,
     };
     this.awayFromState = null;
     this.awaySpinCandState = null;
@@ -1355,6 +1384,34 @@ export class Engine {
     if (r.fuelBecameEmpty) {
       out.push({ k: 'fuelEmpty', at: cur });
       this.noteAwayFuelEmpty(cur);
+    }
+    this.applyAchievementsAt(cur, out);
+  }
+
+  /** Engine が持つ実績の指標（Totals と閉店の記録の数）。 */
+  private engineAchievementMetrics(): EngineAchievementMetrics {
+    return {
+      firstHits: this.totalsState.firstHits,
+      jackpots: this.totalsState.jackpots,
+      maxChain: this.totalsState.maxChain,
+      closes: this.closesState.length,
+    };
+  }
+
+  /** economyTick の直後の実績判定（達成を一覧の順に achieved で出す, spec/24）。 */
+  private applyAchievementsAt(cur: SimTime, out: SimEvent[]): void {
+    const hook = this.econHook('onAchievementTick') as
+      | ((at: number, eng: EngineAchievementMetrics) => string[])
+      | undefined;
+    if (hook === undefined || typeof hook !== 'function') {
+      return;
+    }
+    const ids = (hook.bind(this.economy))(cur, this.engineAchievementMetrics());
+    for (let i = 0; i < ids.length; i = i + 1) {
+      out.push({ k: 'achieved', id: ids[i] as string, at: cur });
+    }
+    if (this.awayFromState !== null) {
+      this.awayAchievedState = this.awayAchievedState + ids.length;
     }
   }
 
@@ -1799,6 +1856,7 @@ export class Engine {
         awayMaxHot: this.awayMaxHotState,
         awaySpinCand: this.awaySpinCandState === null ? null : { ...this.awaySpinCandState },
         awayReplay: this.awayReplayState === null ? null : { ...this.awayReplayState },
+        awayAchieved: this.awayAchievedState,
         lastSummary: lastCopy,
       },
     };
@@ -1979,6 +2037,14 @@ export class Engine {
     eng.awayMaxHotState = away.awayMaxHot;
     eng.awaySpinCandState = away.awaySpinCand === undefined || away.awaySpinCand === null ? null : { ...away.awaySpinCand };
     eng.awayReplayState = away.awayReplay === undefined || away.awayReplay === null ? null : { ...away.awayReplay };
+    if (away.awayAchieved === undefined) {
+      eng.awayAchievedState = 0;
+    } else {
+      if (Math.floor(away.awayAchieved) !== away.awayAchieved || away.awayAchieved < 0) {
+        throw new Error('invalid engine: snap.away.awayAchieved must be a non-negative int');
+      }
+      eng.awayAchievedState = away.awayAchieved;
+    }
     eng.lastSummaryState = copySummary(away.lastSummary);
     eng.syncHoldMax();
     return eng;
@@ -2014,7 +2080,13 @@ export class Engine {
     for (let i = 0; i < rates.length; i = i + 1) {
       rateCosts.push(this.readShotUnit(rates[i] as number));
     }
-    const base = { ...snapBase, rates, rateCosts };
+    const achHook = this.econHook('getAchievementsView') as
+      | ((eng: EngineAchievementMetrics) => AchievementsView)
+      | undefined;
+    const achievements = achHook !== undefined && typeof achHook === 'function'
+      ? (achHook.bind(this.economy))(this.engineAchievementMetrics())
+      : snapBase.achievements;
+    const base = { ...snapBase, rates, rateCosts, achievements };
     const refPerSec = this.readRefPerSec();
     const shotS = this.readShotS();
     const baseWithRef = { ...base, refPerSec, shotS };
