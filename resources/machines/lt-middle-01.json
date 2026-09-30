@@ -17,7 +17,7 @@
     { "kind": "kakuhen", "weight": 0, "weight_jitan": 0, "weight_st": 0, "weight_lt": 10, "rounds": 10, "bonus_rounds": 20, "next": "lt" },
     { "kind": "kakuhen", "weight": 0, "weight_jitan": 0, "weight_st": 0, "weight_lt": 5, "rounds": 10, "bonus_rounds": 40, "next": "lt" }
   ],
-  "round": { "count": 10, "payout_per_ball": 15, "ms_per_round": 25000 },
+  "round": { "count": 10, "payout_per_ball": 15, "ms_per_round": 5000 },
   "heso_payout": 8,
   "hold_max": 4,
   "spin_patterns": "patterns.json",

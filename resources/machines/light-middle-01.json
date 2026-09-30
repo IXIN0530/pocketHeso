@@ -10,7 +10,7 @@
     { "kind": "kakuhen", "weight": 50, "rounds": 10 },
     { "kind": "tsujo", "weight": 50, "rounds": 4 }
   ],
-  "round": { "count": 10, "payout_per_ball": 15, "ms_per_round": 25000 },
+  "round": { "count": 10, "payout_per_ball": 15, "ms_per_round": 5000 },
   "heso_payout": 8,
   "hold_max": 4,
   "spin_patterns": "patterns.json",

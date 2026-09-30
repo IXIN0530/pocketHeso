@@ -37,14 +37,14 @@ test('ラウンド: 始めは「大当たり」、アタッカーの玉と獲得
   const at = (ms: number) => jackpotHud(s, 5000 + ms, R)!;
   expect(at(0)).toMatchObject({ k: 'round', round: 1, rounds: 10, inRound: 0, balls: 0, chain: 0 });
   expect(at(0).t).toBeLessThan(HUD_START_MS);
-  // 1ラウンド = 25秒、玉は 20秒で10個（2秒に1個）。
-  expect(at(10000)).toMatchObject({ round: 1, inRound: 5, balls: 5 * 15 * 4 });
-  expect(at(24000)).toMatchObject({ round: 1, inRound: 10, balls: 10 * 15 * 4 });
-  expect(at(25000)).toMatchObject({ round: 2, inRound: 0, balls: 10 * 15 * 4 });
+  // 1ラウンド = 5秒、玉は 4秒で10個（0.4秒に1個）。「大当たり」の告知中も裏で数える。
+  expect(at(2000)).toMatchObject({ round: 1, inRound: 5, balls: 5 * 15 * 4 });
+  expect(at(4800)).toMatchObject({ round: 1, inRound: 10, balls: 10 * 15 * 4 });
+  expect(at(5000)).toMatchObject({ round: 2, inRound: 0, balls: 10 * 15 * 4 });
   // 最後のラウンドの後（表示の遅れ）でも全ラウンド分で止まる。
-  expect(at(10 * 25000 + 3000)).toMatchObject({ round: 10, inRound: 10, balls: 100 * 15 * 4 });
-  s = applyLcdEvent(s, { k: 'uwanose', entry: 1, at: 5000 + 250000, addRounds: 10, totalRounds: 20 });
-  expect(jackpotHud(s, 5000 + 251000, R)).toMatchObject({ round: 11, rounds: 20, bonus: { add: 10, t: 1000 } });
+  expect(at(10 * 5000 + 3000)).toMatchObject({ round: 10, inRound: 10, balls: 100 * 15 * 4 });
+  s = applyLcdEvent(s, { k: 'uwanose', entry: 1, at: 5000 + 50000, addRounds: 10, totalRounds: 20 });
+  expect(jackpotHud(s, 5000 + 51000, R)).toMatchObject({ round: 11, rounds: 20, bonus: { add: 10, t: 1000 } });
 });
 
 test('ラウンド・結果: 出玉は取得時の unit（D-090、ボーナスなし）', () => {
@@ -55,13 +55,13 @@ test('ラウンド・結果: 出玉は取得時の unit（D-090、ボーナス�
     { k: 'jackpotStarted', entry: 1, at: 5000, kind: 'kakuhen', rounds: 10 },
   ]);
   const at = (ms: number) => jackpotHud(s, 5000 + ms, R)!;
-  expect(at(10000)).toMatchObject({ round: 1, inRound: 5, balls: 5 * 15 * 8 });
-  expect(at(25000)).toMatchObject({ round: 2, inRound: 0, balls: 10 * 15 * 8 });
-  expect(at(10 * 25000 + 3000)).toMatchObject({ round: 10, inRound: 10, balls: 100 * 15 * 8 });
-  s = run(s, [{ k: 'jackpotEnded', entry: 1, at: 5000 + 250000, payout: 1500 * 8 } as never]);
-  expect(jackpotHud(s, 5000 + 250000 + 100, R)).toMatchObject({ k: 'result', payout: 12000, balls: 0 });
-  s = run(s, [{ k: 'modeChanged', to: 'st', at: 5000 + 250000, stRemaining: 100 } as never]);
-  expect(jackpotHud(s, 5000 + 250000 + 100, R)).toMatchObject({
+  expect(at(2000)).toMatchObject({ round: 1, inRound: 5, balls: 5 * 15 * 8 });
+  expect(at(5000)).toMatchObject({ round: 2, inRound: 0, balls: 10 * 15 * 8 });
+  expect(at(10 * 5000 + 3000)).toMatchObject({ round: 10, inRound: 10, balls: 100 * 15 * 8 });
+  s = run(s, [{ k: 'jackpotEnded', entry: 1, at: 5000 + 50000, payout: 1500 * 8 } as never]);
+  expect(jackpotHud(s, 5000 + 50000 + 100, R)).toMatchObject({ k: 'result', payout: 12000, balls: 0 });
+  s = run(s, [{ k: 'modeChanged', to: 'st', at: 5000 + 50000, stRemaining: 100 } as never]);
+  expect(jackpotHud(s, 5000 + 50000 + 100, R)).toMatchObject({
     k: 'result',
     kind: 'rushIn',
     payout: 12000,
@@ -72,7 +72,7 @@ test('ラウンド・結果: 出玉は取得時の unit（D-090、ボーナス�
 
 test('結果: RUSH 突入 → 継続（連チャン・出玉の合計）→ 回数切れで RUSH 終了', () => {
   let s = run(EMPTY, hitAndEnd(1, 0, 'kakuhen', 10, 1500, { to: 'st', spins: 100 }));
-  const end1 = 5000 + 250000;
+  const end1 = 5000 + 50000;
   expect(s.rush).toEqual({ mode: 'st', chain: 1, balls: 1500 });
   expect(jackpotHud(s, end1 + 100, R)).toMatchObject({ k: 'result', kind: 'rushIn', spins: 100, payout: 1500 });
   expect(jackpotHud(s, end1 + HUD_RESULT_MS, R)).toBeNull();
@@ -81,7 +81,7 @@ test('結果: RUSH 突入 → 継続（連チャン・出玉の合計）→ 回�
   s = run(s, hitAndEnd(2, t2, 'kakuhen', 10, 1500, { to: 'st', spins: 100 }).slice(0, 4));
   expect(jackpotHud(s, t2 + 6000, R)).toMatchObject({ k: 'round', chain: 2 });
   s = run(s, hitAndEnd(2, t2, 'kakuhen', 10, 1500, { to: 'st', spins: 100 }).slice(4));
-  expect(jackpotHud(s, t2 + 5000 + 250000, R)).toMatchObject({ k: 'result', kind: 'rushOn', chain: 2, balls: 3000 });
+  expect(jackpotHud(s, t2 + 5000 + 50000, R)).toMatchObject({ k: 'result', kind: 'rushOn', chain: 2, balls: 3000 });
   // 100回ハズレて通常へ。
   const t3 = t2 + 400000;
   s = applyLcdEvent(s, { k: 'modeChanged', to: 'normal', at: t3, stRemaining: 0 });

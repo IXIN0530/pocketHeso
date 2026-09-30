@@ -16,8 +16,8 @@ Do:
 - core のテストで 25000 を前提にした期待値があれば直す（テスト用の機種オブジェクトの値はそのままでよい）。golden の新ハッシュを DECISIONS に。
 - `pachisim econ` を再実行し、P8-T9 の打ち方 1〜3 の結果を `docs/state/econ-<日付>.md` に追記（**機種値は変えない**。変化を STATUS Notes に1行）。
 Accept:
-- [ ] `pnpm sim run` の期待値（出玉だけ）が T1 前と同じ（時間にしか効かないため）
-- [ ] `scripts/test.sh core`・`scripts/build.sh`・`scripts/test.sh all` が通る
+- [x] `pnpm sim run` の期待値（出玉だけ）が T1 前と同じ（時間にしか効かないため）
+- [x] `scripts/test.sh core`・`scripts/build.sh`・`scripts/test.sh all` が通る
 - [ ] 実機（人間, dev push 後）: RUSH 中の 10R が約50秒で終わり、液晶の獲得出玉が 1R あたり約4秒で 10個ぶん増える。ラウンドの効果音が各Rで鳴る
 
 ### P9-T2 レート選択の表示を直す（4パチ解放以降のはみ出し, D-096）
@@ -66,7 +66,7 @@ Do:
 - 初閉店が1日以上早まる／行動なしで閉店できるようになる場合は、**値を変えずに** STATUS に出して止まる（人間が mult_per か一覧を判断）。
 Accept:
 - [ ] 表が econ ファイルにあり、上の判定が OK か、NG を STATUS Blockers に書いて止まっている
-- [ ] `scripts/test.sh core`・`scripts/build.sh`・`scripts/test.sh all` が通る
+- [x] `scripts/test.sh core`・`scripts/build.sh`・`scripts/test.sh all` が通る
 
 ### P9-T6 v1.1.0 のリリース（main へ）
 Owner: Claude Code | Read: ref/tooling（デプロイ） | 前提: **人間の「リリースしてよい」の指示**。T1〜T5 の実機確認が OK

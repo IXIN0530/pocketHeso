@@ -11,7 +11,7 @@ export interface JackpotRound {
 }
 
 /** 機種の既定（3機種とも同じ。機種が分かる前に使う）。 */
-export const DEFAULT_ROUND: JackpotRound = { count: 10, payoutPerBall: 15, msPerRound: 25000 };
+export const DEFAULT_ROUND: JackpotRound = { count: 10, payoutPerBall: 15, msPerRound: 5000 };
 
 /** 大当たりの始めに「大当たり nR」を大きく出す時間。 */
 export const HUD_START_MS = 2600;

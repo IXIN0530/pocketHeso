@@ -38,8 +38,8 @@ test('変動時間の短縮と大当たり時間（保留3〜4で normal_short=2
   expect(spinDurationMs(patterns, shortIdx, 2)).toBe(5000);
   expect(spinDurationMs(patterns, shortIdx, 0)).toBe(5000);
   expect(spinDurationMs(patterns, reachIdx, 4)).toBe(20000);
-  expect(jackpotDurationMs(spec, 0)).toBe(250000);
-  expect(jackpotDurationMs(spec, 1)).toBe(100000);
+  expect(jackpotDurationMs(spec, 0)).toBe(50000);
+  expect(jackpotDurationMs(spec, 1)).toBe(20000);
   expect(() => spinDurationMs(patterns, 99, 0)).toThrow();
   expect(() => spinDurationMs(patterns, shortIdx, -1)).toThrow();
   expect(() => spinDurationMs(patterns, shortIdx, 9)).toThrow();
@@ -81,21 +81,21 @@ test('保留4満タン→順次消化→当たり→ST→ST抜けが期待イベ
   run(m.resolveSpin(82000));
   expect(all[5]).toEqual({ k: 'spinResolved', entry: 2, at: 82000, hit: true });
   expect(all[6]).toEqual({ k: 'jackpotStarted', entry: 2, at: 82000, kind: 'kakuhen', rounds: 10 });
-  expect(m.jackpotEndsAt).toBe(332000);
+  expect(m.jackpotEndsAt).toBe(132000);
 
-  run(m.finishJackpot(332000, 1));
-  expect(all[7]).toEqual({ k: 'jackpotEnded', entry: 2, at: 332000, payout: 1500 });
-  expect(all[8]).toEqual({ k: 'modeChanged', to: 'st', at: 332000, stRemaining: 100 });
+  run(m.finishJackpot(132000, 1));
+  expect(all[7]).toEqual({ k: 'jackpotEnded', entry: 2, at: 132000, payout: 1500 });
+  expect(all[8]).toEqual({ k: 'modeChanged', to: 'st', at: 132000, stRemaining: 100 });
   expect(m.mode).toBe('st');
   expect(m.stRemaining).toBe(100);
 
-  run(m.startSpin(e3, 332000, 1));
-  expect(all[9]).toEqual({ k: 'spinStarted', entry: 3, at: 332000, pattern: 'normal_short', endsAt: 337000 });
-  run(m.resolveSpin(337000));
-  expect(all[10]).toEqual({ k: 'spinResolved', entry: 3, at: 337000, hit: false });
+  run(m.startSpin(e3, 132000, 1));
+  expect(all[9]).toEqual({ k: 'spinStarted', entry: 3, at: 132000, pattern: 'normal_short', endsAt: 137000 });
+  run(m.resolveSpin(137000));
+  expect(all[10]).toEqual({ k: 'spinResolved', entry: 3, at: 137000, hit: false });
   expect(m.stRemaining).toBe(99);
 
-  let cur = 337000;
+  let cur = 137000;
   for (let s = 0; s < 99; s = s + 1) {
     const serial = 10 + s;
     const e = makeEntry(serial, shortIdx, false, null);
@@ -155,10 +155,10 @@ test('ST中の当たりは振分けで継続（確変）・終了（通常）す
     { k: 'spinResolved', entry: 50, at: 61000, hit: true },
     { k: 'jackpotStarted', entry: 50, at: 61000, kind: 'kakuhen', rounds: 10 },
   ]);
-  const ended = inSt.finishJackpot(311000, 1);
+  const ended = inSt.finishJackpot(111000, 1);
   expect(ended).toEqual([
-    { k: 'jackpotEnded', entry: 50, at: 311000, payout: 1500 },
-    { k: 'modeChanged', to: 'st', at: 311000, stRemaining: 100 },
+    { k: 'jackpotEnded', entry: 50, at: 111000, payout: 1500 },
+    { k: 'modeChanged', to: 'st', at: 111000, stRemaining: 100 },
   ]);
   expect(inSt.mode).toBe('st');
   expect(inSt.stRemaining).toBe(100);
@@ -167,10 +167,10 @@ test('ST中の当たりは振分けで継続（確変）・終了（通常）す
   const hitTsujo = { ...makeEntry(51, kakuteiIdx, true, 1), modeAtDraw: 'st' as const };
   inSt2.startSpin(hitTsujo, 5000, 1);
   inSt2.resolveSpin(65000);
-  const ended2 = inSt2.finishJackpot(165000, 1);
+  const ended2 = inSt2.finishJackpot(85000, 1);
   expect(ended2).toEqual([
-    { k: 'jackpotEnded', entry: 51, at: 165000, payout: 600 },
-    { k: 'modeChanged', to: 'normal', at: 165000, stRemaining: 0 },
+    { k: 'jackpotEnded', entry: 51, at: 85000, payout: 600 },
+    { k: 'modeChanged', to: 'normal', at: 85000, stRemaining: 0 },
   ]);
   expect(inSt2.mode).toBe('normal');
 
@@ -187,8 +187,8 @@ test('ST中の当たりは振分けで継続（確変）・終了（通常）す
   const hitTsujoNormal = makeEntry(61, kakuteiIdx, true, 1);
   inNormal.startSpin(hitTsujoNormal, 5000, 0);
   inNormal.resolveSpin(65000);
-  const ended3 = inNormal.finishJackpot(165000, 4);
-  expect(ended3).toEqual([{ k: 'jackpotEnded', entry: 61, at: 165000, payout: 2400 }]);
+  const ended3 = inNormal.finishJackpot(85000, 4);
+  expect(ended3).toEqual([{ k: 'jackpotEnded', entry: 61, at: 85000, payout: 2400 }]);
   expect(inNormal.mode).toBe('normal');
 });
 
