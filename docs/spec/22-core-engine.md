@@ -39,6 +39,7 @@ type SimEvent =
   | { k: 'fuelEmpty' | 'fuelRefilled'; at: SimTime }
   | { k: 'closed'; at: SimTime; regularPoints: number; machineId?: string }  // 機種を変えた時だけ
   | { k: 'rejected'; at: SimTime; action: Action['k']; reason: string }
+  | { k: 'achieved'; id: string; at: SimTime }   // 実績の達成（spec/24, D-095）
 type HoldEntry = { serial: number; hit: boolean; kind?: JackpotKind; pattern: PatternId; color: HoldColor; hot: number; unit?: number } // unit は取得時の単価（無い旧セーブは rate, D-090）
 type Mode = 'normal' | 'jitan' | 'st' | 'lt'  // spec/21 モード拡張節。stRemaining は jitan/st/lt の残り回転数（normal は 0）
 ```
@@ -56,7 +57,7 @@ export class Engine {
 }
 ```
 - 玉の結果は `atlas[key(ball)]` を引くだけ（物理は走らせない）。センサー時刻 = 発射時刻 + flightMs。
-- 同時刻の並び: Action/Grant → sensor → holdAdded/Overflow → spinResolved → jackpot* → 特別保留の投入 → 電サポの自動補充 → spinStarted → mode → notice → economyTick。
+- 同時刻の並び: Action/Grant → sensor → holdAdded/Overflow → spinResolved → jackpot* → 特別保留の投入 → 電サポの自動補充 → spinStarted → mode → notice → economyTick → achieved（実績の判定, spec/24）。
 - **特別保留**（D-081）: Grant.bonusHolds はストック（snapshot `bonusStock`）に足し、保留に空きがあれば1つずつ入れる（`holdAdded`）。
   抽選は `RNGStream(seed, 'grantHold', n)`（n はストックから出した通し番号, 0 始まり）、serial = `GRANT_HOLD_SERIAL_BASE`（1.5e9）+ n。
   当否・色は予告のボーナス保留（`drawBonusHold`）と同じ規則、rate1・賞球なし。取得時のモードで表を選ぶ。
@@ -83,8 +84,9 @@ export interface HallProjection {
   notice?: NoticeView                 // 表示中の予告
   totals: Totals                      // 回転数, 当たり, 出玉, 発射数, 累計玉
   nextHot?: HotHint                   // lookahead で見えている最も熱い予定
+  achievements: AchievementsView      // 達成（id・時刻）・今の achMult・進捗用の指標の値（spec/24）
 }
 export function project(s: EngineState, at: SimTime): HallProjection
 ```
 - **留守中サマリー**: 前面復帰時、`presence(fg=false)` 〜 now のイベントを集計した `AwaySummary`
-  （獲得玉・大当たり回数・最大連チャン・燃料切れ時刻）を返す。UI は最も熱い当たりの演出を再生する（spec/40）。`replay` は留守中に変動を始めた当たりのうち hot 最大（D-068）。
+  （獲得玉・大当たり回数・最大連チャン・燃料切れ時刻・達成した実績の数）を返す。UI は最も熱い当たりの演出を再生する（spec/40）。`replay` は留守中に変動を始めた当たりのうち hot 最大（D-068）。

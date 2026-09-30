@@ -47,6 +47,7 @@ Stack: TypeScript / React 19 / Vite / Three.js / IndexedDB / Service Worker / Vi
 | docs/spec/21-core-lottery.md | 機種・抽選・保留・乱数・レート |
 | docs/spec/22-core-engine.md | Engine API・入力（Grant/Action）・SimEvent・決定論契約・Projection |
 | docs/spec/23-core-economy.md | 放置経済（役物・強化・予告・燃料・閉店・バランス目標） |
+| docs/spec/24-core-achievements.md | 実績（指標・一覧・永続の生産倍率・判定・保存） |
 | docs/spec/30-activity-claims.md | 行動→報酬の台帳・換算・上限・連続日数 |
 | docs/spec/31-shortcut-health.md | iOS ショートカットとヘルスケア同期 |
 | docs/spec/32-training-checkin.md | トレーニングのチェックイン（位置・登録地点・YOLP） |

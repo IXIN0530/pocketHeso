@@ -11,7 +11,7 @@
   },
   "jackpot_split": [{"kind": "kakuhen", "weight": 50, "rounds": 10},
                     {"kind": "tsujo",   "weight": 50, "rounds": 4}],
-  "round": {"count": 10, "payout_per_ball": 15, "ms_per_round": 25000},
+  "round": {"count": 10, "payout_per_ball": 15, "ms_per_round": 5000},
   "heso_payout": 3,
   "hold_max": 4,
   "spin_patterns": "patterns.json",
@@ -23,6 +23,7 @@
   "hold_colors_st": [ ...同じ形。ST・LT 中の表... ]
 }
 ```
+- `ms_per_round` は1ラウンドの時間（初期 5000 = 1R 5秒・10R 50秒。旧 25000 から全ての大当たりで5倍速, D-094）。出玉は大当たり終了時にまとめて入るので、量は変わらず時間だけ短くなる。
 - 確率はロード時に `uint32` 閾値へ変換（`threshold = floor(2^32 / jackpot_1_in)`、`>>> 0` で扱う）。
 - 保留色の表は白を含む5色すべてを書く（当否それぞれの合計は正, D-072）。取得時のモードで表を選ぶ: 通常・時短は `hold_colors`、ST・LT は `hold_colors_st`（省略時は `hold_colors`）。
   目安（1/349.9・1/39.9）: 通常時は信頼度 青7%・緑20%・赤50%・金85%、出現 青1/245・緑1/467・赤1/437・金1/993（色付き約1/105）。
