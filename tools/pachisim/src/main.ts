@@ -82,19 +82,20 @@ function run(argv: string[]): void {
   console.log(formatReports(reports));
 }
 
-/** 経済試算（`pnpm sim econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--play-rate <r>] [--play-min <m>] [--json]`）。 */
+/** 経済試算（`pnpm sim econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--play-rate <r>] [--play-min <m>] [--tree off|greedy|all] [--start-rank <n>] [--bantou on|off] [--json]`）。 */
 function econ(argv: string[]): void {
   const args = parseEconArgs(argv);
   const play = { rate: args.playRate, min: args.playMin };
-  const result = runEcon(args.profile, args.days, args.seed, args.machine, args.economy, play);
+  const treeOpts = { tree: args.tree, startRank: args.startRank, bantou: args.bantou };
+  const result = runEcon(args.profile, args.days, args.seed, args.machine, args.economy, play, treeOpts);
   const standard = ECON_PROFILES.find((p) => p.id === 'standard');
   const baseline =
-    args.profile.id === 'heavy' && standard !== undefined ? runEcon(standard, args.days, args.seed, args.machine, args.economy, play) : null;
+    args.profile.id === 'heavy' && standard !== undefined ? runEcon(standard, args.days, args.seed, args.machine, args.economy, play, treeOpts) : null;
   const ev =
     args.evHours > 0
       ? {
           init: measurePachinkoEv(args.machine, args.seed, args.evHours, false, args.economy),
-          full: measurePachinkoEv(args.machine, args.seed, args.evHours, true, args.economy),
+          full: measurePachinkoEv(args.machine, args.seed, args.evHours, true, args.economy, args.tree === 'all'),
         }
       : null;
   if (args.json) {
@@ -163,6 +164,6 @@ switch (command) {
     break;
   default:
     console.log(
-      'usage: pachisim <version|bench [count]|atlas --board <id> [--jobs <n>]|run --balls <n> --seed <s> [--machine <id>]... [--json]|econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--play-rate <r>] [--play-min <m>] [--json]|holds [--spins <n>] [--seed <s>] [--machine <id>]... [--json]>',
+      'usage: pachisim <version|bench [count]|atlas --board <id> [--jobs <n>]|run --balls <n> --seed <s> [--machine <id>]... [--json]|econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--play-rate <r>] [--play-min <m>] [--tree off|greedy|all] [--start-rank <n>] [--bantou on|off] [--json]|holds [--spins <n>] [--seed <s>] [--machine <id>]... [--json]>',
     );
 }

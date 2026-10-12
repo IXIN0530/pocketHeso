@@ -8,18 +8,20 @@ import {
   ballPoints,
   buildGrowthTable,
   closeGain,
+  treeRunBonus,
   growthPow,
   parseEconomyText,
   type EconomySpec,
   type EngineSimEvent,
   type Grant,
   type IdleEconomySnapshot,
+  type TreeRecord,
 } from '@ph/core';
 import { loadRunAtlas, loadRunMachine, computeTheory } from './run.ts';
 
 const ECONOMY_URL = new URL('../../../resources/economy/default.json', import.meta.url);
 const ECON_USAGE =
-  'usage: pachisim econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--play-rate <r>] [--play-min <m>] [--json]';
+  'usage: pachisim econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--play-rate <r>] [--play-min <m>] [--tree off|greedy|all] [--start-rank <n>] [--bantou on|off] [--json]';
 
 const MIN_MS = 60000;
 const DAY_MS = 86400000;
@@ -87,8 +89,26 @@ export interface EconArgs {
   /** 前面で打つ打ち方（P8-T9）。rate は 1〜100 の整数、min は 1日あたり前面で打つ分（0 は追加なし）。 */
   readonly playRate: number;
   readonly playMin: number;
+  /** 常連ツリーの試算（P10-T5）。off=買わない・greedy=閉店ごとに開いていて買える最も安いものから・all=最初から全所持。 */
+  readonly tree: EconTreeMode;
+  /** ランク n・累計獲得メダル n×medals_per_point・常連P 0 から始める（0 は通常の開始）。 */
+  readonly startRank: number;
+  /** 番頭さんを使う（所持したら ON にする）。 */
+  readonly bantou: boolean;
   readonly json: boolean;
 }
+
+/** ツリー試算の方式（P10-T5）。 */
+export type EconTreeMode = 'off' | 'greedy' | 'all';
+
+/** runEcon の常連ツリー関連の設定（P10-T5）。 */
+export interface EconTreeOptions {
+  readonly tree: EconTreeMode;
+  readonly startRank: number;
+  readonly bantou: boolean;
+}
+
+export const ECON_TREE_OFF: EconTreeOptions = { tree: 'off', startRank: 0, bantou: false };
 
 /** `econ` コマンドの引数を解釈する（--profile/--days 必須）。 */
 export function parseEconArgs(argv: string[]): EconArgs {
@@ -100,6 +120,9 @@ export function parseEconArgs(argv: string[]): EconArgs {
   let evHours = 1000;
   let playRate = 1;
   let playMin = 0;
+  let tree: EconTreeMode = 'off';
+  let startRank = 0;
+  let bantou = false;
   let json = false;
   for (let i = 0; i < argv.length; i = i + 1) {
     const a = argv[i] as string;
@@ -127,6 +150,18 @@ export function parseEconArgs(argv: string[]): EconArgs {
       playRate = Math.floor(Number(v));
     } else if (a === '--play-min') {
       playMin = Math.floor(Number(v));
+    } else if (a === '--tree') {
+      if (v !== 'off' && v !== 'greedy' && v !== 'all') {
+        throw new Error(ECON_USAGE);
+      }
+      tree = v;
+    } else if (a === '--start-rank') {
+      startRank = Math.floor(Number(v));
+    } else if (a === '--bantou') {
+      if (v !== 'on' && v !== 'off') {
+        throw new Error(ECON_USAGE);
+      }
+      bantou = v === 'on';
     } else {
       throw new Error(ECON_USAGE);
     }
@@ -139,11 +174,12 @@ export function parseEconArgs(argv: string[]): EconArgs {
     !(seed >= 0) ||
     !(evHours >= 0) ||
     !(playRate >= 1 && playRate <= 100) ||
-    !(playMin >= 0 && playMin <= 1440)
+    !(playMin >= 0 && playMin <= 1440) ||
+    !(startRank >= 0 && startRank <= 100000)
   ) {
     throw new Error(ECON_USAGE);
   }
-  return { profile, days, seed, machine, economy, evHours, playRate, playMin, json };
+  return { profile, days, seed, machine, economy, evHours, playRate, playMin, tree, startRank, bantou, json };
 }
 
 /** sim内の換算 Tier（claims と同じ逓減。層違反を避けるため自前実装, D-081）。 */
@@ -319,6 +355,8 @@ export interface EconDayRow {
   readonly day: number;
   readonly balls: number;
   readonly perSecFg: number;
+  /** perSecFg から開店ダッシュ（閉店直後の数時間だけの上乗せ）を割り戻した値（spec/25 検証 5・6 の比に使う）。 */
+  readonly perSecFgNoDash: number;
   readonly runTotal: number;
   /** 全期間累計玉（tick＋払出。玉由来Pの元）。 */
   readonly totalTotal: number;
@@ -350,12 +388,22 @@ export interface EconDayRow {
   readonly achDone: number;
   /** 実績の生産倍率 achMult。 */
   readonly achMult: number;
+  /** 常連ツリー（日末）: 今持っている常連P・累計・所持数・treeMult（機種込み）。 */
+  readonly treePoints: number;
+  readonly treeEarned: number;
+  readonly treeOwned: number;
+  readonly treeMult: number;
 }
 
 /** 閉店1回分の記録（日は1始まり・gainは獲得常連P）。 */
 export interface EconCloseEntry {
   readonly day: number;
   readonly gain: number;
+  /** この閉店で得た常連P と内訳（ランク gain×points_per_rank・累計玉の段 runBonus・口コミ。P10-T5）。 */
+  readonly points: number;
+  readonly rank: number;
+  readonly runBonus: number;
+  readonly kuchikomi: number;
 }
 
 /** 試算結果（到達日は 1 始まり。未到達は null）。 */
@@ -379,6 +427,8 @@ export interface EconResult {
   readonly action: number;
   /** 全ステップの持ち玉の最小値（P8-T9 の「7日間で 0 に落ちない」判定用）。 */
   readonly minBalls: number;
+  /** 常連ツリーの購入（--tree greedy。日は 1 始まり・購入順。P10-T5）。 */
+  readonly treeBuys: readonly { readonly day: number; readonly id: string; readonly cost: number }[];
 }
 
 /** 買える候補（安い順に買う単純戦略用）。 */
@@ -447,6 +497,40 @@ function topIndex(s: IdleEconomySnapshot): number {
   return top;
 }
 
+/** 全ノード所持の購入列（JSON の順・買った時刻 0）。 */
+function allTreeRecords(spec: EconomySpec): TreeRecord[] {
+  return spec.tree.nodes.map((n) => ({ id: n.id, cost: n.cost, at: 0 }));
+}
+
+/**
+ * 試算の開始状態を経済に反映する（P10-T5。Core に試算専用 API を足さず、公開の snapshot/restore で作る）。
+ * startRank=n: ランク n・累計獲得メダル n×medals_per_point・累計玉 = ランク n の閉店に釣り合う量（玉側が律速にならないよう）・常連P 0。
+ * tree=all: 全ノード所持（pointsEarned = Σcost）。番頭さんを使う試算は bantou を ON にする。
+ */
+export function applyEconStart(econ: IdleEconomy, spec: EconomySpec, opts: EconTreeOptions): void {
+  if (opts.startRank <= 0 && opts.tree !== 'all') {
+    return;
+  }
+  let snap: IdleEconomySnapshot = econ.snapshot();
+  if (opts.startRank > 0) {
+    const n = opts.startRank;
+    let total = spec.close.divisor * n * n * n;
+    while (ballPoints(total, spec.close.divisor) < n) {
+      total = total * 1.0001;
+    }
+    snap = { ...snap, regular: n, medalsEarned: n * spec.close.medalsPerPoint, totalTotal: total > snap.totalTotal ? total : snap.totalTotal };
+  }
+  if (opts.tree === 'all') {
+    const tree = allTreeRecords(spec);
+    let sum = 0;
+    for (let i = 0; i < tree.length; i = i + 1) {
+      sum = sum + (tree[i] as TreeRecord).cost;
+    }
+    snap = { ...snap, tree, points: 0, pointsEarned: sum, bantouOn: opts.bantou };
+  }
+  econ.restore(snap);
+}
+
 /**
  * 行動プロファイルで N 日回す（P3-T4）。単純戦略: 予告は即タップ・閉店可能なら即閉店・覚醒可能なら下位から覚醒・
  * 玉で買えるものを安い順に買う（オート解放後は BUY_RESERVE を残す）・前面は手動打ち、オート解放後は share=1。
@@ -460,6 +544,7 @@ export function runEcon(
   machine: string,
   economyUrl: URL = ECONOMY_URL,
   play: { rate: number; min: number } = { rate: 1, min: 0 },
+  treeOpts: EconTreeOptions = ECON_TREE_OFF,
 ): EconResult {
   const economyText = readFileSync(economyUrl, 'utf8');
   const spec = parseEconomyText(economyText);
@@ -478,6 +563,7 @@ export function runEcon(
     }
     econ.restore({ ...econ.snapshot(), rateStage: stage });
   }
+  applyEconStart(econ, spec, treeOpts);
   const eng = new Engine(
     { seed, spec: mspec, patterns, atlas: buffer, initialBalls: econ.startBalls(), economy: econ },
     [],
@@ -507,6 +593,14 @@ export function runEcon(
   let minBalls = econ.startBalls();
   const dayOf = (at: number): number => Math.floor(at / DAY_MS) + 1;
   const shootRate = play.min > 0 ? play.rate : 1;
+  const treeBuys: { day: number; id: string; cost: number }[] = [];
+  let pendingClose: { day: number; gain: number; rank: number; runBonus: number } | null = null;
+  let bantouSent = treeOpts.tree === 'all' && treeOpts.bantou;
+  let minTreeCost = Infinity;
+  for (let i = 0; i < spec.tree.nodes.length; i = i + 1) {
+    const c = (spec.tree.nodes[i] as { cost: number }).cost;
+    minTreeCost = c < minTreeCost ? c : minTreeCost;
+  }
 
   while (t < end) {
     while (idx < inputs.length && (inputs[idx] as EconInput).t === t) {
@@ -520,25 +614,82 @@ export function runEcon(
       }
       idx = idx + 1;
     }
+    if (treeOpts.tree === 'greedy' && econ.snapshot().points >= minTreeCost) {
+      // 開いていて買える最も安いもの（同額は一覧の順）から買えるだけ買う（閉店直後などの常連P が入った時）。
+      // Engine の入力は次の advance で処理されるため、状態（所持・段・P）は手元で更新して続けて選ぶ。
+      const tv = eng.project().tree;
+      if (tv !== undefined) {
+        const nodes = spec.tree.nodes;
+        const owned: boolean[] = tv.nodes.map((n) => n.state === 'owned');
+        let pts = tv.points;
+        while (true) {
+          const countByTier = [0, 0, 0, 0, 0];
+          for (let i = 0; i < nodes.length; i = i + 1) {
+            if (owned[i] === true) {
+              const ti = (nodes[i] as { tier: number }).tier - 1;
+              countByTier[ti] = (countByTier[ti] as number) + 1;
+            }
+          }
+          const tierOpen: boolean[] = [];
+          let below = 0;
+          for (let ti = 0; ti < 5; ti = ti + 1) {
+            tierOpen.push(below >= (spec.tree.tierUnlock[ti] as number));
+            below = below + (countByTier[ti] as number);
+          }
+          let pick = -1;
+          for (let i = 0; i < nodes.length; i = i + 1) {
+            const n = nodes[i] as { tier: number; cost: number; req: readonly string[] };
+            if (owned[i] === true || tierOpen[n.tier - 1] !== true || n.cost > pts) {
+              continue;
+            }
+            let reqOk = true;
+            for (let k = 0; k < n.req.length; k = k + 1) {
+              const ri = nodes.findIndex((x) => x.id === n.req[k]);
+              if (ri < 0 || owned[ri] !== true) {
+                reqOk = false;
+              }
+            }
+            if (reqOk && (pick < 0 || n.cost < (nodes[pick] as { cost: number }).cost)) {
+              pick = i;
+            }
+          }
+          if (pick < 0) {
+            break;
+          }
+          const node = nodes[pick] as { id: string; cost: number };
+          eng.appendAction({ t, k: 'treeBuy', node: node.id });
+          owned[pick] = true;
+          treeBuys.push({ day: dayOf(t), id: node.id, cost: node.cost });
+          pts = pts - node.cost;
+        }
+      }
+    }
     const p = eng.project();
+    if (treeOpts.bantou && !bantouSent && p.tree !== undefined && p.tree.bantou.owned) {
+      eng.appendAction({ t, k: 'bantou', on: true });
+      bantouSent = true;
+    }
     let s: IdleEconomySnapshot = econ.snapshot();
     let balls: number = p.balls;
     let medals: number = p.medals;
     if (fg && p.notice !== undefined) {
       eng.appendAction({ t, k: 'noticeTap', noticeId: p.notice.id });
     }
+    // 閉店直後は手元の写しが実状態と合わない（保持した強化・開始 Lv が効く）ため、ツリー使用時はこの回の覚醒・購入を次の回に回す。
+    let closedNow = false;
     if (s.runTotal >= spec.close.requiredRunTotal) {
       const gain = closeGain(s.totalTotal, spec.close.divisor, s.regular, s.medalsEarned, spec.close.medalsPerPoint);
       if (gain >= 1) {
         eng.appendAction({ t, k: 'close' });
+        closedNow = treeOpts.tree !== 'off';
         closes = closes + 1;
         firstCloseDay = firstCloseDay ?? dayOf(t);
-        closeHistory.push({ day: dayOf(t), gain });
+        pendingClose = { day: dayOf(t), gain, rank: s.regular + gain, runBonus: treeRunBonus(s.runTotal, spec.tree.runBonusAt) };
         balls = spec.close.startBalls;
         s = { ...s, lv: [0, 0, 0, 0, 0, 0, 0, 0], awakened: [0, 0, 0, 0, 0, 0, 0, 0], idleStage: 0, tankStage: 0, nailStage: 0, shortenStage: 0, holdStage: 0, autoOwned: false, tomeuchiOwned: false, runTotal: 0 };
       }
     }
-    for (let i = 0; i < ECONOMY_YAKUMONO_IDS.length; i = i + 1) {
+    for (let i = 0; i < ECONOMY_YAKUMONO_IDS.length && !closedNow; i = i + 1) {
       const cost = awakenMedalCost(spec.awaken.medalBase, spec.awaken.medalGrowth, s.awakened[i] as number);
       if ((s.lv[i] as number) >= spec.awaken.minLv && medals >= cost) {
         eng.appendAction({ t, k: 'awaken', yakumono: ECONOMY_YAKUMONO_IDS[i] as string });
@@ -552,7 +703,7 @@ export function runEcon(
         firstAwakenDay = firstAwakenDay ?? dayOf(t);
       }
     }
-    while (true) {
+    while (!closedNow) {
       const cands = buyCandidates(spec, table, s);
       let best: BuyCandidate | null = null;
       for (let i = 0; i < cands.length; i = i + 1) {
@@ -611,7 +762,19 @@ export function runEcon(
     }
     for (let i = 0; i < evs.length; i = i + 1) {
       const e = evs[i] as EngineSimEvent;
-      if (e.k === 'granted') {
+      if (e.k === 'closed' && pendingClose !== null) {
+        const pts = e.points ?? 0;
+        const base = pendingClose.gain * spec.tree.pointsPerRank + pendingClose.runBonus;
+        closeHistory.push({
+          day: pendingClose.day,
+          gain: pendingClose.gain,
+          points: pts,
+          rank: pendingClose.rank,
+          runBonus: pendingClose.runBonus,
+          kuchikomi: pts - base,
+        });
+        pendingClose = null;
+      } else if (e.k === 'granted') {
         medalsActivity = medalsActivity + e.medals;
         fuelGrantedMs = fuelGrantedMs + e.fuelMs;
       } else if (e.k === 'rejected' && e.action !== 'noticeTap') {
@@ -627,10 +790,23 @@ export function runEcon(
       const pe = eng.project();
       const se = econ.snapshot();
       const ti = topIndex(se);
+      const tv = pe.tree;
+      let treeOwned = 0;
+      if (tv !== undefined) {
+        for (let i = 0; i < tv.nodes.length; i = i + 1) {
+          if ((tv.nodes[i] as { state: string }).state === 'owned') {
+            treeOwned = treeOwned + 1;
+          }
+        }
+      }
       rows.push({
         day: t / DAY_MS,
         balls: pe.balls,
         perSecFg: econ.getPerSec(true, 1),
+        perSecFgNoDash:
+          econ.getOpenBoostMs() > 0
+            ? econ.getPerSec(true, 1) / (1 + econ.getTreeTotals().openBoostMultAdd)
+            : econ.getPerSec(true, 1),
         runTotal: se.runTotal,
         totalTotal: se.totalTotal,
         regular: se.regular,
@@ -652,6 +828,10 @@ export function runEcon(
         fuelMin: fuelGrantedMs / MIN_MS,
         achDone: se.achieved.length,
         achMult: econ.achMult(),
+        treePoints: se.points,
+        treeEarned: se.pointsEarned,
+        treeOwned,
+        treeMult: tv === undefined ? 1 : tv.mult,
       });
     }
   }
@@ -674,6 +854,7 @@ export function runEcon(
     payout: lastPayout,
     action: lastAction,
     minBalls,
+    treeBuys,
   };
 }
 
@@ -684,11 +865,13 @@ export function measurePachinkoEv(
   hours: number,
   full: boolean,
   economyUrl: URL = ECONOMY_URL,
+  treeAll = false,
 ): number {
   const spec = parseEconomyText(readFileSync(economyUrl, 'utf8'));
   const { spec: mspec, patterns } = loadRunMachine(machine);
   const { buffer } = loadRunAtlas();
   const econ = new IdleEconomy(spec);
+  applyEconStart(econ, spec, { tree: treeAll ? 'all' : 'off', startRank: 0, bantou: false });
   const u = spec.upgrades;
   const stages = full
     ? { nailStage: u.nailCosts.length, shortenStage: u.shortenCosts.length, holdStage: u.holdPlusCosts.length, tomeuchiOwned: true }
@@ -706,6 +889,27 @@ export function measurePachinkoEv(
   // 投入玉＝初期−最終＋払い戻し（生産0のため。燃料はあるが役物なしで perSec=0）。
   const cost = initialBalls - finalBalls + totals.payoutBalls;
   return cost > 0 ? totals.payoutBalls / cost : 0;
+}
+
+/**
+ * 24時間分の advance の実行時間（ms。P10-T5 の検証 8。留守中の番頭さんの判定を含む）。
+ * 背面・燃料24h・役物は全部1 Lv 以上の状態から入力なしで進める。tree=all のとき bantou で番頭さんを ON にできる。
+ */
+export function measureAdvance24h(machine: string, seed: number, opts: EconTreeOptions, economyUrl: URL = ECONOMY_URL): number {
+  const spec = parseEconomyText(readFileSync(economyUrl, 'utf8'));
+  const { spec: mspec, patterns } = loadRunMachine(machine);
+  const { buffer } = loadRunAtlas();
+  const econ = new IdleEconomy(spec);
+  applyEconStart(econ, spec, opts);
+  econ.restore({ ...econ.snapshot(), lv: [1, 1, 1, 1, 1, 1, 1, 1], autoOwned: true });
+  const eng = new Engine(
+    { seed, spec: mspec, patterns, atlas: buffer, initialBalls: 1e9, initialFuelMs: 24 * 3600000, economy: econ },
+    [],
+    [{ t: 0, k: 'presence', fg: false }, { t: 0, k: 'auto', share: 1, rate: 1 }],
+  );
+  const t0 = performance.now();
+  eng.advance(24 * 3600000);
+  return performance.now() - t0;
 }
 
 /** 初当たり1回（連チャン込み）の平均出玉を生産時間に換算（P8-T9 その2）。理論値 avgPerHatsuari（unit=1）を使い、レート r での生産時間 = avg × r × shotS / 3600（ref が約分されレートによらない基準と同じ）。 */
@@ -826,14 +1030,14 @@ export function lastRegular(r: EconResult): number {
 export function formatEcon(r: EconResult, ev: { init: number; full: number } | null, baseline: EconResult | null = null): string {
   const lines: string[] = [];
   lines.push(`econ: profile=${r.profile} days=${r.days} machine=${r.machine} seed=${r.seed}`);
-  lines.push('day | balls | perSec(fg) | runTotal | total | regP(ball/med) | close | awaken | top | medals | yaku/bonus/payout/action | jackpot% | action% | jackpots | fuel(h,cum) | ach(n/xmult)');
+  lines.push('day | balls | perSec(fg) | runTotal | total | regP(ball/med) | close | awaken | top | medals | yaku/bonus/payout/action | jackpot% | action% | jackpots | fuel(h,cum) | ach(n/xmult) | tree(P/earned/owned/xmult)');
   for (let i = 0; i < r.rows.length; i = i + 1) {
     const w = r.rows[i] as EconDayRow;
     const total = w.yakumono + w.bonus + w.payout + w.action;
     const share = total > 0 ? ((w.bonus + w.payout) / total) * 100 : 0;
     const actionShare = total > 0 ? (w.action / total) * 100 : 0;
     lines.push(
-      `${w.day} | ${fmtNum(w.balls)} | ${fmtNum(w.perSecFg)} | ${fmtNum(w.runTotal)} | ${fmtNum(w.totalTotal)} | ${w.regular}(${w.ballPts}/${w.medalPts}) | ${w.closes} | ${w.awakens} | ${w.top} | ${w.medals} | ${fmtNum(w.yakumono)}/${fmtNum(w.bonus)}/${fmtNum(w.payout)}/${fmtNum(w.action)} | ${share.toFixed(1)} | ${actionShare.toFixed(1)} | ${w.jackpots} | ${(w.fuelMin / 60).toFixed(1)} | ${w.achDone}/x${w.achMult.toFixed(2)}`,
+      `${w.day} | ${fmtNum(w.balls)} | ${fmtNum(w.perSecFg)} | ${fmtNum(w.runTotal)} | ${fmtNum(w.totalTotal)} | ${w.regular}(${w.ballPts}/${w.medalPts}) | ${w.closes} | ${w.awakens} | ${w.top} | ${w.medals} | ${fmtNum(w.yakumono)}/${fmtNum(w.bonus)}/${fmtNum(w.payout)}/${fmtNum(w.action)} | ${share.toFixed(1)} | ${actionShare.toFixed(1)} | ${w.jackpots} | ${(w.fuelMin / 60).toFixed(1)} | ${w.achDone}/x${w.achMult.toFixed(2)} | ${w.treePoints}/${w.treeEarned}/${w.treeOwned}/x${w.treeMult.toFixed(3)}`,
     );
   }
   lines.push(`milestones: croon day ${r.croonDay ?? '-'} / first awaken day ${r.firstAwakenDay ?? '-'} / first close day ${r.firstCloseDay ?? '-'}`);
@@ -841,6 +1045,11 @@ export function formatEcon(r: EconResult, ev: { init: number; full: number } | n
   lines.push(`min balls: ${fmtNum(r.minBalls)} (${r.minBalls > 0 ? 'OK not broke' : 'NG broke'})`);
   const closeStr = r.closeHistory.length > 0 ? r.closeHistory.map((c) => `day${c.day}+${c.gain}`).join(', ') : '-';
   lines.push(`closes: ${closeStr}`);
+  const pointsStr =
+    r.closeHistory.length > 0
+      ? r.closeHistory.map((c) => `day${c.day}: P+${c.points} (rank ${c.rank}: ${c.gain}x, runBonus ${c.runBonus}, kuchikomi ${c.kuchikomi})`).join(' / ')
+      : '-';
+  lines.push(`close points: ${pointsStr}`);
   const grandTotal = r.yakumono + r.bonus + r.payout + r.action;
   const grandShare = grandTotal > 0 ? ((r.bonus + r.payout) / grandTotal) * 100 : 0;
   const grandActionShare = grandTotal > 0 ? (r.action / grandTotal) * 100 : 0;

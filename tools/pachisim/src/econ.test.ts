@@ -1,3 +1,7 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { expect, test } from 'vitest';
 import {
   ECON_PROFILES,
@@ -119,13 +123,14 @@ test('runEcon 7日: 閉店は獲得≥1のみ・玉内訳が累計と整合・�
 
 test('formatEcon: heavy は standard と常連Pを比べ、週次は (最上位役物, Lv合計) の辞書順で上回るかを見る', () => {
   const row = (day: number, top: string, lvTotal: number, regular: number): EconDayRow => ({
-    day, balls: 0, perSecFg: day, runTotal: 0, totalTotal: 0, regular, ballPts: 0, medalPts: 0, closes: 0, awakens: 0,
+    day, balls: 0, perSecFg: day, perSecFgNoDash: day, runTotal: 0, totalTotal: 0, regular, ballPts: 0, medalPts: 0, closes: 0, awakens: 0,
     top, lvTotal, medals: 0, medalsActivity: 0, medalsPachinko: 0, jackpots: 0, fired: 0, payout: 0, yakumono: 0, bonus: 0, action: 0, fuelMin: 0, achDone: 0, achMult: 1,
+    treePoints: 0, treeEarned: 0, treeOwned: 0, treeMult: 1,
   });
   const res = (profileId: string, rows: EconDayRow[]): EconResult => ({
     profile: profileId, machine: 'light-middle-01', seed: 1, days: rows.length, rows, croonDay: 1, firstAwakenDay: 3,
-    firstCloseDay: 7, medalsActivity: 0, medalsPachinko: 0, closeHistory: [{ day: 7, gain: 1 }], yakumono: 0, bonus: 0, payout: 0, action: 0,
-    minBalls: 100,
+    firstCloseDay: 7, medalsActivity: 0, medalsPachinko: 0, closeHistory: [{ day: 7, gain: 1, points: 10, rank: 1, runBonus: 0, kuchikomi: 0 }], yakumono: 0, bonus: 0, payout: 0, action: 0,
+    minBalls: 100, treeBuys: [],
   });
   const heavy = res('heavy', [row(1, '-', 0, 3)]);
   const std = res('standard', [row(1, '-', 0, 2)]);
@@ -156,3 +161,44 @@ test('formatEcon: heavy は standard と常連Pを比べ、週次は (最上位�
   expect(formatEcon(res('standard', long(299)), null)).toContain('12w perSec growth >= (1+P) growth (week4->12): NG');
   expect(formatEcon(res('standard', weeks([10, 20, 30, 40])), null)).not.toContain('12w perSec');
 });
+
+test('parseEconArgs: --tree / --start-rank / --bantou（既定は off・0・off）', () => {
+  const a = parseEconArgs(['--profile', 'standard', '--days', '28']);
+  expect([a.tree, a.startRank, a.bantou]).toEqual(['off', 0, false]);
+  const b = parseEconArgs(['--profile', 'standard', '--days', '28', '--tree', 'all', '--start-rank', '74', '--bantou', 'on']);
+  expect([b.tree, b.startRank, b.bantou]).toEqual(['all', 74, true]);
+  expect(parseEconArgs(['--profile', 'standard', '--days', '28', '--tree', 'greedy']).tree).toBe('greedy');
+  expect(() => parseEconArgs(['--profile', 'standard', '--days', '28', '--tree', 'some'])).toThrow();
+  expect(() => parseEconArgs(['--profile', 'standard', '--days', '28', '--bantou', 'yes'])).toThrow();
+  expect(() => parseEconArgs(['--profile', 'standard', '--days', '28', '--start-rank', '-1'])).toThrow();
+});
+
+test('--tree off は tree を持たない（空ツリー）JSON と全項目が一致する', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'econ-notree-'));
+  try {
+    const json = JSON.parse(readFileSync(new URL('../../../resources/economy/default.json', import.meta.url), 'utf8')) as Record<string, unknown>;
+    delete json['tree'];
+    const path = join(dir, 'no-tree.json');
+    writeFileSync(path, JSON.stringify(json));
+    const std = profile('standard');
+    const play = { rate: 1, min: 0 };
+    const withTree = runEcon(std, 8, 1, 'light-middle-01', undefined, play, { tree: 'off', startRank: 0, bantou: false });
+    const empty = runEcon(std, 8, 1, 'light-middle-01', pathToFileURL(path), play, { tree: 'off', startRank: 0, bantou: false });
+    expect(withTree.closeHistory.length).toBeGreaterThanOrEqual(1);
+    expect(withTree).toEqual(empty);
+    // 買わないので所持数は 0・倍率は 1。
+    expect(withTree.rows.every((r) => r.treeOwned === 0 && r.treeMult === 1)).toBe(true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}, 120000);
+
+test('--start-rank と --tree all: ランク・メダルの開始値と全所持から始まる', () => {
+  const r = runEcon(profile('standard'), 1, 1, 'light-middle-01', undefined, { rate: 1, min: 0 }, { tree: 'all', startRank: 74, bantou: false });
+  const row = r.rows[0] as EconDayRow;
+  expect(row.regular).toBe(74);
+  expect(row.treeOwned).toBeGreaterThanOrEqual(50);
+  expect(row.treePoints).toBe(0);
+  expect(row.treeEarned).toBeGreaterThan(1000);
+  expect(row.treeMult).toBeGreaterThan(1.5);
+}, 60000);
