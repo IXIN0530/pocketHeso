@@ -174,6 +174,15 @@ export {
   treeUnknownMachines,
 } from './tree-config.ts';
 export type {
+  TreeBuyReason,
+  TreeNodeState,
+  TreeNodeView,
+  TreeRecord,
+  TreeTotals,
+  TreeView,
+} from './tree-state.ts';
+export { treeClosePoints, treeRunBonus } from './tree-state.ts';
+export type {
   Action,
   ActiveNotice,
   AwayReplay,

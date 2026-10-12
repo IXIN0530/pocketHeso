@@ -275,7 +275,7 @@ test('発射単価は rate×ref×shotS（切り捨て・最低 rate）・役物�
   const old = loadEconomy();
   old.restore(v3);
   expect(old.getRefPerSec()).toBe(ref);
-  expect(old.snapshot().v).toBe(6);
+  expect(old.snapshot().v).toBe(7);
   expect('jackpotFeverMult' in (old.snapshot() as unknown as Record<string, unknown>)).toBe(false);
   // 旧版 snapshot（v2）は累計獲得メダル0で読む
   const v2: Record<string, unknown> = { ...(econ.snapshot() as unknown as Record<string, unknown>), v: 2 };

@@ -14,6 +14,16 @@ import {
   streakMult,
   yakumonoBulkPrice,
 } from './economy-math.ts';
+import type { TreeBuyReason, TreeRecord, TreeTotals, TreeView } from './tree-state.ts';
+import {
+  treeCheckBuy,
+  treeClosePoints,
+  treeDropUnknown,
+  treeNodeViews,
+  treeOwnedFlags,
+  treeSumEffects,
+  treeTierOpen,
+} from './tree-state.ts';
 
 /** 旧レート表（D-090 前。[1,4,10,40,100,400,1000]。v4 以前の rateStage 移行用）。 */
 const LEGACY_RATES: readonly number[] = [1, 4, 10, 40, 100, 400, 1000];
@@ -41,7 +51,7 @@ export interface AchievementsView {
 
 /** IdleEconomy の複写（Engine の snapshot.economy に入る）。 */
 export interface IdleEconomySnapshot {
-  readonly v: 6;
+  readonly v: 7;
   readonly lv: readonly number[];
   readonly awakened: readonly number[];
   readonly idleStage: number;
@@ -66,6 +76,16 @@ export interface IdleEconomySnapshot {
   readonly achieved: readonly AchievementRecord[];
   /** 覚醒の累計回数（閉店で保持）。 */
   readonly awakenTotal: number;
+  /** 今持っている常連P（使う通貨。regular は常連ランク, spec/25）。 */
+  readonly points: number;
+  /** 常連P の累計（= points + Σtree.cost）。 */
+  readonly pointsEarned: number;
+  /** 常連ツリーの購入（購入順）。 */
+  readonly tree: readonly TreeRecord[];
+  /** 開店ダッシュの残り（ms）。 */
+  readonly openBoostMs: number;
+  /** 番頭さん（役物の自動購入）の ON/OFF。 */
+  readonly bantouOn: boolean;
 }
 
 /** 役物表示（Lv・覚醒数・次の価格。描画と購入UIが見る）。 */
@@ -110,6 +130,8 @@ export interface ShopCloseView {
   readonly gain: number;
   readonly byBalls: number;
   readonly byMedals: number;
+  /** 今閉店した時に得る常連P（spec/25）。 */
+  readonly points: number;
 }
 
 /** 強化画面が見る経済の状態（Projection の shop）。 */
@@ -240,6 +262,63 @@ function isNextDay(prev: string, curr: string): boolean {
   return ny === c.y && nm === c.m && nd === c.d;
 }
 
+/** 保存のツリー部分（v7）。 */
+interface TreeSave {
+  readonly points: number;
+  readonly pointsEarned: number;
+  readonly tree: TreeRecord[];
+  readonly openBoostMs: number;
+  readonly bantouOn: boolean;
+}
+
+/** v6 以前の移行（常連P = 累計 = points_per_rank × ランク、過去の runBonus は 0, spec/25）。 */
+function migrateTreeSave(points: number): TreeSave {
+  return { points, pointsEarned: points, tree: [], openBoostMs: 0, bantouOn: false };
+}
+
+/** v7 のツリー部分を読んで検証する（pointsEarned = points + Σcost。未知の id もここでは残す）。 */
+function readTreeSave(s: Record<string, unknown>): TreeSave {
+  const points = asNonNegInt(s['points'] as number, 'points');
+  const pointsEarned = asNonNegInt(s['pointsEarned'] as number, 'pointsEarned');
+  const raw = s['tree'];
+  if (!Array.isArray(raw)) {
+    fail('tree must be an array');
+  }
+  const tree: TreeRecord[] = [];
+  let spent = 0;
+  for (let i = 0; i < raw.length; i = i + 1) {
+    const r = raw[i] as unknown;
+    if (!isRecord(r) || typeof r['id'] !== 'string' || r['id'].length === 0) {
+      fail('tree[' + i + '].id must be a non-empty string');
+    }
+    const id = r['id'];
+    const cost = asNonNegInt(r['cost'] as number, 'tree[' + i + '].cost');
+    if (cost < 1) {
+      fail('tree[' + i + '].cost must be >= 1');
+    }
+    const at = asNonNegInt(r['at'] as number, 'tree[' + i + '].at');
+    for (let k = 0; k < tree.length; k = k + 1) {
+      if ((tree[k] as TreeRecord).id === id) {
+        fail('tree[' + i + '].id duplicated');
+      }
+    }
+    tree.push({ id, cost, at });
+    spent = spent + cost;
+  }
+  if (pointsEarned !== points + spent) {
+    fail('pointsEarned must equal points + spent');
+  }
+  const openBoostMs = asFinite(s['openBoostMs'] as number, 'openBoostMs');
+  if (openBoostMs < 0) {
+    fail('openBoostMs must be >= 0');
+  }
+  const bantouOn = s['bantouOn'];
+  if (typeof bantouOn !== 'boolean') {
+    fail('bantouOn must be boolean');
+  }
+  return { points, pointsEarned, tree, openBoostMs, bantouOn };
+}
+
 /** 放置経済の本体（Engine が委譲する。決定論・+ - * /・floor のみ）。 */
 export class IdleEconomy implements EconomyPort {
   private readonly spec: EconomySpec;
@@ -271,6 +350,15 @@ export class IdleEconomy implements EconomyPort {
   private achCountState = 0;
   /** 指標ごとの未達成の最小しきい値（ACHIEVEMENT_METRICS の添字。無ければ -1）。毎秒の判定を軽くする。 */
   private achMinAt: number[] = [];
+  private pointsState = 0;
+  private pointsEarnedState = 0;
+  private treeState: TreeRecord[] = [];
+  private openBoostMsState = 0;
+  private bantouOnState = false;
+  /** 一覧の添字ごとの所持（treeState から作る）。 */
+  private treeOwned: boolean[] = [];
+  /** 所持ノードの効果の合計（treeOwned から作る。保存しない）。 */
+  private treeTotalsState: TreeTotals;
   /** basePerSec のキャッシュ（Lv・覚醒が変わる購入・覚醒・閉店・復元で捨てる。-1 は未計算）。 */
   private basePerSecCache = -1;
 
@@ -282,12 +370,14 @@ export class IdleEconomy implements EconomyPort {
     this.awakenedState = [0, 0, 0, 0, 0, 0, 0, 0];
     this.achievedFlags = [];
     this.rebuildAchievedFlags();
+    this.treeTotalsState = treeSumEffects(spec.tree.nodes, this.treeOwned);
+    this.rebuildTree();
   }
 
   /** 状態の複写。 */
   snapshot(): IdleEconomySnapshot {
     return {
-      v: 6,
+      v: 7,
       lv: [...this.lvState],
       awakened: [...this.awakenedState],
       idleStage: this.idleStageState,
@@ -309,19 +399,25 @@ export class IdleEconomy implements EconomyPort {
       medalsEarned: this.medalsEarnedState,
       achieved: this.achievedState.map((r) => ({ id: r.id, at: r.at })),
       awakenTotal: this.awakenTotalState,
+      points: this.pointsState,
+      pointsEarned: this.pointsEarnedState,
+      tree: this.treeState.map((r) => ({ id: r.id, cost: r.cost, at: r.at })),
+      openBoostMs: this.openBoostMsState,
+      bantouOn: this.bantouOnState,
     };
   }
 
   /**
    * 複写から復元する（v1 は fever=0、v1/v2 は累計獲得メダル=0、v3 以前の jackpotFeverMult は読んで捨てる、v4 以前は旧レート段を移行 D-090、
-   * v5 以前は実績なし・覚醒の累計＝今の周回の Σawakened, spec/24）。
+   * v5 以前は実績なし・覚醒の累計＝今の周回の Σawakened, spec/24、v6 以前は常連P = points_per_rank × ランク・ツリー空, spec/25）。
+   * 一覧から消えたツリーの id は除いてその cost を常連P に返す（D-104）。
    */
   restore(s: unknown): void {
     if (!isRecord(s)) {
       fail('snapshot must be an object');
     }
     const v = s['v'];
-    if (v !== 1 && v !== 2 && v !== 3 && v !== 4 && v !== 5 && v !== 6) {
+    if (v !== 1 && v !== 2 && v !== 3 && v !== 4 && v !== 5 && v !== 6 && v !== 7) {
       fail('snapshot version mismatch');
     }
     const lv = s['lv'];
@@ -343,7 +439,7 @@ export class IdleEconomy implements EconomyPort {
     const rateStageRaw = asNonNegInt(s['rateStage'] as number, 'rateStage');
     // v4 以前は旧レート表 [1,4,10,40,100,400,1000] の段。旧の最大解放レートを新表のそれ以下の最大に丸める（400・1000→100, D-090）。
     let rateStage = rateStageRaw;
-    if (v !== 5 && v !== 6) {
+    if (v !== 5 && v !== 6 && v !== 7) {
       const oldRate = rateStageRaw < LEGACY_RATES.length ? (LEGACY_RATES[rateStageRaw] as number) : 1000;
       const news = this.spec.upgrades.rates;
       let mapped = 0;
@@ -389,13 +485,13 @@ export class IdleEconomy implements EconomyPort {
       }
     }
     let medalsEarned = 0;
-    if (v === 3 || v === 4 || v === 5 || v === 6) {
+    if (v === 3 || v === 4 || v === 5 || v === 6 || v === 7) {
       medalsEarned = asNonNegInt(s['medalsEarned'] as number, 'medalsEarned');
       // v3 以前の jackpotFeverMult は読んで捨てる（D-080 で廃止）。
     }
     const achieved: AchievementRecord[] = [];
     let awakenTotal = 0;
-    if (v === 6) {
+    if (v === 6 || v === 7) {
       const rawAch = s['achieved'];
       if (!Array.isArray(rawAch)) {
         fail('achieved must be an array');
@@ -420,6 +516,8 @@ export class IdleEconomy implements EconomyPort {
         awakenTotal = awakenTotal + (awCopy[i] as number);
       }
     }
+    const treeSave = v === 7 ? readTreeSave(s) : migrateTreeSave(this.spec.tree.pointsPerRank * regular);
+    const dropped = treeDropUnknown(this.spec.tree.nodes, treeSave.tree);
     this.lvState = lvCopy;
     this.awakenedState = awCopy;
     this.basePerSecCache = -1;
@@ -443,6 +541,65 @@ export class IdleEconomy implements EconomyPort {
     this.achievedState = achieved;
     this.awakenTotalState = awakenTotal;
     this.rebuildAchievedFlags();
+    this.pointsState = treeSave.points + dropped.refund;
+    this.pointsEarnedState = treeSave.pointsEarned;
+    this.treeState = dropped.kept;
+    this.openBoostMsState = treeSave.openBoostMs;
+    this.bantouOnState = treeSave.bantouOn;
+    this.rebuildTree();
+  }
+
+  /** ツリーの所持と効果の合計を作り直す（購入・復元で呼ぶ）。 */
+  private rebuildTree(): void {
+    this.treeOwned = treeOwnedFlags(this.spec.tree.nodes, this.treeState);
+    this.treeTotalsState = treeSumEffects(this.spec.tree.nodes, this.treeOwned);
+  }
+
+  /** 所持ノードの効果の合計（T3/T4 の適用が見る）。 */
+  getTreeTotals(): TreeTotals {
+    return this.treeTotalsState;
+  }
+
+  /** 今持っている常連P。 */
+  getPoints(): number {
+    return this.pointsState;
+  }
+
+  /** 今閉店したら得る常連P（gain 0 なら 0）。 */
+  private nextClosePoints(): number {
+    const c = this.spec.close;
+    const gain = closeGain(this.totalTotalState, c.divisor, this.regularState, this.medalsEarnedState, c.medalsPerPoint);
+    return treeClosePoints(gain, this.runTotalState, this.spec.tree, this.treeTotalsState.pointsAdd);
+  }
+
+  /** 常連ツリーのノードを買う（常連P・段・前提・二重購入を検査。いつでも買える, spec/25）。 */
+  buyTreeNode(id: string, at: number): { ok: true } | { ok: false; reason: TreeBuyReason } {
+    asNonNegInt(at, 'at');
+    const r = treeCheckBuy(this.spec.tree, id, this.treeOwned, this.pointsState);
+    if (!r.ok) {
+      return r;
+    }
+    const cost = (this.spec.tree.nodes[r.idx] as { cost: number }).cost;
+    this.pointsState = this.pointsState - cost;
+    this.treeState.push({ id, cost, at });
+    this.rebuildTree();
+    return { ok: true };
+  }
+
+  /** 常連ツリーの表示（Projection の tree）。 */
+  getTreeView(): TreeView {
+    return {
+      rank: this.regularState,
+      regularRate: this.spec.close.regularMult,
+      points: this.pointsState,
+      pointsEarned: this.pointsEarnedState,
+      openBoostMs: this.openBoostMsState,
+      bantou: { owned: this.treeTotalsState.bantou, on: this.bantouOnState },
+      tierOpen: treeTierOpen(this.spec.tree, this.treeOwned),
+      nodes: treeNodeViews(this.spec.tree, this.treeOwned, this.pointsState),
+      unlocks: [...this.treeTotalsState.unlocks],
+      nextClosePoints: this.nextClosePoints(),
+    };
   }
 
   /** 一覧の添字ごとの達成済みと、一覧にある達成の数を作り直す（反復は配列の添字順のみ）。 */
@@ -1140,6 +1297,7 @@ export class IdleEconomy implements EconomyPort {
         gain: closeGain(this.totalTotalState, c.divisor, this.regularState, this.medalsEarnedState, c.medalsPerPoint),
         byBalls: ballPoints(this.totalTotalState, c.divisor),
         byMedals: Math.floor(this.medalsEarnedState / c.medalsPerPoint),
+        points: this.nextClosePoints(),
       },
       regular: this.regularState,
       streakDays: this.streakDaysState,
@@ -1322,8 +1480,10 @@ export class IdleEconomy implements EconomyPort {
     this.boostOnState = on;
   }
 
-  /** 閉店（条件・常連P＝min(玉由来, 行動由来)−既得・リセット範囲。玉はstart_ballsに戻す）。 */
-  onClose(curBalls: number): { ok: true; balls: number; gain: number } | { ok: false; reason: string } {
+  /** 閉店（条件・常連ランク＋min(玉由来, 行動由来)−既得・常連P・リセット範囲。玉はstart_ballsに戻す）。 */
+  onClose(
+    curBalls: number,
+  ): { ok: true; balls: number; gain: number; points: number } | { ok: false; reason: string } {
     asFinite(curBalls, 'curBalls');
     if (this.runTotalState < this.spec.close.requiredRunTotal) {
       return { ok: false, reason: 'not-ready' };
@@ -1335,7 +1495,10 @@ export class IdleEconomy implements EconomyPort {
       this.medalsEarnedState,
       this.spec.close.medalsPerPoint,
     );
+    const points = treeClosePoints(gain, this.runTotalState, this.spec.tree, this.treeTotalsState.pointsAdd);
     this.regularState = this.regularState + gain;
+    this.pointsState = this.pointsState + points;
+    this.pointsEarnedState = this.pointsEarnedState + points;
     this.lvState = [0, 0, 0, 0, 0, 0, 0, 0];
     this.awakenedState = [0, 0, 0, 0, 0, 0, 0, 0];
     this.basePerSecCache = -1;
@@ -1347,6 +1510,6 @@ export class IdleEconomy implements EconomyPort {
     this.autoOwnedState = false;
     this.tomeuchiOwnedState = false;
     this.runTotalState = 0;
-    return { ok: true, balls: this.spec.close.startBalls, gain };
+    return { ok: true, balls: this.spec.close.startBalls, gain, points };
   }
 }

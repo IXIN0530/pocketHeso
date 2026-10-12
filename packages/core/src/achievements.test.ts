@@ -256,7 +256,7 @@ test('旧 v5 の awakenTotal は今の周回の Σawakened', () => {
   const old = loadEconomy();
   old.restore(v5);
   expect(old.getAwakenTotal()).toBe(3);
-  expect(old.snapshot().v).toBe(6);
+  expect(old.snapshot().v).toBe(7);
   expect(old.onAchievementTick(0, NO_ENGINE)).toEqual(['awakenTotal_1']);
 });
 
