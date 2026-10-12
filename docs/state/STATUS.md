@@ -1,10 +1,10 @@
 # STATUS
 <!-- 30行以内を維持。古い Notes は削除してよい（履歴は git log にある） -->
 
-- Current phase: P9 完了（v1.1.0 本番公開・確認済み）。次フェーズは人間の指示待ち（P8-T7 任意 / P7 再開）
-- Last done: v1.1.0 本番確認 人間OK（10/12）。P9 完了。その前: D-099 期待値 1.10 調整（コミット済み 032c8c8）、P9-T6 v1.1.0 を main へ
-- Next: 人間の指示待ち（P8-T7 任意 / P7 再開 T11→T12→T13→T2 / 持ち越しバランスの扱い）
-- Owner hint: 人間（次の方針を決める）
+- Current phase: P10（常連ツリー: 常連Pの使い道・数ヶ月遊べる設計）→ `docs/plan/P10-prestige-tree.md`。最優先。P8-T7（任意）と P7 再開は人間の指示待ち
+- Last done: P10 の仕様と計画を作成（spec/25・P10・D-100〜D-103・調査 docs/ref/cookie-clicker-heavenly.md）。その前: v1.1.0 本番確認 OK・P9 完了
+- Next: P10-T1（設定 JSON/型。T1〜T9）
+- Owner hint: Claude Code
 - Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T12 → T13 → T2 は人間の指示で再開
 
 ## Blockers
@@ -14,7 +14,6 @@
 - 既定機種の人間確認待ち（light/rush/ltのどれを既定にするか。P3バランスに影響）
 
 ## Notes（最新3件まで）
+- [P10]: 常連ランク（既存の常連P・式は不変）と使う通貨「常連P」を分けた。52ノード・5段・総1,108P・標準で全取得約12か月。数値は Python 概算で、実測は P10-T5。未決は spec/25 末尾（推奨で進行可）
 - [D-099]: 玉の期待値は `sim econ` の実測で合わせた（変更前は初期 約1.07。理論値 `sim run` は0.90〜0.98 で実測より低い）。当たり率 light 1/185・rush 1/328・lt 1/337。実測 初期 1.10/1.10/1.10・全強化 約1.2（60 seed）。30日 standard の閉店日・レート100バーストは変更前と同じ並び（再試算は未実施）
 - [P9-T6]: P9-T1〜T4 の実機確認は人間 OK（9/30）。build・test all・release-check 通過後に main へ ff マージ。本番確認項目: Debug が無い・v1.1.0・RUSH 10R 約50秒・レート7項目が収まる・既存セーブで実績が付く
-- [P9-T5]: 閉店日は実績の有無で全一致（5,10,15,19,25…）。none は 61日で 8個 ×1.08。12w 伸びは離散的な最高 perSec の取り方に左右される指標（light/rush は実績込みで上がった）。基準は `--economy` に mult_per 0 の JSON
-- [P9-T4]: 名前は `engine/achievement-defs.ts` が JSON の achievements だけを読む（parseEconomy をメインのチャンクに入れない。+3kB。一致はテストで確認）。起動の追いつき中の achieved も BootResult.events で画面へ渡しトーストに。トーストは前進ごとに1つ、盤面上部（リプレイ札の下）
