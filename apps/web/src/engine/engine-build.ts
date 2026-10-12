@@ -4,14 +4,14 @@ import { Engine, type Action, type EngineSnapshot } from '@ph/core';
 import { getSnapshot, loadActions, loadLedger, type Db, type GameMeta } from '../platform/storage.ts';
 import { engineConfig } from './game-config.ts';
 
-/** 5 = P9-T3（実績: IdleEconomy v6 の achieved・awakenTotal、留守中の達成数, spec/24）。 */
-export const SNAPSHOT_VERSION = 5;
+/** 6 = P10-T4（常連ツリー: IdleEconomy v7 の points・tree・bantouOn 等, spec/25）。5 = P9-T3（実績, spec/24）。 */
+export const SNAPSHOT_VERSION = 6;
 
 /**
- * 読んでよい旧版（3 = P7-T7、4 = P8-T8 / v1.0.0。旧レート段・旧単価・実績なしは Core の restore が移行する。
+ * 読んでよい旧版（3 = P7-T7、4 = P8-T8 / v1.0.0、5 = P9 / v1.1.0。旧レート段・旧単価・実績なしは Core の restore が移行する。
  * 再計算だと新レート表で買い直しになるため, D-092）。
  */
-const LEGACY_SNAPSHOT_VERSIONS: readonly number[] = [3, 4];
+const LEGACY_SNAPSHOT_VERSIONS: readonly number[] = [3, 4, 5];
 
 export type RestoredFrom = 'snapshot' | 'recompute';
 

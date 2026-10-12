@@ -16,6 +16,8 @@ type Action  =
   | { t: SimTime; k: 'shoot'; on: boolean; rate: number }          // 手動打ち（前面のみ）
   | { t: SimTime; k: 'auto'; share: number; rate: number }         // オート打ち設定 0..1
   | { t: SimTime; k: 'presence'; fg: boolean }                     // 前面/背面（放置効率・予告の出現）
+  | { t: SimTime; k: 'treeBuy'; node: string }                     // 常連ツリーの購入（rejected: unknown-node/owned/tier-locked/locked/insufficient-points, spec/25）
+  | { t: SimTime; k: 'bantou'; on: boolean }                      // 番頭さんの ON/OFF（未所持は rejected 'not-owned'）
   | { t: SimTime; k: 'noticeTap'; noticeId: number }
   | { t: SimTime; k: 'boost'; on: boolean }
   | { t: SimTime; k: 'close'; machineId?: string }                // 閉店（周回）。machineId で次の周回の機種（新台入替, D-082）
@@ -37,7 +39,7 @@ type SimEvent =
   | { k: 'noticeSpawned' | 'noticeExpired'; id: number; at: SimTime; effect: NoticeEffect }
   | { k: 'granted'; claimId: string; at: SimTime; fuelMs: number; medals: number; balls?: number; bonusHolds?: number } // balls=即時の玉
   | { k: 'fuelEmpty' | 'fuelRefilled'; at: SimTime }
-  | { k: 'closed'; at: SimTime; regularPoints: number; machineId?: string }  // 機種を変えた時だけ
+  | { k: 'closed'; at: SimTime; regularPoints: number; points?: number; machineId?: string }  // 機種を変えた時だけ
   | { k: 'rejected'; at: SimTime; action: Action['k']; reason: string }
   | { k: 'achieved'; id: string; at: SimTime }   // 実績の達成（spec/24, D-095）
 type HoldEntry = { serial: number; hit: boolean; kind?: JackpotKind; pattern: PatternId; color: HoldColor; hot: number; unit?: number } // unit は取得時の単価（無い旧セーブは rate, D-090）
@@ -57,7 +59,8 @@ export class Engine {
 }
 ```
 - 玉の結果は `atlas[key(ball)]` を引くだけ（物理は走らせない）。センサー時刻 = 発射時刻 + flightMs。
-- 同時刻の並び: Action/Grant → sensor → holdAdded/Overflow → spinResolved → jackpot* → 特別保留の投入 → 電サポの自動補充 → spinStarted → mode → notice → economyTick → achieved（実績の判定, spec/24）。
+- 同時刻の並び: Action/Grant → sensor → holdAdded/Overflow → spinResolved → jackpot* → 特別保留の投入 → 電サポの自動補充 → spinStarted → mode → notice → economyTick → 番頭さん → achieved（実績の判定, spec/24）。
+- 常連ツリー（詳細は spec/25）: closed.points は今回得た常連P（0 は省略）。notice_auto は前面で出た予告を出現+ms に手のタップと同じ経路で受け取る（背面なら受け取らず、期限内に前面へ戻ればその時刻）。grant_hold_1_in は行動の特別保留だけが 1/value で当たり。番頭さんは 60,000ms の倍数の economyTick の直後に自動購入（イベントなし）。treeBuy 成功後に予告設定を読み直す。
 - **特別保留**（D-081）: Grant.bonusHolds はストック（snapshot `bonusStock`）に足し、保留に空きがあれば1つずつ入れる（`holdAdded`）。
   抽選は `RNGStream(seed, 'grantHold', n)`（n はストックから出した通し番号, 0 始まり）、serial = `GRANT_HOLD_SERIAL_BASE`（1.5e9）+ n。
   当否・色は予告のボーナス保留（`drawBonusHold`）と同じ規則、rate1・賞球なし。取得時のモードで表を選ぶ。
@@ -85,6 +88,7 @@ export interface HallProjection {
   totals: Totals                      // 回転数, 当たり, 出玉, 発射数, 累計玉
   nextHot?: HotHint                   // lookahead で見えている最も熱い予定
   achievements: AchievementsView      // 達成（id・時刻）・今の achMult・進捗用の指標の値（spec/24）
+  tree?: TreeView                     // 常連ツリー（常連P・購入済み・nextClosePoints 等, spec/25）
 }
 export function project(s: EngineState, at: SimTime): HallProjection
 ```

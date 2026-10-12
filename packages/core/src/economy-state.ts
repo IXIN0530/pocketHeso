@@ -839,6 +839,7 @@ export class IdleEconomy implements EconomyPort {
   fork(): IdleEconomy {
     const e = new IdleEconomy(this.spec);
     e.restore(this.snapshot());
+    e.setMachineId(this.machineIdState);
     return e;
   }
 
@@ -1038,7 +1039,10 @@ export class IdleEconomy implements EconomyPort {
     return v as number;
   }
 
-  /** 予告の設定（Engineのスケジュール・効果判定用。ツリー込み, spec/25。参照を返さないよう複写）。 */
+  /**
+   * 予告の設定（Engineのスケジュール・効果判定用。ツリー込み, spec/25。参照を返さないよう複写）。
+   * autoMs は notice_auto の遅れ（無ければ -1）、grantBonus1In は行動の特別保留の当たり 1/n（grant_hold_1_in が無ければ bonus1In）。
+   */
   getNoticeConfig(): {
     minFgMs: number;
     maxFgMs: number;
@@ -1052,10 +1056,14 @@ export class IdleEconomy implements EconomyPort {
     bonus1In: number;
     bonusWeight: number;
     intervalMult: number;
+    autoMs: number;
+    grantBonus1In: number;
   } {
     const n = this.spec.notice;
     const t = this.treeTotalsState;
     return {
+      autoMs: t.noticeAutoMs,
+      grantBonus1In: t.grantHold1In > 0 ? t.grantHold1In : n.bonus1In,
       minFgMs: n.minFgMs,
       maxFgMs: n.maxFgMs,
       displayMs: n.displayMs,
@@ -1539,6 +1547,55 @@ export class IdleEconomy implements EconomyPort {
   /** ブーストのON/OFF。 */
   onBoost(on: boolean): void {
     this.boostOnState = on;
+  }
+
+  /** 番頭さんの ON/OFF（未所持は not-owned, spec/25）。 */
+  onBantou(on: boolean): { ok: true } | { ok: false; reason: string } {
+    if (!this.treeTotalsState.bantou) {
+      return { ok: false, reason: 'not-owned' };
+    }
+    this.bantouOnState = on;
+    return { ok: true };
+  }
+
+  /**
+   * 番頭さんの自動購入（Engine が 60,000ms の倍数の economyTick で呼ぶ, spec/25）。所持かつ ON の時だけ、
+   * 持ち玉 × share を上限に「次の Lv が最も安い役物」を1 Lv ずつ買う（同額は添字の小さい方・解放は前の役物 Lv1・1回 max_per_run まで）。
+   */
+  onBantouTick(curBalls: number): { balls: number; spent: number } {
+    asFinite(curBalls, 'curBalls');
+    if (!this.bantouOnState || !this.treeTotalsState.bantou || !(curBalls > 0)) {
+      return { balls: curBalls, spent: 0 };
+    }
+    const b = this.spec.tree.bantou;
+    let budget = curBalls * b.share;
+    let spent = 0;
+    const pm = this.priceMult();
+    for (let n = 0; n < b.maxPerRun; n = n + 1) {
+      let best = -1;
+      let bestPrice = 0;
+      for (let i = 0; i < 8; i = i + 1) {
+        const lv = this.lvState[i] as number;
+        if ((i > 0 && (this.lvState[i - 1] as number) < 1) || lv + 1 > this.priceTable.length) {
+          continue;
+        }
+        const price = (this.spec.yakumono[i] as { basePrice: number }).basePrice * growthPow(this.priceTable, lv) * pm;
+        if (best < 0 || price < bestPrice) {
+          best = i;
+          bestPrice = price;
+        }
+      }
+      if (best < 0 || bestPrice > budget) {
+        break;
+      }
+      this.lvState[best] = (this.lvState[best] as number) + 1;
+      budget = budget - bestPrice;
+      spent = spent + bestPrice;
+    }
+    if (spent > 0) {
+      this.basePerSecCache = -1;
+    }
+    return { balls: curBalls - spent, spent };
   }
 
   /** 閉店（条件・常連ランク＋min(玉由来, 行動由来)−既得・常連P・リセット範囲。玉はstart_ballsに戻す）。 */

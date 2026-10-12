@@ -116,7 +116,7 @@ test('旧版4（v1.0.0・IdleEconomy v5・実績なし）の snapshot から落�
   await host.presence(false, T0 + 5000);
   const at = T0 + 15 * MIN;
   const snap = (await getSnapshot(db, 'latest')) as { v: number; engine: Record<string, unknown> };
-  expect(snap.v).toBe(5);
+  expect(snap.v).toBe(6);
   const econ: Record<string, unknown> = { ...(snap.engine['economy'] as Record<string, unknown>), v: 5 };
   delete econ['achieved'];
   delete econ['awakenTotal'];
@@ -139,6 +139,28 @@ test('旧版4（v1.0.0・IdleEconomy v5・実績なし）の snapshot から落�
   expect(fresh.boot.restoredFrom).toBe('recompute');
   const want = (await fresh.host.tick(at + 2000)).projection.achievements.done.map((d) => d.id);
   expect(done.slice().sort()).toEqual(want.slice().sort());
+});
+
+test('旧版5（v1.1.0・IdleEconomy v6）の snapshot は常連P が 10 × ランクで始まる。v6 は往復できる', async () => {
+  const db = await freshDb();
+  const { host } = await EngineHost.open(db, ATLAS, T0, seeds);
+  await host.receive([rec('health:steps:2026-09-26:1', T0 - 5000, 30 * MIN, 10)], false, T0 + 1000);
+  await host.presence(false, T0 + 5000);
+  const at = T0 + 15 * MIN;
+  const snap = (await getSnapshot(db, 'latest')) as { v: number; engine: Record<string, unknown> };
+  expect(snap.v).toBe(6);
+  const cur = snap.engine['economy'] as Record<string, unknown>;
+  // 現行 v6 の往復: そのまま復元できる。
+  const same = await EngineHost.open(db, ATLAS, at, seeds);
+  expect(same.boot.restoredFrom).toBe('snapshot');
+  // 経済 v6（常連ツリーの項目なし）にして、ランク 3 にする。
+  const econ: Record<string, unknown> = { ...cur, v: 6, regular: 3 };
+  for (const k of ['points', 'pointsEarned', 'tree', 'openBoostMs', 'bantouOn']) delete econ[k];
+  await putSnapshot(db, 'latest', { ...snap, v: 5, engine: { ...snap.engine, economy: econ } });
+  const old = await EngineHost.open(db, ATLAS, at, seeds);
+  expect(old.boot.restoredFrom).toBe('snapshot');
+  const tree = (await old.host.tick(at + 2000)).projection.tree;
+  expect(tree?.points).toBe(30);
 });
 
 test('背面のまま終了していたら起動時に前面へ戻して留守中サマリーを返す', async () => {

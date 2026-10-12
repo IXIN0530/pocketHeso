@@ -8,6 +8,7 @@ import type { SimTime } from './spin.ts';
 import { ATLAS_ENTRY_BYTES, ATLAS_HEADER_BYTES, ATLAS_TOTAL_BYTES, atlasKeyForBall, decodeAtlasHeader } from './atlas.ts';
 import type { EconomyPort } from './economy.ts';
 import type { AchievementsView, EngineAchievementMetrics, ShopView } from './economy-state.ts';
+import type { TreeView } from './tree-state.ts';
 import { StubEconomy } from './economy.ts';
 import { addAmount } from './economy-math.ts';
 import { RNGStream } from './rng.ts';
@@ -90,7 +91,11 @@ export type Action =
   | { readonly t: SimTime; readonly k: 'awaken'; readonly yakumono: string }
   | { readonly t: SimTime; readonly k: 'noticeTap'; readonly noticeId: number }
   | { readonly t: SimTime; readonly k: 'boost'; readonly on: boolean }
-  | { readonly t: SimTime; readonly k: 'close' };
+  | { readonly t: SimTime; readonly k: 'close' }
+  /** 常連ツリーのノードを買う（rejected: unknown-node・owned・tier-locked・locked・insufficient-points, spec/25）。 */
+  | { readonly t: SimTime; readonly k: 'treeBuy'; readonly node: string }
+  /** 番頭さんの ON/OFF（未所持は rejected 'not-owned', spec/25）。 */
+  | { readonly t: SimTime; readonly k: 'bantou'; readonly on: boolean };
 
 /** Engineが出すイベント（P3-T3で予告を追加。経済の毎秒増減はイベントにしない）。 */
 export type SimEvent =
@@ -109,7 +114,7 @@ export type SimEvent =
   | { readonly k: 'granted'; readonly claimId: string; readonly at: SimTime; readonly fuelMs: number; readonly medals: number; readonly balls?: number | undefined; readonly bonusHolds?: number | undefined }
   | { readonly k: 'fuelEmpty'; readonly at: SimTime }
   | { readonly k: 'fuelRefilled'; readonly at: SimTime }
-  | { readonly k: 'closed'; readonly at: SimTime; readonly regularPoints: number }
+  | { readonly k: 'closed'; readonly at: SimTime; readonly regularPoints: number; readonly points?: number | undefined } // points は今回得た常連P（0 は省略, spec/25）
   | { readonly k: 'rejected'; readonly at: SimTime; readonly action: Action['k']; readonly reason: string }
   | { readonly k: 'achieved'; readonly id: string; readonly at: SimTime };
 
@@ -198,7 +203,7 @@ export interface AwayTrackerSnapshot {
   readonly awayFrom: SimTime | null;
   readonly awayBalls: number;
   readonly awayFired: number;
-  /** 留守中に発射で消費した玉（Σunit。旧はΣrate）。無ければ totals.fired−awayFired（rate1前提）で読む。 */
+  /** 留守中に発射と番頭さんで使った玉（Σunit。旧はΣrate）。無ければ totals.fired−awayFired（rate1前提）で読む。 */
   readonly awayConsumed?: number;
   readonly awayJackpots: number;
   readonly awayMaxChain: number;
@@ -286,6 +291,8 @@ export interface HallProjection {
   readonly rateCosts: readonly number[];
   /** 実績（達成順・今の achMult・進捗用の指標の値。経済なしは達成なし・倍率1, spec/24）。 */
   readonly achievements: AchievementsView;
+  /** 常連ツリー（経済が IdleEconomy の時だけ, spec/25）。 */
+  readonly tree?: TreeView | undefined;
 }
 
 /** 発射グリッドms（絶対時刻の倍数に揃える）。 */
@@ -512,7 +519,14 @@ interface NoticeConfig {
   readonly bonusWeight: number;
   /** 間隔の係数（1 − Σnotice_interval_sub。無ければ 1）。 */
   readonly intervalMult?: number;
+  /** 前面で出た予告を出現 + autoMs に自動で受け取る（notice_auto。負・無しは自動なし）。 */
+  readonly autoMs?: number;
+  /** 行動の特別保留の当たり 1/n（grant_hold_1_in。無ければ bonus1In）。 */
+  readonly grantBonus1In?: number;
 }
+
+/** 番頭さんの判定の間隔ms（economyTick の時刻がこの倍数の時, spec/25）。 */
+const BANTOU_INTERVAL_MS = 60000;
 
 /** Engine（パチンコ部。決定論・スナップショット・lookahead・project）。 */
 export class Engine {
@@ -590,6 +604,7 @@ export class Engine {
     this.atlasBuffer = cfg.atlas;
     this.atlasView = new DataView(cfg.atlas);
     this.economy = cfg.economy === undefined ? new StubEconomy() : cfg.economy;
+    this.syncMachineId();
     this.nowMsState = startMs;
     this.nextBallState = 0;
     this.ballsState = initialBalls;
@@ -765,7 +780,29 @@ export class Engine {
       this.actionsState.push({ t: a.t, k: 'boost', on: a.on });
       return;
     }
+    if (a.k === 'treeBuy') {
+      if (typeof a.node !== 'string' || a.node.length === 0) {
+        throw new Error('invalid engine: treeBuy.node must be non-empty');
+      }
+      this.actionsState.push({ t: a.t, k: 'treeBuy', node: a.node });
+      return;
+    }
+    if (a.k === 'bantou') {
+      if (typeof a.on !== 'boolean') {
+        throw new Error('invalid engine: bantou.on must be boolean');
+      }
+      this.actionsState.push({ t: a.t, k: 'bantou', on: a.on });
+      return;
+    }
     this.actionsState.push({ t: a.t, k: 'close' });
+  }
+
+  /** 今の機種 id を経済に渡す（prod_add_machine の照合。保存されないので構築・復元のたびに, spec/25）。 */
+  private syncMachineId(): void {
+    const hook = this.econHook('setMachineId') as ((id: string) => void) | undefined;
+    if (hook !== undefined && typeof hook === 'function') {
+      (hook.bind(this.economy))(this.spec.id);
+    }
   }
 
   /** 経済フックを持つか（StubでもIdleEconomyでもなくテスト用でも動くようダックタイピング）。 */
@@ -922,6 +959,10 @@ export class Engine {
     }
     if (this.activeNoticeState !== null && this.activeNoticeState.expiresAt > cur && this.activeNoticeState.expiresAt < nxt) {
       nxt = this.activeNoticeState.expiresAt;
+    }
+    const autoAt = this.noticeAutoAt();
+    if (autoAt !== null && autoAt > cur && autoAt < nxt) {
+      nxt = autoAt;
     }
     if (this.activeNoticeState === null && this.fgState && this.noticeInFgMsState < MAX_SAFE_MS) {
       const spawnAt = cur + this.noticeInFgMsState;
@@ -1129,11 +1170,43 @@ export class Engine {
           if (r.ok) {
             this.ballsState = r.balls;
             this.closesState.push({ at, runTotal, gain: r.gain });
-            out.push({ k: 'closed', at, regularPoints: r.gain });
+            const points = (r as { points?: number }).points;
+            if (points !== undefined && points > 0) {
+              out.push({ k: 'closed', at, regularPoints: r.gain, points });
+            } else {
+              out.push({ k: 'closed', at, regularPoints: r.gain });
+            }
             this.syncHoldMax();
             this.clearNailQCache();
             this.autoAccState = 0;
           } else {
+            out.push({ k: 'rejected', at, action: a.k, reason: r.reason });
+          }
+        }
+      } else if (a.k === 'treeBuy') {
+        const hook = this.econHook('buyTreeNode') as
+          | ((id: string, at: number) => { ok: true } | { ok: false; reason: string })
+          | undefined;
+        if (hook === undefined || typeof hook !== 'function') {
+          out.push({ k: 'rejected', at, action: a.k, reason: 'not-implemented' });
+        } else {
+          const r = (hook.bind(this.economy))(a.node, at);
+          if (r.ok) {
+            // 予告の設定はツリー込みなので読み直す（今決まっている間隔はそのまま。次に決める間隔から, spec/25）。
+            this.noticeCfgCache = this.readNoticeConfig();
+          } else {
+            out.push({ k: 'rejected', at, action: a.k, reason: r.reason });
+          }
+        }
+      } else if (a.k === 'bantou') {
+        const hook = this.econHook('onBantou') as
+          | ((on: boolean) => { ok: true } | { ok: false; reason: string })
+          | undefined;
+        if (hook === undefined || typeof hook !== 'function') {
+          out.push({ k: 'rejected', at, action: a.k, reason: 'not-implemented' });
+        } else {
+          const r = (hook.bind(this.economy))(a.on);
+          if (!r.ok) {
             out.push({ k: 'rejected', at, action: a.k, reason: r.reason });
           }
         }
@@ -1338,10 +1411,23 @@ export class Engine {
     this.noticeInFgMsState = noticeIntervalMs(this.seed, this.noticeSeqState, cfg);
   }
 
-  /** 予告の出現・期限切れ（前面加算が尽きたら出現、期限が来たら失効）。 */
+  /** 表示中の予告を自動で受け取る時刻（notice_auto を持つ時だけ。出現 + autoMs。無ければ null, spec/25）。 */
+  private noticeAutoAt(): SimTime | null {
+    const cfg = this.noticeCfgCache;
+    const active = this.activeNoticeState;
+    if (cfg === null || active === null || cfg.autoMs === undefined || cfg.autoMs < 0) {
+      return null;
+    }
+    return active.spawnedAt + cfg.autoMs;
+  }
+
+  /** 予告の自動受け取り・出現・期限切れ（自動は前面・期限内で手のタップと同じ経路。前面加算が尽きたら出現、期限が来たら失効）。 */
   private applyNoticeAt(at: SimTime, out: SimEvent[]): void {
     const cfg = this.noticeCfgCache;
     if (cfg === null) {
+      return;
+    }
+    if (this.tryAutoNoticeAt(at, out)) {
       return;
     }
     if (this.activeNoticeState !== null) {
@@ -1366,6 +1452,19 @@ export class Engine {
     }
     this.activeNoticeState = { id, effect, spawnedAt: at, expiresAt };
     out.push({ k: 'noticeSpawned', id, at, effect });
+    // 遅れ 0 は出現と同じ時刻に受け取る（次の処理時刻まで待つと advance の区切りで結果が変わるため）。
+    this.tryAutoNoticeAt(at, out);
+  }
+
+  /** 自動受け取りの時刻を過ぎていて前面・期限内なら、手のタップと同じ経路で受け取る（受け取ったら true）。 */
+  private tryAutoNoticeAt(at: SimTime, out: SimEvent[]): boolean {
+    const autoAt = this.noticeAutoAt();
+    const active = this.activeNoticeState;
+    if (autoAt === null || active === null || !this.fgState || at < autoAt || at > active.expiresAt) {
+      return false;
+    }
+    this.applyNoticeTapAt(at, active.id, out);
+    return true;
   }
 
   /** 1000msグリッドの経済生産（グリッド時刻の状態で続く1秒分を先払い。advanceの区切りに依らない）。 */
@@ -1389,7 +1488,27 @@ export class Engine {
       out.push({ k: 'fuelEmpty', at: cur });
       this.noteAwayFuelEmpty(cur);
     }
+    this.applyBantouAt(cur);
     this.applyAchievementsAt(cur, out);
+  }
+
+  /** 番頭さん（60,000ms の倍数の economyTick の後。イベントは出さず役物 Lv に出る, spec/25）。 */
+  private applyBantouAt(cur: SimTime): void {
+    if (cur - Math.floor(cur / BANTOU_INTERVAL_MS) * BANTOU_INTERVAL_MS !== 0) {
+      return;
+    }
+    const hook = this.econHook('onBantouTick') as ((balls: number) => { balls: number; spent: number }) | undefined;
+    if (hook === undefined || typeof hook !== 'function') {
+      return;
+    }
+    const r = (hook.bind(this.economy))(this.ballsState);
+    if (r.spent > 0) {
+      this.ballsState = r.balls;
+      // 留守中サマリーの獲得玉は「増えた分」なので、番頭さんの支払いは発射と同じく足し戻す。
+      if (this.awayFromState !== null) {
+        this.awayConsumedState = this.awayConsumedState + r.spent;
+      }
+    }
   }
 
   /** Engine が持つ実績の指標（Totals と閉店の記録の数）。 */
@@ -1684,7 +1803,8 @@ export class Engine {
       this.grantHoldSeqState = n + 1;
       this.bonusStockState = this.bonusStockState - 1;
       const mode = this.spins.mode;
-      const bonus1In = this.noticeCfgCache === null ? 10 : this.noticeCfgCache.bonus1In;
+      const cfg = this.noticeCfgCache;
+      const bonus1In = cfg === null ? 10 : (cfg.grantBonus1In === undefined ? cfg.bonus1In : cfg.grantBonus1In);
       const entry = drawGrantHold(this.spec, this.patterns, this.seed, mode, n, serial, bonus1In, this.readFreeUnit());
       this.noteAwayHot(entry.serial, entry.hot);
       if (this.queue.tryAdd(entry)) {
@@ -1999,6 +2119,7 @@ export class Engine {
     }
     eng.actionIdxState = snap.actionIdx;
     eng.economy.restore(snap.economy);
+    eng.syncMachineId();
     // 旧セーブの 400・1000 は経済側で解放段が丸められるので、打つレートも合わせる（D-092）。
     eng.shootRateState = eng.clampUnlockedRate(eng.shootRateState);
     eng.autoRateState = eng.clampUnlockedRate(eng.autoRateState);
@@ -2117,6 +2238,8 @@ export class Engine {
     const feverHook = this.econHook('getFeverMs') as (() => number) | undefined;
     const shopHook = this.econHook('getShopView') as (() => ShopView) | undefined;
     const shop = shopHook !== undefined && typeof shopHook === 'function' ? (shopHook.bind(this.economy))() : undefined;
+    const treeHook = this.econHook('getTreeView') as (() => TreeView) | undefined;
+    const tree = treeHook !== undefined && typeof treeHook === 'function' ? (treeHook.bind(this.economy))() : undefined;
     if (
       perSecHook === undefined ||
       boostHook === undefined ||
@@ -2128,7 +2251,7 @@ export class Engine {
       const feverMs = feverHook !== undefined && typeof feverHook === 'function'
         ? (feverHook.bind(this.economy))() as number
         : 0;
-      return { ...baseWithRef, feverMs, shop };
+      return { ...baseWithRef, feverMs, shop, tree };
     }
     const perSec = (perSecHook.bind(this.economy))(this.fgState, this.fuelMsState);
     const boostMs = (boostHook.bind(this.economy))();
@@ -2143,7 +2266,7 @@ export class Engine {
       const x = periodS > 0 ? this.nowMsState / 1000 / periodS : 0;
       yakumono.push({ id: v.id, lv: v.lv, awakened: v.awakened, nextPrice: v.nextPrice, phase: x - Math.floor(x), periodS: periodS > 0 ? periodS : undefined });
     }
-    return { ...baseWithRef, perSec, boostMs, yakumono, feverMs, shop };
+    return { ...baseWithRef, perSec, boostMs, yakumono, feverMs, shop, tree };
   }
 
   /** 役物の実効周期秒（Lv0・経済なしは0）。 */
