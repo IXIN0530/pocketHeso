@@ -1,5 +1,17 @@
 /** 経済定義 JSON の型と検証（spec/23。キーは snake_case・手書きバリデータ）。 */
+import {
+  asArray,
+  asIntRange,
+  asNumber,
+  asNumberArray,
+  asPositive,
+  asRecord,
+  asString,
+  checkAscending,
+  fail,
+} from './config-check.ts';
 import type { Amount } from './economy-math.ts';
+import { parseTree, type TreeSpec } from './tree-config.ts';
 
 /** 役物定義の ID（順序固定。解放鎖はこの順）。 */
 export type EconomyYakumonoId =
@@ -175,81 +187,8 @@ export interface EconomySpec {
   readonly pachinko: EconomyPachinko;
   readonly claims: EconomyClaims;
   readonly achievements: EconomyAchievements;
-}
-
-function fail(message: string): never {
-  throw new Error('invalid economy: ' + message);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function asRecord(value: unknown, what: string): Record<string, unknown> {
-  if (!isRecord(value)) {
-    fail(what + ' must be an object');
-  }
-  return value;
-}
-
-function asArray(value: unknown, what: string): readonly unknown[] {
-  if (!Array.isArray(value)) {
-    fail(what + ' must be an array');
-  }
-  return value;
-}
-
-function asNumber(value: unknown, what: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    fail(what + ' must be a finite number');
-  }
-  return value;
-}
-
-function asString(value: unknown, what: string): string {
-  if (typeof value !== 'string' || value.length === 0) {
-    fail(what + ' must be a non-empty string');
-  }
-  return value;
-}
-
-function asInt(value: unknown, what: string): number {
-  const n = asNumber(value, what);
-  if (Math.floor(n) !== n) {
-    fail(what + ' must be an int');
-  }
-  return n;
-}
-
-function asPositive(value: unknown, what: string): number {
-  const n = asNumber(value, what);
-  if (n <= 0) {
-    fail(what + ' must be > 0');
-  }
-  return n;
-}
-
-function asIntRange(value: unknown, what: string, lo: number, hi: number): number {
-  const n = asInt(value, what);
-  if (n < lo || n > hi) {
-    fail(what + ' out of range');
-  }
-  return n;
-}
-
-/** 全要素が [lo, hi] に入り、狭義単調増加であることを検証する。 */
-function checkAscending(values: readonly number[], what: string, lo: number, hi: number): void {
-  let prev = 0;
-  for (let i = 0; i < values.length; i = i + 1) {
-    const v = values[i] ?? Number.NaN;
-    if (!(v >= lo && v <= hi)) {
-      fail(what + '[' + i + '] out of range');
-    }
-    if (i > 0 && v <= prev) {
-      fail(what + ' must be strictly ascending');
-    }
-    prev = v;
-  }
+  /** 常連ツリー（spec/25。`tree` が無い JSON は空のツリー）。 */
+  readonly tree: TreeSpec;
 }
 
 function isYakumonoId(value: string): value is EconomyYakumonoId {
@@ -300,15 +239,6 @@ function parseAchievements(value: unknown): EconomyAchievements {
     list.push({ id, metric, at, name });
   }
   return { multPer, list };
-}
-
-function asNumberArray(value: unknown, what: string): readonly number[] {
-  const raw = asArray(value, what);
-  const out: number[] = [];
-  for (let i = 0; i < raw.length; i = i + 1) {
-    out.push(asNumber(raw[i], what + '[' + i + ']'));
-  }
-  return out;
 }
 
 /** 経済定義 JSON を検証して `EconomySpec` にする。入力のキー順には依存しない。 */
@@ -482,6 +412,7 @@ export function parseEconomy(json: unknown): EconomySpec {
   }
   const streakMaxDays = asIntRange(claims['streak_max_days'], 'claims.streak_max_days', 1, 365);
   const achievements = parseAchievements(o['achievements']);
+  const tree = parseTree(o['tree'], { awakenMedalBase: medalBase, factorsClosed: closed });
   return {
     version,
     priceGrowth,
@@ -526,6 +457,7 @@ export function parseEconomy(json: unknown): EconomySpec {
     pachinko: { shotS },
     claims: { streakPerDay, streakMaxDays },
     achievements,
+    tree,
   };
 }
 

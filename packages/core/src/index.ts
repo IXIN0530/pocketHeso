@@ -160,6 +160,20 @@ export {
   parseEconomyText,
 } from './economy-config.ts';
 export type {
+  TreeEffect,
+  TreeKeepTarget,
+  TreeNodeSpec,
+  TreeParseContext,
+  TreeSpec,
+} from './tree-config.ts';
+export {
+  EMPTY_TREE,
+  TREE_KEEP_TARGETS,
+  TREE_TIERS,
+  parseTree,
+  treeUnknownMachines,
+} from './tree-config.ts';
+export type {
   Action,
   ActiveNotice,
   AwayReplay,

@@ -50,6 +50,8 @@ function loadEconomy(): IdleEconomy {
   (json['close'] as Record<string, unknown>)['medals_per_point'] = 7;
   // 実績の倍率が途中で入ると手計算がずれるので外す（実績は achievements.test.ts）。
   (json['achievements'] as Record<string, unknown>)['list'] = [];
+  // medal_base・closed を変えると常連ツリーの検証に掛かるので外す（ツリーは tree-config.test.ts）。
+  delete json['tree'];
   return new IdleEconomy(parseEconomy(json));
 }
 
