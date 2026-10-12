@@ -24,12 +24,14 @@ export interface TreeNodeView {
   readonly state: TreeNodeState;
 }
 
-/** 常連ツリーの表示（Projection の tree。mult 等の効果の値は T3/T4 で足す）。 */
+/** 常連ツリーの表示（Projection の tree）。 */
 export interface TreeView {
   readonly rank: number;
   readonly regularRate: number;
   readonly points: number;
   readonly pointsEarned: number;
+  /** treeMult（今の機種込み）。 */
+  readonly mult: number;
   readonly openBoostMs: number;
   readonly bantou: { readonly owned: boolean; readonly on: boolean };
   /** 段1〜5 が開いているか。 */

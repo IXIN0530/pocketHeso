@@ -475,10 +475,12 @@ export function projectSnapshot(
   };
 }
 
-/** 予告nの前面間隔ms（min+floor(unit*(max-min))。unitはnoticeストリームの1手目）。 */
-function noticeIntervalMs(seed: number, n: number, minFgMs: number, maxFgMs: number): number {
+/** 予告nの前面間隔ms（floor((min+floor(unit*(max-min))) × intervalMult)。unitはnoticeストリームの1手目, spec/25）。 */
+function noticeIntervalMs(seed: number, n: number, cfg: NoticeConfig): number {
   const unit = new RNGStream(seed, 'notice', n).nextUnit();
-  return minFgMs + Math.floor(unit * (maxFgMs - minFgMs));
+  const base = cfg.minFgMs + Math.floor(unit * (cfg.maxFgMs - cfg.minFgMs));
+  const mult = cfg.intervalMult === undefined ? 1 : cfg.intervalMult;
+  return Math.floor(base * mult);
 }
 
 /** 予告nの効果（noticeストリームの2手目で重み付け。1手目は間隔で消費済み）。 */
@@ -508,6 +510,8 @@ interface NoticeConfig {
   readonly rushWeight: number;
   readonly bonus1In: number;
   readonly bonusWeight: number;
+  /** 間隔の係数（1 − Σnotice_interval_sub。無ければ 1）。 */
+  readonly intervalMult?: number;
 }
 
 /** Engine（パチンコ部。決定論・スナップショット・lookahead・project）。 */
@@ -629,7 +633,7 @@ export class Engine {
     if (this.noticeCfgCache === null) {
       this.noticeInFgMsState = MAX_SAFE_MS;
     } else {
-      this.noticeInFgMsState = noticeIntervalMs(this.seed, 0, this.noticeCfgCache.minFgMs, this.noticeCfgCache.maxFgMs);
+      this.noticeInFgMsState = noticeIntervalMs(this.seed, 0, this.noticeCfgCache);
     }
     for (let i = 0; i < grants.length; i = i + 1) {
       const g = grants[i] as Grant | undefined;
@@ -1003,7 +1007,7 @@ export class Engine {
       this.grantIdxState = this.grantIdxState + 1;
       const prodMin = g.prodMin === undefined ? 0 : g.prodMin;
       const bonusHolds = g.bonusHolds === undefined ? 0 : g.bonusHolds;
-      const balls = prodMin > 0 ? this.readRefPerSec() * prodMin * 60 : 0;
+      const balls = prodMin > 0 ? this.readRefPerSec() * prodMin * this.readProdMinMult() * 60 : 0;
       if (balls > 0) {
         this.ballsState = addAmount(this.ballsState, balls);
         this.noteEconomyGain(balls);
@@ -1331,7 +1335,7 @@ export class Engine {
       return;
     }
     this.noticeSeqState = this.noticeSeqState + 1;
-    this.noticeInFgMsState = noticeIntervalMs(this.seed, this.noticeSeqState, cfg.minFgMs, cfg.maxFgMs);
+    this.noticeInFgMsState = noticeIntervalMs(this.seed, this.noticeSeqState, cfg);
   }
 
   /** 予告の出現・期限切れ（前面加算が尽きたら出現、期限が来たら失効）。 */
@@ -1462,6 +1466,19 @@ export class Engine {
   }
 
   /** 基準生産を読む（経済なしは0, D-080）。 */
+  /** 行動の即時の玉の倍率（prod_min_add。フック無しは 1, spec/25）。 */
+  private readProdMinMult(): number {
+    const hook = this.econHook('getProdMinMult') as (() => number) | undefined;
+    if (hook === undefined || typeof hook !== 'function') {
+      return 1;
+    }
+    const v = (hook.bind(this.economy))() as number;
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 1) {
+      throw new Error('invalid engine: bad prodMinMult');
+    }
+    return v;
+  }
+
   private readRefPerSec(): number {
     const hook = this.econHook('getRefPerSec') as (() => number) | undefined;
     if (hook === undefined || typeof hook !== 'function') {

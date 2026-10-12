@@ -355,6 +355,8 @@ export class IdleEconomy implements EconomyPort {
   private treeState: TreeRecord[] = [];
   private openBoostMsState = 0;
   private bantouOnState = false;
+  /** 今の周回の機種 id（prod_add_machine の照合用。保存しない。Engine が setMachineId で渡す）。 */
+  private machineIdState = '';
   /** 一覧の添字ごとの所持（treeState から作る）。 */
   private treeOwned: boolean[] = [];
   /** 所持ノードの効果の合計（treeOwned から作る。保存しない）。 */
@@ -565,6 +567,59 @@ export class IdleEconomy implements EconomyPort {
     return this.pointsState;
   }
 
+  /** 今の周回の機種 id を受け取る（prod_add_machine の照合用。保存しない）。 */
+  setMachineId(id: string): void {
+    this.machineIdState = id;
+  }
+
+  /** ツリーの生産倍率 treeMult = 1 + Σprod_add + Σ(今の機種の prod_add_machine)（spec/25）。 */
+  treeMult(): number {
+    const t = this.treeTotalsState;
+    let m = 1 + t.prodAdd;
+    for (let i = 0; i < t.prodAddMachine.length; i = i + 1) {
+      const e = t.prodAddMachine[i] as { machine: string; add: number };
+      if (e.machine === this.machineIdState) {
+        m = m + e.add;
+      }
+    }
+    return m;
+  }
+
+  /** 常連係数 r = close.regular_mult + Σregular_add。 */
+  regularRate(): number {
+    return this.spec.close.regularMult + this.treeTotalsState.regularAdd;
+  }
+
+  /** 連続日数の倍率（上限日数に streak_max_add を足す）。 */
+  private streakF(): number {
+    return streakMult(
+      this.streakDaysState,
+      this.spec.claims.streakPerDay,
+      this.spec.claims.streakMaxDays + this.treeTotalsState.streakMaxAdd,
+    );
+  }
+
+  /** 役物の価格の係数（1 − Σprice_sub）。 */
+  priceMult(): number {
+    return 1 - this.treeTotalsState.priceSub;
+  }
+
+  /** 覚醒のメダルの基数（awaken_medal_base を持てばその値）。 */
+  private awakenBase(): number {
+    const v = this.treeTotalsState.awakenMedalBase;
+    return v > 0 ? v : this.spec.awaken.medalBase;
+  }
+
+  /** 行動の即時の玉の倍率（1 + Σprod_min_add）。Engine が refPerSec × prodMin × 60 に掛ける。 */
+  getProdMinMult(): number {
+    return 1 + this.treeTotalsState.prodMinAdd;
+  }
+
+  /** 開店ダッシュの残り ms。 */
+  getOpenBoostMs(): number {
+    return this.openBoostMsState;
+  }
+
   /** 今閉店したら得る常連P（gain 0 なら 0）。 */
   private nextClosePoints(): number {
     const c = this.spec.close;
@@ -590,9 +645,10 @@ export class IdleEconomy implements EconomyPort {
   getTreeView(): TreeView {
     return {
       rank: this.regularState,
-      regularRate: this.spec.close.regularMult,
+      regularRate: this.regularRate(),
       points: this.pointsState,
       pointsEarned: this.pointsEarnedState,
+      mult: this.treeMult(),
       openBoostMs: this.openBoostMsState,
       bantou: { owned: this.treeTotalsState.bantou, on: this.bantouOnState },
       tierOpen: treeTierOpen(this.spec.tree, this.treeOwned),
@@ -651,9 +707,9 @@ export class IdleEconomy implements EconomyPort {
     this.achMinAt = mins;
   }
 
-  /** 実績の生産倍率 achMult = 1 + mult_per × 達成数（一覧にある id だけ数える, spec/24）。 */
+  /** 実績の生産倍率 achMult = 1 + (mult_per + Σach_per_add) × 達成数（一覧にある id だけ数える, spec/24・spec/25）。 */
   achMult(): number {
-    return 1 + this.spec.achievements.multPer * this.achCountState;
+    return 1 + (this.spec.achievements.multPer + this.treeTotalsState.achPerAdd) * this.achCountState;
   }
 
   /** 覚醒の累計回数。 */
@@ -792,7 +848,7 @@ export class IdleEconomy implements EconomyPort {
     if (h === undefined) {
       fail('tankStage out of range');
     }
-    return (h as number) * 3600000;
+    return ((h as number) + this.treeTotalsState.tankAddH) * 3600000;
   }
 
   /** 新規開始・閉店後の持ち玉（役物0からの再出発に使う）。 */
@@ -802,7 +858,7 @@ export class IdleEconomy implements EconomyPort {
 
   /** ブースト上限ms。 */
   boostCapMs(): number {
-    return this.spec.upgrades.boostCapHours * 3600000;
+    return (this.spec.upgrades.boostCapHours + this.treeTotalsState.boostCapAddH) * 3600000;
   }
 
   /** 放置効率（現在の値）。 */
@@ -856,31 +912,31 @@ export class IdleEconomy implements EconomyPort {
     return sum;
   }
 
-  /** 現在の毎秒生産（常連・連日・実績・ブースト・予告フィーバー・状態係数込み）。 */
+  /** 現在の毎秒生産（常連・連日・実績・ツリー・ブースト・予告フィーバー・開店ダッシュ・状態係数込み, spec/25）。 */
   getPerSec(fg: boolean, fuelMs: number): number {
     const base = this.basePerSec();
     if (base === 0) {
       return 0;
     }
-    const regularF = 1 + this.spec.close.regularMult * this.regularState;
-    const streakF = streakMult(
-      this.streakDaysState,
-      this.spec.claims.streakPerDay,
-      this.spec.claims.streakMaxDays,
-    );
-    let stateF = this.spec.factors.closed;
+    const t = this.treeTotalsState;
+    const regularF = 1 + this.regularRate() * this.regularState;
+    let stateF = this.spec.factors.closed + t.closedAdd;
     if (fuelMs > 0) {
       stateF = fg ? this.spec.factors.fg : this.idleValue();
     }
     let boostF = 1;
     if (this.boostOnState && this.boostMsState > 0 && fg) {
-      boostF = this.spec.factors.boostMult;
+      boostF = this.spec.factors.boostMult + t.boostMultAdd;
     }
     let feverF = 1;
     if (this.feverMsState > 0) {
-      feverF = this.spec.notice.feverMult;
+      feverF = this.spec.notice.feverMult + t.feverMultAdd;
     }
-    return base * regularF * streakF * this.achMult() * boostF * feverF * stateF;
+    let openF = 1;
+    if (this.openBoostMsState > 0) {
+      openF = 1 + t.openBoostMultAdd;
+    }
+    return base * regularF * this.streakF() * this.achMult() * this.treeMult() * boostF * feverF * openF * stateF;
   }
 
   /** フィーバー残量ms（前面・背面を問わずtickで減る）。 */
@@ -890,22 +946,17 @@ export class IdleEconomy implements EconomyPort {
 
   /** フィーバー発動（残量の延長は長い方を取る）。 */
   onNoticeFever(): void {
-    const want = this.spec.notice.feverMs;
+    const want = this.spec.notice.feverMs + this.treeTotalsState.feverMsAdd;
     if (want > this.feverMsState) {
       this.feverMsState = want;
     }
   }
 
-  /** 基準生産（前面・燃料ありの値。実績は含み、ブースト・予告フィーバー・状態係数を含まず下限あり, D-080・D-095）。 */
+  /** 基準生産（前面・燃料ありの値。実績・ツリーは含み、ブースト・予告フィーバー・開店ダッシュ・状態係数を含まず下限あり, D-080・D-095・spec/25）。 */
   getRefPerSec(): number {
     const base = this.basePerSec();
-    const regularF = 1 + this.spec.close.regularMult * this.regularState;
-    const streakF = streakMult(
-      this.streakDaysState,
-      this.spec.claims.streakPerDay,
-      this.spec.claims.streakMaxDays,
-    );
-    const ref = base * regularF * streakF * this.achMult();
+    const regularF = 1 + this.regularRate() * this.regularState;
+    const ref = base * regularF * this.streakF() * this.achMult() * this.treeMult();
     const min = this.spec.prodRef.minPerSec;
     return ref > min ? ref : min;
   }
@@ -972,7 +1023,7 @@ export class IdleEconomy implements EconomyPort {
         id: def.id,
         lv,
         awakened,
-        nextPrice: (def.basePrice as number) * growthPow(this.priceTable, lv),
+        nextPrice: (def.basePrice as number) * growthPow(this.priceTable, lv) * this.priceMult(),
       });
     }
     return out;
@@ -987,7 +1038,7 @@ export class IdleEconomy implements EconomyPort {
     return v as number;
   }
 
-  /** 予告の設定（Engineのスケジュール・効果判定用。参照を返さないよう複写）。 */
+  /** 予告の設定（Engineのスケジュール・効果判定用。ツリー込み, spec/25。参照を返さないよう複写）。 */
   getNoticeConfig(): {
     minFgMs: number;
     maxFgMs: number;
@@ -1000,20 +1051,23 @@ export class IdleEconomy implements EconomyPort {
     rushWeight: number;
     bonus1In: number;
     bonusWeight: number;
+    intervalMult: number;
   } {
     const n = this.spec.notice;
+    const t = this.treeTotalsState;
     return {
       minFgMs: n.minFgMs,
       maxFgMs: n.maxFgMs,
       displayMs: n.displayMs,
-      feverMult: n.feverMult,
-      feverMs: n.feverMs,
+      feverMult: n.feverMult + t.feverMultAdd,
+      feverMs: n.feverMs + t.feverMsAdd,
       feverWeight: n.feverWeight,
       rushRate: n.rushRate,
-      rushCapS: n.rushCapS,
+      rushCapS: n.rushCapS + t.rushCapAddS,
       rushWeight: n.rushWeight,
       bonus1In: n.bonus1In,
-      bonusWeight: n.bonusWeight,
+      bonusWeight: n.bonusWeight + t.noticeBonusWeightAdd,
+      intervalMult: 1 - t.noticeIntervalSub,
     };
   }
 
@@ -1211,6 +1265,9 @@ export class IdleEconomy implements EconomyPort {
         this.feverMsState = this.feverMsState - 1000;
       }
     }
+    if (this.openBoostMsState > 0) {
+      this.openBoostMsState = this.openBoostMsState <= 1000 ? 0 : this.openBoostMsState - 1000;
+    }
     return { ballGain: gain, fuelMs: fuel, fuelBecameEmpty: becameEmpty };
   }
 
@@ -1238,7 +1295,11 @@ export class IdleEconomy implements EconomyPort {
       const prices: (number | null)[] = [];
       for (let k = 0; k < sizes.length; k = k + 1) {
         const n = sizes[k] as number;
-        prices.push(lv + n - 1 < this.priceTable.length ? yakumonoBulkPrice(def.basePrice, lv, n, this.priceTable) : null);
+        prices.push(
+          lv + n - 1 < this.priceTable.length
+            ? yakumonoBulkPrice(def.basePrice, lv, n, this.priceTable) * this.priceMult()
+            : null,
+        );
       }
       const period = lv > 0 ? this.effectivePeriodSFor(def.id, lv) : 0;
       yakumono.push({
@@ -1248,7 +1309,7 @@ export class IdleEconomy implements EconomyPort {
         locked: i > 0 && (this.lvState[i - 1] as number) < 1,
         perSec: period > 0 ? (def.yield * lv * this.yakumonoMult(i)) / period : 0,
         prices,
-        awakenCost: awakenMedalCost(this.spec.awaken.medalBase, this.spec.awaken.medalGrowth, awakened),
+        awakenCost: awakenMedalCost(this.awakenBase(), this.spec.awaken.medalGrowth, awakened),
         awakenReady: lv >= this.spec.awaken.minLv,
       });
     }
@@ -1344,7 +1405,7 @@ export class IdleEconomy implements EconomyPort {
       }
       const def = this.spec.yakumono[yIdx] as { basePrice: number };
       const lv = this.lvState[yIdx] as number;
-      const price = yakumonoBulkPrice(def.basePrice as number, lv, count, this.priceTable);
+      const price = yakumonoBulkPrice(def.basePrice as number, lv, count, this.priceTable) * this.priceMult();
       if (curBalls < price) {
         return { ok: false, reason: 'insufficient-balls' };
       }
@@ -1464,7 +1525,7 @@ export class IdleEconomy implements EconomyPort {
       return { ok: false, reason: 'not-ready' };
     }
     const awakened = this.awakenedState[idx] as number;
-    const cost = awakenMedalCost(this.spec.awaken.medalBase, this.spec.awaken.medalGrowth, awakened);
+    const cost = awakenMedalCost(this.awakenBase(), this.spec.awaken.medalGrowth, awakened);
     if (curMedals < cost) {
       return { ok: false, reason: 'insufficient-medals' };
     }
@@ -1499,16 +1560,34 @@ export class IdleEconomy implements EconomyPort {
     this.regularState = this.regularState + gain;
     this.pointsState = this.pointsState + points;
     this.pointsEarnedState = this.pointsEarnedState + points;
-    this.lvState = [0, 0, 0, 0, 0, 0, 0, 0];
+    // ツリー: starter の Lv から再出発・keep の強化は段を残す・開店ダッシュを入れる（spec/25。順は TREE_KEEP_TARGETS）。
+    const t = this.treeTotalsState;
+    this.lvState = [...t.starter];
     this.awakenedState = [0, 0, 0, 0, 0, 0, 0, 0];
     this.basePerSecCache = -1;
-    this.idleStageState = 0;
-    this.tankStageState = 0;
-    this.nailStageState = 0;
-    this.shortenStageState = 0;
-    this.holdStageState = 0;
-    this.autoOwnedState = false;
-    this.tomeuchiOwnedState = false;
+    const keep = t.keep;
+    if (keep[0] !== true) {
+      this.idleStageState = 0;
+    }
+    if (keep[1] !== true) {
+      this.tankStageState = 0;
+    }
+    if (keep[2] !== true) {
+      this.nailStageState = 0;
+    }
+    if (keep[3] !== true) {
+      this.shortenStageState = 0;
+    }
+    if (keep[4] !== true) {
+      this.holdStageState = 0;
+    }
+    if (keep[5] !== true) {
+      this.autoOwnedState = false;
+    }
+    if (keep[6] !== true) {
+      this.tomeuchiOwnedState = false;
+    }
+    this.openBoostMsState = t.openBoostMs;
     this.runTotalState = 0;
     return { ok: true, balls: this.spec.close.startBalls, gain, points };
   }
