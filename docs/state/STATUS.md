@@ -4,7 +4,7 @@
 - Current phase: P10（常連ツリー: 常連Pの使い道・数ヶ月遊べる設計）→ `docs/plan/P10-prestige-tree.md`。最優先。P8-T7（任意）と P7 再開は人間の指示待ち
 - Last done: P10-T1（default.json に tree 52 ノード・`tree-config.ts` で読み込みと検証・型を export。golden 不変）
 - Next: P10-T2（IdleEconomy: 常連P の通貨・購入・保存 v7）
-- Owner hint: Claude Code
+- Owner hint: Claude Code（Opus。Split あり: テストは Sonnet）
 - Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T12 → T13 → T2 は人間の指示で再開
 
 ## Blockers

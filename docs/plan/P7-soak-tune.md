@@ -5,7 +5,7 @@ Owner: Claude Code | Read: spec/40-app-ui（Debug）
 Do: 起動時の追いつき時間、Worker の advance 時間、IndexedDB サイズ、受け取り回数を `metrics` store に記録し Debug に表示。
 
 ### P7-T2 1週間の実運用
-Owner: 人間 + Claude Code（ログ解析）
+Owner: 人間 + Claude Code（Opus, ログ解析）
 Accept:
 - [ ] 7日間の行動・獲得・閉店までの進み・不満点を `docs/state/soak-YYYYMMDD.md`（40行以内）にまとめる
 
@@ -108,7 +108,7 @@ Accept:
 **保留中（D-089）**: 公開を優先するため T11〜T13 は P8（T6 まで）の後に回す。着手は人間の指示がある時だけ。
 
 ### P7-T11 階段（上った階数）
-Owner: Claude Code | Read: spec/31, spec/30（変換・差分方式）
+Owner: Claude Code（Sonnet） | Read: spec/31, spec/30（変換・差分方式）
 Do: `parseShortcutCode` に任意項目 `fl`（無ければ0、範囲外は捨てて警告）。`planGrants` に kind `flights`（10階ごとメダル +1、30階まで。燃料・即時の玉なし。
 JSON `claims.flights` {`medal_per`: 10, `to`: 30}）。`resources/shortcut/README.md` の作り方に「上った階数」の検索とヘルスケアの許可を足す。受け取り確認と記録に階数。
 Accept:
@@ -117,7 +117,7 @@ Accept:
 - [ ] 実機（人間）: ショートカットに階数の検索を足し、3日分の階数がヘルスケアアプリの表示と一致し、受け取るとメダルが増える。読めなかったら Blockers に書いて止まる
 
 ### P7-T12 遠征（距離の累計で店を開ける）
-Owner: Claude Code | Read: spec/30（遠征）, spec/40（行動）
+Owner: Claude Code（Sonnet） | Read: spec/30（遠征）, spec/40（行動）
 Do: JSON `claims.expedition` {`step_m`: 42195, `medals`: 10, `shops`: [{id `ekimae` 駅前店 light-middle-01}, {id `kokudo` 国道店 rush-middle-01}, {id `minato` 港町店 lt-middle-01}]}。
 claims に `expeditionOf` と、`planGrants` での `expedition:<n>` の記録（distance の直後）。行動タブに遠征のカード（累計km・次の店までの km・開けた店と台）、到達時は受け取り確認に出す。
 Accept:
@@ -125,7 +125,8 @@ Accept:
 - [ ] `scripts/test.sh all`・`scripts/build.sh` が通る。ヘッドレス Chrome（Debug の Grant 注入で距離を入れる）でカードと到達の表示
 
 ### P7-T13 新台入替（閉店時の機種選択）
-Owner: Claude Code | Read: spec/22（新台入替）, spec/23（閉店）, spec/40（強化）
+Owner: Claude Code（Opus） | Read: spec/22（新台入替）, spec/23（閉店）, spec/40（強化）
+Split: Opus — Core（EngineConfig.machines・close の machineId・snapshot・Projection）と Core のテスト / Sonnet — web（engine-build・閉店のシート・液晶と HUD・記録の閉店履歴）
 Do: Core の `EngineConfig.machines`・close の `machineId`（rejected 'busy'/'machine'）・snapshot の機種 id・Projection の `machineId`。web の engine-build で3機種を渡し、
 閉店のシートに「次の周回の台」（`expeditionOf` の開けた店だけ）を出す。液晶・HUD の round（D-077）は Projection の machineId から引く。記録の閉店履歴に機種。
 Accept:

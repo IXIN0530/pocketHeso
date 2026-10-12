@@ -137,7 +137,7 @@ Accept:
 - [ ] 本番の確認（上の4項目）が人間から OK
 
 ### P8-T7 （任意）Web Push
-Owner: Claude Code | Read: spec/41-pwa-platform（Web Push 節）, spec/22-core-engine（lookahead）
+Owner: Claude Code（Opus） | Read: spec/41-pwa-platform（Web Push 節）, spec/22-core-engine（lookahead）
 Do: `workers/push`（Cloudflare Workers + Durable Object alarm, VAPID）、背面移行時の予定送信、SW の通知表示とバッジ。
 D-014 の「サーバーなし」を変える判断なので、着手前に DECISIONS に記録。
 Accept:
