@@ -53,3 +53,12 @@ export function formatTime(ms: number, now: number): string {
   const hm = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
   return new Date(now).toDateString() === d.toDateString() ? hm : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
 }
+
+/** 残り時間を「1:12:05」（時:分:秒）で。 */
+export function formatClock(ms: number): string {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${h}:${pad(m)}:${pad(s % 60)}`;
+}

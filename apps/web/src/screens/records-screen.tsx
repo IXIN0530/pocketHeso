@@ -151,7 +151,7 @@ export function RecordsScreen() {
             <ul className={styles.list}>
               {[...p.closes].reverse().map((c) => (
                 <li key={c.at}>
-                  {formatTime(c.at, p.at)} 今回 {formatNum(c.runTotal)}玉 → 常連P +{c.gain}
+                  {formatTime(c.at, p.at)} 今回 {formatNum(c.runTotal)}玉 → 常連ランク +{c.gain}
                 </li>
               ))}
             </ul>

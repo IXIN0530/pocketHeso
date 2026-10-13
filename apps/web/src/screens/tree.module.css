@@ -1,0 +1,162 @@
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.summary small {
+  color: #a8acc8;
+  font-size: 12px;
+}
+
+.summary b {
+  margin-left: auto;
+  color: #e8b840;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tierNote {
+  color: #a8acc8;
+  font-size: 13px;
+}
+
+.groups {
+  display: grid;
+  gap: 12px;
+}
+
+.group h3 {
+  margin: 0 0 6px;
+  color: #a8acc8;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: #121630;
+  color: #f2f2f7;
+  font: inherit;
+  text-align: left;
+}
+
+.row.picked {
+  border-color: #e8b840;
+}
+
+.owned {
+  opacity: 0.7;
+}
+
+.short,
+.locked {
+  opacity: 0.55;
+}
+
+.locked {
+  border-style: dashed;
+  border-color: #3a3f6a;
+}
+
+.mark {
+  flex: none;
+  width: 22px;
+  text-align: center;
+}
+
+.buyable .mark {
+  color: #e8b840;
+}
+
+.info {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.info small {
+  color: #a8acc8;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.info .req {
+  color: #8a8fb8;
+  font-size: 11px;
+}
+
+.cost {
+  flex: none;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.buyable .cost {
+  color: #e8b840;
+  font-weight: 700;
+}
+
+.detail {
+  position: sticky;
+  bottom: -16px;
+  display: grid;
+  gap: 8px;
+  margin: 0 -8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #262c5a;
+  box-shadow: 0 -6px 16px rgb(0 0 0 / 30%);
+}
+
+.detail p {
+  line-height: 1.5;
+}
+
+.sub {
+  color: #a8acc8;
+  font-size: 12px;
+}
+
+.buyBtn,
+.close {
+  min-height: 48px;
+  border: 0;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.buyBtn {
+  background: #e8b840;
+  color: #121630;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+.buyBtn:disabled {
+  opacity: 0.45;
+}
+
+.close {
+  background: #3a3f6a;
+  color: #f2f2f7;
+}

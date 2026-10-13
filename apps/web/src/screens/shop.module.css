@@ -180,3 +180,35 @@
 .warn {
   color: #ffb74d;
 }
+
+.treeRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: #121630;
+  color: #f2f2f7;
+  font: inherit;
+  text-align: left;
+}
+
+.treeRow span:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.treeRow small {
+  color: #a8acc8;
+  font-size: 12px;
+}
+
+.treePoints {
+  color: #e8b840;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

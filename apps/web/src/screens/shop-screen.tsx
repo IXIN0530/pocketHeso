@@ -4,6 +4,9 @@ import economyJson from '../../../../resources/economy/default.json';
 import { CountUp } from '../components/count-up.tsx';
 import { HoldButton } from '../components/hold-button.tsx';
 import { Segmented } from '../components/segmented.tsx';
+import { Switch } from '../components/switch.tsx';
+import { closeBreakdown } from '../engine/tree-defs.ts';
+import { TreeSheet, rankText } from './tree-sheet.tsx';
 import { act, useEngine } from '../stores/engine.ts';
 import { formatNum } from '../stores/format.ts';
 import styles from './shop.module.css';
@@ -42,6 +45,9 @@ export function ShopScreen() {
   const [bulk, setBulk] = useState(0);
   const [busy, setBusy] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [treeOpen, setTreeOpen] = useState(false);
+  /** 閉店した直後の獲得（「常連ツリーへ」の案内用）。 */
+  const [closedPoints, setClosedPoints] = useState<number | null>(null);
 
   if (p === null || p.shop === undefined) {
     return <p className={styles.note}>読み込み中…</p>;
@@ -58,6 +64,9 @@ export function ShopScreen() {
   const buy = (input: Parameters<typeof act>[0]) => act(input).catch(report);
 
   const c = shop.close;
+  const tree = p.tree;
+  const points = tree?.points ?? 0;
+  const bd = closeBreakdown(c.gain, c.runTotal, c.points);
   return (
     <div className={styles.screen}>
       <dl className={styles.wallet}>
@@ -79,7 +88,7 @@ export function ShopScreen() {
         </div>
         <div>
           <dt>常連P</dt>
-          <dd>{formatNum(shop.regular)}</dd>
+          <dd>{formatNum(points)}</dd>
         </div>
       </dl>
 
@@ -156,20 +165,37 @@ export function ShopScreen() {
         </ul>
       </section>
 
+      {tree !== undefined && (
+        <section className={styles.card}>
+          <button type="button" className={styles.treeRow} onClick={() => setTreeOpen(true)}>
+            <span>
+              <b>常連ツリー</b>
+              <small>{rankText(tree)}</small>
+            </span>
+            <span className={styles.treePoints}>常連P {formatNum(points)} ›</span>
+          </button>
+          {tree.bantou.owned && (
+            <Switch checked={tree.bantou.on} disabled={busy} onChange={(on) => send({ k: 'bantou', on })}>
+              番頭さん（役物を自動で買う）
+            </Switch>
+          )}
+        </section>
+      )}
+
       <section className={styles.card}>
         <h2>閉店</h2>
         <p className={styles.note}>
           今回の累計玉が {formatNum(c.required)} に届くと閉店できます。閉店すると玉・役物・玉で買った強化が最初に戻り、
-          常連P（生産 ×(1+常連P)）を得ます。メダル・燃料・レート・記録は残ります。
+          常連ランクが上がり（生産倍率が増える）常連P を得ます。ランクは使っても減りません。常連P はツリーで使うと減ります。メダル・燃料・レート・記録は残ります。
         </p>
         <div className={styles.meter} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor(Math.min(1, c.runTotal / c.required) * 100)}>
           <span style={{ width: `${Math.min(1, c.runTotal / c.required) * 100}%` }} />
         </div>
         <p>
-          今回 {formatNum(c.runTotal)} / {formatNum(c.required)}玉 ・ 獲得見込み +{c.gain}P
+          今回 {formatNum(c.runTotal)} / {formatNum(c.required)}玉 ・ 獲得見込み ランク +{c.gain}・常連P +{c.points}
         </p>
         <p className={styles.note}>
-          常連P は「玉由来 {c.byBalls}」と「行動由来 {c.byMedals}（累計メダル {shop.medalsEarned}枚 ÷ {economyJson.close.medals_per_point}）」の小さい方まで（今 {shop.regular}P）。
+          ランクの上がり幅は「玉由来 {c.byBalls}」と「行動由来 {c.byMedals}（累計メダル {shop.medalsEarned}枚 ÷ {economyJson.close.medals_per_point}）」の小さい方（今 ランク{shop.regular}）。
         </p>
         {c.ready && !closing && (
           <div className={styles.row}>
@@ -178,11 +204,24 @@ export function ShopScreen() {
             </button>
           </div>
         )}
+        {closedPoints !== null && !closing && (
+          <div className={styles.row}>
+            <p className={styles.note}>閉店しました。常連P +{closedPoints}。</p>
+            <button className={styles.sub} onClick={() => setTreeOpen(true)}>
+              常連ツリーへ
+            </button>
+          </div>
+        )}
         {closing && (
           <>
+            {c.gain > 0 && (
+              <p className={styles.note}>
+                この閉店で 常連P +{c.points}（ランク +{c.gain}＝{bd.rank}P・累計玉の段 +{bd.bonus}・口コミ +{bd.kuchikomi}）
+              </p>
+            )}
             {c.gain === 0 && (
               <p className={styles.warn}>
-                今閉店しても常連P は増えません（{c.byMedals < c.byBalls ? '行動由来が上限です。運動してメダルを貯めてください' : '玉由来が足りません'}）。
+                今閉店しても常連ランクも常連P も増えません（{c.byMedals < c.byBalls ? '行動由来が上限です。運動してメダルを貯めてください' : '玉由来が足りません'}）。
               </p>
             )}
             <div className={styles.row}>
@@ -191,10 +230,11 @@ export function ShopScreen() {
                 disabled={busy}
                 onClick={() => {
                   setClosing(false);
+                  setClosedPoints(c.points);
                   send({ k: 'close' });
                 }}
               >
-                閉店を確定（+{c.gain}P）
+                閉店を確定（常連P +{c.points}）
               </button>
               <button className={styles.sub} disabled={busy} onClick={() => setClosing(false)}>
                 やめる
@@ -203,6 +243,7 @@ export function ShopScreen() {
           </>
         )}
       </section>
+      {treeOpen && tree !== undefined && <TreeSheet tree={tree} onDismiss={() => setTreeOpen(false)} />}
     </div>
   );
 }

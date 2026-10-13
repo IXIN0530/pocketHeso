@@ -3,12 +3,13 @@ import type { HallProjection, NoticeEffect } from '@ph/core';
 import { CountUp } from '../components/count-up.tsx';
 import { Segmented } from '../components/segmented.tsx';
 import { ACHIEVEMENTS } from '../engine/achievement-defs.ts';
+import { openBoostMult } from '../engine/tree-defs.ts';
 import { playToastCue } from '../fx/fx-host.ts';
 import { tick } from '../platform/haptic.ts';
 import { formatFuel } from '../stores/activity.ts';
 import { achievedIds, achievedToast } from '../stores/achievements.ts';
 import { act, onView, useEngine } from '../stores/engine.ts';
-import { formatNum, formatTime } from '../stores/format.ts';
+import { formatClock, formatNum, formatTime } from '../stores/format.ts';
 import { PREVIEW_TAIL_MS, usePreview } from '../stores/preview.ts';
 import styles from './hall.module.css';
 
@@ -163,6 +164,11 @@ export function HallScreen({ active = true }: { active?: boolean }) {
             <span>{modeLabel(p)}</span>
             <span>回転 {formatNum(p.totals.spins)}</span>
             <span>大当たり {formatNum(p.totals.jackpots)}</span>
+            {p.tree !== undefined && p.tree.openBoostMs > 0 && (
+              <span className={styles.stock}>
+                開店 ×{openBoostMult(p.tree.nodes)} 残り {formatClock(p.tree.openBoostMs)}
+              </span>
+            )}
             {p.bonusStock > 0 && <span className={styles.stock}>特別保留 ×{p.bonusStock}（待機）</span>}
             {p.jackpot && (
               <span className={styles.hot}>
