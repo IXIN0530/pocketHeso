@@ -15,6 +15,6 @@
 - 既定機種の人間確認待ち（light/rush/ltのどれを既定にするか。P3バランスに影響）
 
 ## Notes（最新3件まで）
+- [P10-T8]: 手順を人間に渡した（結果待ち）。Debug に常連P/番頭さんを直接入れる口は無い（debug-screen.tsx の GRANTS は燃料・メダル・玉・特別保留のみ）。番頭さん(30P・前提 auto_keep)は x3600 で閉店を重ねて常連Pを貯めて買う。口が要るなら別タスクで追加。Sonnet
 - [P10-T7]: 見た目は `board/look.ts` の resolveLook(所持unlocks, looksOff)→BoardScene.setLook。dendou は金の筐体が chrome より優先、称号は HudCanvas の隅に常時描画。実機で見るには Debug の x3600 で閉店→常連P→段1の lamp_gold(5P)等を購入（金の玉は段4・殿堂入りは段5で遠い）。core の tree-engine.test の 24h advance 1.5倍判定は負荷で稀に落ちる（再実行で通る、今回触っていない）。全部 Sonnet
 - [P10-T6]: 系統は JSON に欄が無いので `engine/tree-defs.ts` に id→系統の表（52個、テストで全件確認）。開店ダッシュの倍率は所持ノードの open_boost から web で計算（TreeView に倍率が無いため）。Debug に常連P を入れる口は無い: 実機は既存セーブ（ランク≥1 なら 10×ランク）か、Debug の x3600 で閉店まで進めて得る。全部 Sonnet
-- [P10-T5]: 暫定の比 6〜9.8 は閉店日の日末に開店ダッシュ ×2.5 が乗ったため。econ の `perSecFgNoDash` で割り戻して判定（D-105）。R/T の初回閉店は runBonus 0 で常連P 10（基準の下限を 10 に）。lt の EV 1.36 はツリーと無関係の既存値。重い試算は 182日 1本 約45分。econ.ts・検証の実行は Sonnet、判定・再計測・spec/DECISIONS は Opus
