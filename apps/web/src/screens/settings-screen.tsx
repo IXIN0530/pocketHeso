@@ -71,6 +71,7 @@ export function SettingsScreen() {
 
   const autoOwned = (p?.shop?.upgrades.find((u) => u.id === 'auto')?.value ?? 0) > 0;
   const tomeuchi = (p?.shop?.upgrades.find((u) => u.id === 'tomeuchi')?.value ?? 0) > 0;
+  const resting = p?.rest !== undefined && p?.rest !== null;
   // 正式版は常に 1（clock.ts）なので Debug の文言は出ない（D-087）。
   const debugDb = __DEV_TOOLS__ && clock.scale !== 1;
 
@@ -79,6 +80,7 @@ export function SettingsScreen() {
       {p && (
         <section className={styles.card}>
           <h2>オート打ち</h2>
+          {resting && <p className={styles.note}>休業中（開店すると自動で再開します）。割合の変更は開店後も残ります。</p>}
           {autoOwned ? (
             <>
               <p className={styles.note}>

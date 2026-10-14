@@ -22,6 +22,18 @@
   font-size: 13px;
 }
 
+/* 休業中の見出し（P12-T3）: カウントダウン。 */
+.rest {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #2c2145;
+  color: #ffe08a;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
 .groups {
   display: grid;
   gap: 12px;
@@ -103,6 +115,18 @@
   font-size: 11px;
 }
 
+/* timing: 'open' の小札（開店から／次の開店から）。色だけでなく文字で区別。 */
+.info .timing {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: #2c325e;
+  color: #ffe08a;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .cost {
   flex: none;
   font-size: 14px;
@@ -136,6 +160,7 @@
 }
 
 .buyBtn,
+.openBtn,
 .close {
   min-height: 48px;
   border: 0;
@@ -153,6 +178,18 @@
 }
 
 .buyBtn:disabled {
+  opacity: 0.45;
+}
+
+/* 休業中の「開店する」（普通のボタン。長押しでなく1タップ）。 */
+.openBtn {
+  min-height: 52px;
+  background: #e8b840;
+  color: #121630;
+  font-size: 17px;
+}
+
+.openBtn:disabled {
   opacity: 0.45;
 }
 

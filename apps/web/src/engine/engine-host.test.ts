@@ -116,7 +116,7 @@ test('旧版4（v1.0.0・IdleEconomy v5・実績なし）の snapshot から落�
   await host.presence(false, T0 + 5000);
   const at = T0 + 15 * MIN;
   const snap = (await getSnapshot(db, 'latest')) as { v: number; engine: Record<string, unknown> };
-  expect(snap.v).toBe(6);
+  expect(snap.v).toBe(7);
   const econ: Record<string, unknown> = { ...(snap.engine['economy'] as Record<string, unknown>), v: 5 };
   delete econ['achieved'];
   delete econ['awakenTotal'];
@@ -148,7 +148,7 @@ test('旧版5（v1.1.0・IdleEconomy v6）の snapshot は常連P が 10 × ラ�
   await host.presence(false, T0 + 5000);
   const at = T0 + 15 * MIN;
   const snap = (await getSnapshot(db, 'latest')) as { v: number; engine: Record<string, unknown> };
-  expect(snap.v).toBe(6);
+  expect(snap.v).toBe(7);
   const cur = snap.engine['economy'] as Record<string, unknown>;
   // 現行 v6 の往復: そのまま復元できる。
   const same = await EngineHost.open(db, ATLAS, at, seeds);
@@ -246,4 +246,27 @@ test('P7-T1: 端末時計が戻っていた起動は追いつき 0・時刻は E
   const b = (await host.debugInfo()).metrics.boots[0];
   expect(b).toMatchObject({ catchUpMs: 0, spanMs: 0 });
   expect(b?.at).toBe(boot.projection.at);
+});
+
+test('P12-T3: 旧版6（v1.2.0・IdleEconomy v7・休業なし）の snapshot は休業でない状態で始まる。休業中のセーブは往復できる', async () => {
+  const db = await freshDb();
+  await EngineHost.open(db, ATLAS, T0, seeds);
+  const at = T0 + 5 * MIN;
+  const snap = (await getSnapshot(db, 'latest')) as { v: number; engine: Record<string, unknown> };
+  expect(snap.v).toBe(7);
+  const cur = snap.engine['economy'] as Record<string, unknown>;
+  // v6（休業なし）にして読み直すと休業でない。
+  const v6econ: Record<string, unknown> = { ...cur, v: 7 };
+  delete v6econ['restAt'];
+  delete v6econ['restPendingBalls'];
+  await putSnapshot(db, 'latest', { ...snap, v: 6, engine: { ...snap.engine, economy: v6econ } });
+  const old = await EngineHost.open(db, ATLAS, at, seeds);
+  expect(old.boot.restoredFrom).toBe('snapshot');
+  expect((await old.host.tick(at + 1000)).projection.rest).toBeNull();
+  // 休業中のセーブ（restAt あり）はそのまま往復し、休業画面に戻れる。
+  const resting: Record<string, unknown> = { ...cur, v: 8, restAt: at, restPendingBalls: 12345 };
+  await putSnapshot(db, 'latest', { ...snap, v: 7, engine: { ...snap.engine, economy: resting } });
+  const back = await EngineHost.open(db, ATLAS, at + 1000, seeds);
+  expect(back.boot.restoredFrom).toBe('snapshot');
+  expect(back.boot.projection.rest).toMatchObject({ since: at, pendingBalls: 12345 });
 });

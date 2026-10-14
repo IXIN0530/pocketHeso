@@ -8,6 +8,7 @@ import { EngineStatus } from '../screens/engine-status.tsx';
 import { HallScreen } from '../screens/hall-screen.tsx';
 import { OnboardingGate } from '../screens/onboarding-sheet.tsx';
 import { RecordsScreen } from '../screens/records-screen.tsx';
+import { AutoOpenedBanner, RestBanner } from '../screens/rest-banner.tsx';
 import { SettingsScreen } from '../screens/settings-screen.tsx';
 import { ShopScreen } from '../screens/shop-screen.tsx';
 import { startEngine } from '../stores/engine.ts';
@@ -98,6 +99,8 @@ export function App() {
         </Suspense>
       )}
       <TabBar tabs={TABS} value={tab} onChange={changeTab} />
+      <RestBanner />
+      <AutoOpenedBanner />
       <AwayBanner />
       <AwayModal />
       <OnboardingGate standalone={standalone} />

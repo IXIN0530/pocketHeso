@@ -1,7 +1,21 @@
 import type { TreeNodeView } from '@ph/core';
 import { expect, test } from 'vitest';
 import { formatClock } from '../stores/format.ts';
-import { closeBreakdown, closeExplain, groupTier, openBoostMult, stateMark, TREE_NODE_TEXT, tierRemaining } from './tree-defs.ts';
+import {
+  closeBreakdown,
+  closeExplain,
+  groupTier,
+  openBoostMult,
+  restCloseText,
+  restCountdownText,
+  restHeaderText,
+  REST_AUTO_MINUTES,
+  REST_MAX_MS,
+  stateMark,
+  timingBadge,
+  TREE_NODE_TEXT,
+  tierRemaining,
+} from './tree-defs.ts';
 
 const node = (id: string, tier: number, state: TreeNodeView['state'], cost = 3): TreeNodeView => ({ id, tier, cost, req: [], state, timing: 'now' });
 
@@ -65,4 +79,27 @@ test('閉店の説明: 玉由来・行動由来の次の +1 と、2つの累計�
   expect(text).toContain('次の +1 は 168枚（あと 18枚）');
   expect(text).toContain('「今回」の累計玉が 100億');
   expect(text).toContain('「これまで」の累計玉');
+});
+
+test('P12-T3: 休業の上限は JSON から（30分）。閉店の文言に含める', () => {
+  expect(REST_MAX_MS).toBe(1800000);
+  expect(REST_AUTO_MINUTES).toBe(30);
+  expect(restCloseText()).toBe('閉店すると休業に入り、常連P を使ってから開店できます（30分で自動で開店）');
+});
+
+test('P12-T3: 休業のカウントダウンは M:SS（切り上げ）', () => {
+  const rest = { since: 1000, autoOpenAt: 1000 + 1800000, pendingBalls: 0 };
+  expect(restCountdownText(rest, 1000)).toBe('30:00');
+  expect(restCountdownText(rest, 1000 + 1000)).toBe('29:59');
+  expect(restCountdownText(rest, 1000 + 1799000)).toBe('0:01');
+  expect(restCountdownText(rest, 1000 + 1800000)).toBe('0:00');
+  expect(restCountdownText(rest, 1000 + 1900000)).toBe('0:00');
+  expect(restHeaderText(rest, 1000 + 1000)).toBe('休業中　自動で開店まで 29:59');
+});
+
+test('P12-T3: timing open の小札（休業中は「開店から」、それ以外は「次の開店から」）', () => {
+  expect(timingBadge('now', true)).toBeNull();
+  expect(timingBadge('now', false)).toBeNull();
+  expect(timingBadge('open', true)).toBe('開店から');
+  expect(timingBadge('open', false)).toBe('次の開店から');
 });

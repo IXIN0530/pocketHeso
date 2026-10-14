@@ -1,6 +1,6 @@
 // 常連ツリーの画面用の定義（名前・説明は economy JSON の tree.nodes から。系統は spec/25 の表, 52 個）。
 // 画面から読むので Core のパーサを通さず JSON の tree だけを取る（検証は Worker 側の parseEconomy が起動時に行う）。
-import type { ShopCloseView, TreeNodeView } from '@ph/core';
+import type { RestView, ShopCloseView, TreeNodeView } from '@ph/core';
 import { formatNum } from '../stores/format.ts';
 import { close, tree } from '../../../../resources/economy/default.json';
 
@@ -154,4 +154,33 @@ export function closeExplain(c: ShopCloseView, medalsEarned: number, rank: numbe
     `閉店の条件は「今回」の累計玉が ${n(c.required)}。玉由来は「これまで」の累計玉（閉店で戻りません）`,
     `常連P ＝ ランク +1 につき ${POINTS_PER_RANK} ＋ 累計玉の段（今回の累計玉が ${tiers}… を超えた数）＋ 口コミ`,
   ];
+}
+
+/** 休業の自動開店までの ms（JSON の close.rest_max_ms。P12-T3）。 */
+export const REST_MAX_MS: number = (close as { rest_max_ms: number }).rest_max_ms;
+
+/** 休業の上限の分の表記（JSON から。初期 30分）。 */
+export const REST_AUTO_MINUTES: number = Math.floor(REST_MAX_MS / 60000);
+
+/** 閉店カード・閉店シートの休業の説明（30分は JSON から）。 */
+export function restCloseText(): string {
+  return `閉店すると休業に入り、常連P を使ってから開店できます（${REST_AUTO_MINUTES}分で自動で開店）`;
+}
+
+/** 休業中のカウントダウン「M:SS」（残りは切り上げ。30:00 → 29:59 … 0:01 → 0:00）。 */
+export function restCountdownText(rest: RestView, at: number): string {
+  const s = Math.max(0, Math.ceil((rest.autoOpenAt - at) / 1000));
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** 休業シートの見出し「休業中 自動で開店まで M:SS」（間の空きは U+3000）。 */
+export function restHeaderText(rest: RestView, at: number): string {
+  return '休業中　自動で開店まで ' + restCountdownText(rest, at);
+}
+
+/** timing: 'open' の小札（休業中は「開店から」、それ以外は「次の開店から」。'now' は null）。 */
+export function timingBadge(timing: TreeNodeView['timing'], resting: boolean): string | null {
+  if (timing !== 'open') return null;
+  return resting ? '開店から' : '次の開店から';
 }

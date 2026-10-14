@@ -7,6 +7,26 @@
   position: relative;
 }
 
+/* 休業中は盤面を暗く（P12-T3）。発射ボタンは無効・「本日閉店」を重ねる。 */
+.resting {
+  filter: brightness(0.55);
+}
+
+.closed {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 8px 20px;
+  border-radius: 12px;
+  background: rgba(10, 12, 32, 0.82);
+  color: #ffe08a;
+  font-size: 20px;
+  font-weight: 700;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 /* 留守中リプレイの間だけ盤面の上に出す（その場の変動と見分けるため）。 */
 .replay {
   position: absolute;

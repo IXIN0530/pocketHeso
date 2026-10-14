@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import type { TreeNodeView, TreeView } from '@ph/core';
+import type { RestView, TreeNodeView, TreeView } from '@ph/core';
 import { HoldButton } from '../components/hold-button.tsx';
 import { Segmented } from '../components/segmented.tsx';
 import { Sheet } from '../components/sheet.tsx';
-import { groupTier, stateMark, TREE_NODE_TEXT, TREE_TIER_NAMES, tierRemaining } from '../engine/tree-defs.ts';
+import { groupTier, restHeaderText, stateMark, timingBadge, TREE_NODE_TEXT, TREE_TIER_NAMES, tierRemaining } from '../engine/tree-defs.ts';
 import { playToastCue } from '../fx/fx-host.ts';
 import { act, useEngine } from '../stores/engine.ts';
 import { formatNum } from '../stores/format.ts';
@@ -25,20 +25,29 @@ export function rankText(t: TreeView): string {
 /**
  * 常連ツリーのシート（spec/25 画面）: 段のタブ・系統ごとの縦リスト・行タップで詳細と長押しで開ける。
  * 購入は返金なしのため長押し（HoldButton）。ランクは減らず、常連P だけが減る。
+ * 休業中は上にカウントダウン・下に「開店する」（普通のボタン, P12-T3）。rest が null でない時だけ出す。
  */
-export function TreeSheet({ tree, onDismiss }: { tree: TreeView; onDismiss: () => void }) {
+export function TreeSheet({ tree, rest, at, onDismiss }: { tree: TreeView; rest?: RestView | null; at?: number; onDismiss: () => void }) {
   const firstOpen = Math.max(1, tree.tierOpen.findIndex((o, i) => o && tree.nodes.some((n) => n.tier === i + 1 && (n.state === 'buyable' || n.state === 'short'))) + 1);
   const [tier, setTier] = useState(firstOpen);
   const [picked, setPicked] = useState<string | null>(null);
+  const [opening, setOpening] = useState(false);
 
   const open = tree.tierOpen[tier - 1] === true;
   const left = tierRemaining(tree.nodes, tier);
   const sel = tree.nodes.find((n) => n.id === picked) ?? null;
   const selText = sel === null ? undefined : TREE_NODE_TEXT[sel.id];
+  const resting = rest !== undefined && rest !== null;
+  const restingAt = at ?? rest?.autoOpenAt ?? 0;
 
   return (
     <Sheet onDismiss={onDismiss} labelledBy="tree-title">
       <h2 id="tree-title">常連ツリー</h2>
+      {resting && rest !== null && (
+        <p className={styles.rest} role="status">
+          {restHeaderText(rest, restingAt)}
+        </p>
+      )}
       <p className={styles.summary}>
         <span>{rankText(tree)}</span>
         <small>使っても減りません</small>
@@ -66,6 +75,7 @@ export function TreeSheet({ tree, onDismiss }: { tree: TreeView; onDismiss: () =
               {g.nodes.map((n) => {
                 const m = stateMark(n.state);
                 const text = TREE_NODE_TEXT[n.id];
+                const badge = timingBadge(n.timing, resting);
                 return (
                   <li key={n.id}>
                     <button
@@ -78,7 +88,10 @@ export function TreeSheet({ tree, onDismiss }: { tree: TreeView; onDismiss: () =
                         {m.mark}
                       </span>
                       <span className={styles.info}>
-                        <b>{text?.name ?? n.id}</b>
+                        <b>
+                          {text?.name ?? n.id}
+                          {badge !== null && <small className={styles.timing}> {badge}</small>}
+                        </b>
                         <small>{text?.desc ?? ''}</small>
                         {n.req.length > 0 && <small className={styles.req}>{reqText(n)}</small>}
                       </span>
@@ -98,6 +111,7 @@ export function TreeSheet({ tree, onDismiss }: { tree: TreeView; onDismiss: () =
           </p>
           <p className={styles.sub}>
             {selText?.line}・コスト {sel.cost}P{sel.req.length > 0 ? `・${reqText(sel)}` : ''}・{stateMark(sel.state).label}
+            {timingBadge(sel.timing, resting) !== null ? `・${timingBadge(sel.timing, resting)}` : ''}
           </p>
           {sel.state === 'owned' ? null : (
             <HoldButton
@@ -117,6 +131,22 @@ export function TreeSheet({ tree, onDismiss }: { tree: TreeView; onDismiss: () =
             </HoldButton>
           )}
         </div>
+      )}
+      {resting && (
+        <button
+          type="button"
+          className={styles.openBtn}
+          disabled={opening}
+          onClick={() => {
+            setOpening(true);
+            act({ k: 'open' })
+              .then(() => playToastCue('opened', useEngine.getState().seed, ++cueSerial))
+              .catch(report)
+              .finally(() => setOpening(false));
+          }}
+        >
+          開店する
+        </button>
       )}
       <button type="button" className={styles.close} onClick={onDismiss}>
         閉じる

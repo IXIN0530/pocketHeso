@@ -14,13 +14,16 @@ import styles from './activity.module.css';
 export function AwayModal() {
   const away = useEngine((s) => s.away);
   const fuelMs = useEngine((s) => s.projection?.fuelMs ?? 0);
+  const autoOpenedAt = useEngine((s) => s.autoOpenedAt);
   if (away === null) {
     return null;
   }
   const replay = replayRequest(away);
+  const autoOpened = autoOpenedAt !== null && autoOpenedAt >= away.from && autoOpenedAt <= away.to;
   return (
     <Sheet onDismiss={dismissAway} labelledBy="away-title">
       <h2 id="away-title">留守のあいだ（{formatSpan(away.to - away.from)}）</h2>
+      {autoOpened && <p className={styles.note}>自動で開店しました</p>}
       <p className={styles.total}>+{formatNum(away.gainedBalls)}玉</p>
       <dl className={styles.facts}>
         <dt>大当たり</dt>
@@ -68,6 +71,7 @@ export function AwayModal() {
 /** 5分以上の留守を知らせるバナー（P11-T1）。操作不要で数秒で消え、タップで詳細のシートを開く。音・触覚は鳴らさない。 */
 export function AwayBanner() {
   const banner = useEngine((s) => s.awayBanner);
+  const autoOpenedAt = useEngine((s) => s.autoOpenedAt);
   useEffect(() => {
     if (banner === null) return;
     const id = setTimeout(dismissAwayBanner, AWAY_BANNER_MS);
@@ -76,9 +80,14 @@ export function AwayBanner() {
   if (banner === null) {
     return null;
   }
+  const lines = [...awayBannerLines(banner)];
+  // 休業中に30分たって自動で開店していたら留守バナーに含める（P12-T3）。
+  if (autoOpenedAt !== null && autoOpenedAt >= banner.from && autoOpenedAt <= banner.to) {
+    lines.push('自動で開店しました');
+  }
   return (
     <button className={styles.awayBanner} onClick={openAwayFromBanner} role="status">
-      {awayBannerLines(banner).map((line) => (
+      {lines.map((line) => (
         <span key={line}>{line}</span>
       ))}
     </button>

@@ -108,15 +108,21 @@ export function HallScreen({ active = true }: { active?: boolean }) {
 
   const p = projection;
   const notice = p?.notice && p.notice.expiresAt > p.at && p.notice.id !== tapped ? p.notice : null;
+  const resting = p?.rest !== undefined && p?.rest !== null;
 
   return (
     <section className={styles.hall}>
-      <div className={styles.board}>
+      <div className={`${styles.board} ${resting ? styles.resting : ''}`}>
         <Suspense>
           <BoardCanvas active={active} />
         </Suspense>
         <ReplayBadge />
         <AchievedToast />
+        {resting && (
+          <div className={styles.closed} role="status">
+            本日閉店
+          </div>
+        )}
         {notice && (
           <button
             className={`${styles.notice} ${styles[notice.effect]}`}
@@ -161,9 +167,10 @@ export function HallScreen({ active = true }: { active?: boolean }) {
             </div>
           </dl>
           <p className={styles.state}>
-            <span>{modeLabel(p)}</span>
+            <span>{resting ? '本日閉店（休業中）' : modeLabel(p)}</span>
             <span>回転 {formatNum(p.totals.spins)}</span>
             <span>大当たり {formatNum(p.totals.jackpots)}</span>
+            {resting && <span className={styles.stock}>オート打ち 休業中</span>}
             {p.tree !== undefined && p.tree.openBoostMs > 0 && (
               <span className={styles.stock}>
                 開店 ×{openBoostMult(p.tree.nodes)} 残り {formatClock(p.tree.openBoostMs)}
@@ -180,13 +187,13 @@ export function HallScreen({ active = true }: { active?: boolean }) {
             <button
               className={`${styles.shoot} ${p.shoot.on ? styles.on : ''}`}
               aria-pressed={p.shoot.on}
-              disabled={busy}
+              disabled={busy || resting}
               onClick={() => {
                 tick();
                 send({ k: 'shoot', on: !p.shoot.on, rate: p.shoot.rate });
               }}
             >
-              {p.shoot.on ? '打っています — 止める' : '打つ'}
+              {resting ? '休業中' : p.shoot.on ? '打っています — 止める' : '打つ'}
             </button>
             {p.rates.length > 1 && (
               <div className={styles.rate}>

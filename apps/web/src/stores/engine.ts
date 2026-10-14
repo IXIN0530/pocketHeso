@@ -20,6 +20,8 @@ export interface EngineState {
   readonly away: AwaySummary | null;
   /** タップ不要のバナーで知らせている留守（5分以上, P11-T1）。タップで away（シート）になる。 */
   readonly awayBanner: AwaySummary | null;
+  /** 自動で開店した時刻（opened auto のイベント。バナーで知らせる, P12-T3）。 */
+  readonly autoOpenedAt: number | null;
   readonly restoredFrom: BootResult['restoredFrom'] | null;
   /** 演出の分岐に使う seed（spec/43）。 */
   readonly seed: number;
@@ -34,6 +36,7 @@ export const useEngine = create<EngineState>(() => ({
   clockBack: false,
   away: null,
   awayBanner: null,
+  autoOpenedAt: null,
   restoredFrom: null,
   seed: 0,
   machineId: '',
@@ -76,7 +79,18 @@ export function onView(fn: ViewListener): () => void {
 }
 
 function show(v: EngineView & { readonly events?: readonly EngineSimEvent[] }): void {
-  useEngine.setState({ projection: v.projection, clockBack: v.clockBack, seed: v.seed, machineId: v.machineId });
+  let autoOpenedAt: number | null = null;
+  for (const e of v.events ?? []) {
+    if (e.k === 'opened' && e.auto) {
+      autoOpenedAt = e.at;
+      break;
+    }
+  }
+  if (autoOpenedAt !== null) {
+    useEngine.setState({ projection: v.projection, clockBack: v.clockBack, seed: v.seed, machineId: v.machineId, autoOpenedAt });
+  } else {
+    useEngine.setState({ projection: v.projection, clockBack: v.clockBack, seed: v.seed, machineId: v.machineId });
+  }
   lastShots = v.shots;
   if (v.shots.length > 0) {
     shotListeners.forEach((fn) => fn(v.shots));
@@ -245,6 +259,11 @@ export function dismissAway(): void {
 
 export function dismissAwayBanner(): void {
   useEngine.setState({ awayBanner: null });
+}
+
+/** 自動開店のバナーを消す。 */
+export function dismissAutoOpened(): void {
+  useEngine.setState({ autoOpenedAt: null });
 }
 
 /** バナーのタップ: 詳細のシートを開く。 */

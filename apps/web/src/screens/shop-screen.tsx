@@ -5,7 +5,7 @@ import { CountUp } from '../components/count-up.tsx';
 import { HoldButton } from '../components/hold-button.tsx';
 import { Segmented } from '../components/segmented.tsx';
 import { Switch } from '../components/switch.tsx';
-import { closeBreakdown, closeExplain } from '../engine/tree-defs.ts';
+import { closeBreakdown, closeExplain, restCloseText } from '../engine/tree-defs.ts';
 import { TreeSheet, rankText } from './tree-sheet.tsx';
 import { act, useEngine } from '../stores/engine.ts';
 import { formatNum } from '../stores/format.ts';
@@ -62,6 +62,18 @@ export function ShopScreen() {
   };
   // 購入は HoldButton が1つずつ順に送る（長押しの連続でボタンを無効にしない）。
   const buy = (input: Parameters<typeof act>[0]) => act(input).catch(report);
+
+  /** 閉店を確定し、休業のツリーシートを自動で開く（P12-T3）。 */
+  const closeShop = (points: number) => {
+    setBusy(true);
+    act({ k: 'close' })
+      .then(() => {
+        setClosedPoints(points);
+        setTreeOpen(true);
+      })
+      .catch(report)
+      .finally(() => setBusy(false));
+  };
 
   const c = shop.close;
   const tree = p.tree;
@@ -185,7 +197,7 @@ export function ShopScreen() {
       <section className={styles.card}>
         <h2>閉店</h2>
         <p className={styles.note}>
-          今回の累計玉が {formatNum(c.required)} に届くと閉店できます。閉店すると玉・役物・玉で買った強化が最初に戻り、
+          今回の累計玉が {formatNum(c.required)} に届くと閉店できます。{restCloseText()}。閉店すると玉・役物・玉で買った強化が最初に戻り、
           常連ランクが上がり（生産倍率が増える）常連P を得ます。ランクは使っても減りません。常連P はツリーで使うと減ります。メダル・燃料・レート・記録は残ります。
         </p>
         <div className={styles.meter} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor(Math.min(1, c.runTotal / c.required) * 100)}>
@@ -225,6 +237,7 @@ export function ShopScreen() {
         )}
         {closing && (
           <>
+            <p className={styles.note}>{restCloseText()}。</p>
             {c.gain > 0 && (
               <p className={styles.note}>
                 この閉店で 常連P +{c.points}（ランク +{c.gain}＝{bd.rank}P・累計玉の段 +{bd.bonus}・口コミ +{bd.kuchikomi}）
@@ -241,8 +254,7 @@ export function ShopScreen() {
                 disabled={busy}
                 onClick={() => {
                   setClosing(false);
-                  setClosedPoints(c.points);
-                  send({ k: 'close' });
+                  closeShop(c.points);
                 }}
               >
                 閉店を確定（常連P +{c.points}）
@@ -254,7 +266,7 @@ export function ShopScreen() {
           </>
         )}
       </section>
-      {treeOpen && tree !== undefined && <TreeSheet tree={tree} onDismiss={() => setTreeOpen(false)} />}
+      {treeOpen && tree !== undefined && <TreeSheet tree={tree} rest={p.rest} at={p.at} onDismiss={() => setTreeOpen(false)} />}
     </div>
   );
 }
