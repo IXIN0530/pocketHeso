@@ -109,6 +109,7 @@ export type {
   EngineAchievementMetrics,
   IdleEconomySnapshot,
   IdleYakumonoView,
+  RestView,
   ShopCloseView,
   ShopUpgradeId,
   ShopUpgradeView,
@@ -176,12 +177,13 @@ export {
 export type {
   TreeBuyReason,
   TreeNodeState,
+  TreeNodeTiming,
   TreeNodeView,
   TreeRecord,
   TreeTotals,
   TreeView,
 } from './tree-state.ts';
-export { treeClosePoints, treeRunBonus } from './tree-state.ts';
+export { treeClosePoints, treeNodeTiming, treeRunBonus } from './tree-state.ts';
 export type {
   Action,
   ActiveNotice,

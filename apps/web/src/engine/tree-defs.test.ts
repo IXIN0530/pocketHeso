@@ -3,7 +3,7 @@ import { expect, test } from 'vitest';
 import { formatClock } from '../stores/format.ts';
 import { closeBreakdown, closeExplain, groupTier, openBoostMult, stateMark, TREE_NODE_TEXT, tierRemaining } from './tree-defs.ts';
 
-const node = (id: string, tier: number, state: TreeNodeView['state'], cost = 3): TreeNodeView => ({ id, tier, cost, req: [], state });
+const node = (id: string, tier: number, state: TreeNodeView['state'], cost = 3): TreeNodeView => ({ id, tier, cost, req: [], state, timing: 'now' });
 
 test('名前と系統は JSON から引き当てる（52個すべて系統あり）', () => {
   expect(Object.keys(TREE_NODE_TEXT).length).toBe(52);

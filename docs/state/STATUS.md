@@ -2,8 +2,8 @@
 <!-- 30行以内を維持。古い Notes は削除してよい（履歴は git log にある） -->
 
 - Current phase: P12（閉店後の休業 → `docs/plan/P12-rest-phase.md`）。P11-T6 の本番確認は Blockers。P8-T7（任意）と P7 再開は人間の指示待ち
-- Last done: P11-T6（v1.2.1 を main へ ff マージ・タグ v1.2.1 を push。build/test/release-check OK、T5 実機は人間 OK）。本番の確認は人間待ち。その前: P11-T4（記録の実績: 達成済みは「10月12日 達成」、次の1つは「n%」（切り捨て・99で止める）＋バー＋小さく「現在値 / しきい値」、達成済みは太字。build/test OK、実機は T5）。その前: P11-T3（設定のオート打ち: レートを数字だけの dense Segmented にして下に「1発 n玉（生産 s秒 × r パチ）」、「割合」「レート（パチ）」の見出しを追加。他の Segmented は最大5項目で dense 済み/3項目。build/test OK、実機は T5）。その前: P11-T2（閉店カードに「計算のしかた」: 玉由来・行動由来の式と次の +1、2つの累計玉を書き分け。Core は ShopCloseView に表示用 3 値を足しただけで golden 不変。実機は T5）。その前: P11-T1（留守サマリー: 5分未満は出さない・タップ不要のバナー・D-106。build/test OK、実機は T5）。その前: P10-T9（v1.2.0 を main へ ff マージ・タグ v1.2.0 を push。build/test/release-check OK）。本番の確認は人間待ち。その前: P10-T8（実機 OK）
-- Next: P12-T1（Core: 休業と開店）
+- Last done: P12-T1（Core: 閉店→休業→開店。Action `open`・`opened`・自動開店 30分・休業中は生産/燃料/発射/予告/番頭さん停止・Grant の玉は開店時に加算・IdleEconomy v8・tree.nodes[].timing・Projection rest。同じ t の close→open が旧 close と一致を旧コードのハッシュで確認。golden 96a5485e35f65473・D-108。build/test all OK）。その前: P11-T6（v1.2.1 を main へ ff マージ・タグ v1.2.1 を push）。本番の確認は人間待ち
+- Next: P12-T2（pachisim: 閉店 → 買う → 開店 と試算のやり直し）
 - Owner hint: Claude Code（Opus）
 - Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T12 → T13 → T2 は人間の指示で再開
 
@@ -17,6 +17,6 @@
 - 既定機種の人間確認待ち（light/rush/ltのどれを既定にするか。P3バランスに影響）
 
 ## Notes（最新3件まで）
+- [P12-T1]: web は T3 まで「開店する」が無く、dev で閉店すると30分後に自動で開く（dev は未 push）。pachisim は同じ t で open を足して従来どおり（閉店→買う→開店は T2）。web の tree-defs.test に timing を足しただけ。Opus
 - [P12 計画]: 人間の指摘（閉店直後に買った keep・starter・開店ダッシュが次の閉店まで効かない）から spec/25「休業」・D-107・P12 を追加。休業の上限 30分は spec/25 未決9（推奨で進める）。Opus
 - [P11-T5]: dev を 9d9f269 まで push 済み。実機確認の結果待ち。Sonnet
-- [P11-T3]: 見出し用に `activity.module.css` へ `.field`/`.fieldLabel` を追加。375px の横スクロールは T5 の実機項目で確認。Sonnet

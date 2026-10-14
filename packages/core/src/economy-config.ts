@@ -110,6 +110,8 @@ export interface EconomyClose {
   readonly medalsPerPoint: number;
   readonly regularMult: number;
   readonly startBalls: Amount;
+  /** 休業の上限ms（閉店からこの時間で自動で開店, D-107）。 */
+  readonly restMaxMs: number;
 }
 
 /** 基準生産の下限（役物なしでも報酬を0にしない, D-080）。 */
@@ -398,6 +400,7 @@ export function parseEconomy(json: unknown): EconomySpec {
     fail('close.regular_mult out of range');
   }
   const startBalls = asIntRange(cl['start_balls'], 'close.start_balls', 0, 1000000);
+  const restMaxMs = asIntRange(cl['rest_max_ms'], 'close.rest_max_ms', 60000, 31536000000);
   const pr = asRecord(o['prod_ref'], 'prod_ref');
   const minPerSec = asNumber(pr['min_per_sec'], 'prod_ref.min_per_sec');
   if (!(minPerSec > 0 && minPerSec <= 1000)) {
@@ -452,7 +455,7 @@ export function parseEconomy(json: unknown): EconomySpec {
       bonus1In,
       bonusWeight,
     },
-    close: { requiredRunTotal, divisor, medalsPerPoint, regularMult, startBalls },
+    close: { requiredRunTotal, divisor, medalsPerPoint, regularMult, startBalls, restMaxMs },
     prodRef: { minPerSec },
     pachinko: { shotS },
     claims: { streakPerDay, streakMaxDays },

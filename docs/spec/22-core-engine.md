@@ -21,9 +21,11 @@ type Action  =
   | { t: SimTime; k: 'noticeTap'; noticeId: number }
   | { t: SimTime; k: 'boost'; on: boolean }
   | { t: SimTime; k: 'close'; machineId?: string }                // 閉店（周回）。machineId で次の周回の機種（新台入替, D-082）
+  | { t: SimTime; k: 'open' }                                     // 開店（休業を終えてリセット。休業中でなければ rejected 'not-resting', D-107）
 ```
 - 検証に失敗した Action（残高不足・期限切れの予告等）は `rejected` イベントを出して無視する（状態は変えない）。
 - 背面にいる間は `shoot` を自動で off 扱い（手動打ちは前面限定）。
+- 休業中（close〜open, spec/25）は `close` と `shoot`（on）を rejected `'resting'`。発射・生産・予告は止まり、自動開店は同時刻の入力より先に処理する。
 
 ## イベント
 ```ts
@@ -40,6 +42,7 @@ type SimEvent =
   | { k: 'granted'; claimId: string; at: SimTime; fuelMs: number; medals: number; balls?: number; bonusHolds?: number } // balls=即時の玉
   | { k: 'fuelEmpty' | 'fuelRefilled'; at: SimTime }
   | { k: 'closed'; at: SimTime; regularPoints: number; points?: number; machineId?: string }  // 機種を変えた時だけ
+  | { k: 'opened'; at: SimTime; auto: boolean }   // 開店（auto は restAt + rest_max_ms の自動開店, D-107）
   | { k: 'rejected'; at: SimTime; action: Action['k']; reason: string }
   | { k: 'achieved'; id: string; at: SimTime }   // 実績の達成（spec/24, D-095）
 type HoldEntry = { serial: number; hit: boolean; kind?: JackpotKind; pattern: PatternId; color: HoldColor; hot: number; unit?: number } // unit は取得時の単価（無い旧セーブは rate, D-090）

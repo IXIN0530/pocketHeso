@@ -681,6 +681,8 @@ export function runEcon(
       const gain = closeGain(s.totalTotal, spec.close.divisor, s.regular, s.medalsEarned, spec.close.medalsPerPoint);
       if (gain >= 1) {
         eng.appendAction({ t, k: 'close' });
+        // 休業（D-107）は入れずに同じ t で開店する（従来の閉店と一致。閉店 → 買う → 開店 は P12-T2）。
+        eng.appendAction({ t, k: 'open' });
         closedNow = treeOpts.tree !== 'off';
         closes = closes + 1;
         firstCloseDay = firstCloseDay ?? dayOf(t);

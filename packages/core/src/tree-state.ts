@@ -22,6 +22,25 @@ export interface TreeNodeView {
   readonly cost: number;
   readonly req: readonly string[];
   readonly state: TreeNodeState;
+  /** 効き始め（keep・starter・open_boost だけを持つノードは開店から 'open'、他は買った次の tick から 'now', D-107）。 */
+  readonly timing: TreeNodeTiming;
+}
+
+/** ノードの効き始め。 */
+export type TreeNodeTiming = 'now' | 'open';
+
+/** ノードの効き始め（効果がすべて keep・starter・open_boost なら 'open'）。 */
+export function treeNodeTiming(node: TreeNodeSpec): TreeNodeTiming {
+  if (node.effect.length === 0) {
+    return 'now';
+  }
+  for (let j = 0; j < node.effect.length; j = j + 1) {
+    const k = (node.effect[j] as TreeEffect).k;
+    if (k !== 'keep' && k !== 'starter' && k !== 'open_boost') {
+      return 'now';
+    }
+  }
+  return 'open';
 }
 
 /** 常連ツリーの表示（Projection の tree）。 */
@@ -210,7 +229,7 @@ export function treeNodeViews(tree: TreeSpec, owned: readonly boolean[], points:
     } else if (reason === 'insufficient-points') {
       state = 'short';
     }
-    out.push({ id: node.id, tier: node.tier, cost: node.cost, req: [...node.req], state });
+    out.push({ id: node.id, tier: node.tier, cost: node.cost, req: [...node.req], state, timing: treeNodeTiming(node) });
   }
   return out;
 }

@@ -7,7 +7,7 @@ import { SpinMachine, type SpinSnapshot } from './spin.ts';
 import type { SimTime } from './spin.ts';
 import { ATLAS_ENTRY_BYTES, ATLAS_HEADER_BYTES, ATLAS_TOTAL_BYTES, atlasKeyForBall, decodeAtlasHeader } from './atlas.ts';
 import type { EconomyPort } from './economy.ts';
-import type { AchievementsView, EngineAchievementMetrics, ShopView } from './economy-state.ts';
+import type { AchievementsView, EngineAchievementMetrics, RestView, ShopView } from './economy-state.ts';
 import type { TreeView } from './tree-state.ts';
 import { StubEconomy } from './economy.ts';
 import { addAmount } from './economy-math.ts';
@@ -92,6 +92,8 @@ export type Action =
   | { readonly t: SimTime; readonly k: 'noticeTap'; readonly noticeId: number }
   | { readonly t: SimTime; readonly k: 'boost'; readonly on: boolean }
   | { readonly t: SimTime; readonly k: 'close' }
+  /** 開店（休業を終えてリセット。休業中でなければ rejected 'not-resting', D-107）。 */
+  | { readonly t: SimTime; readonly k: 'open' }
   /** 常連ツリーのノードを買う（rejected: unknown-node・owned・tier-locked・locked・insufficient-points, spec/25）。 */
   | { readonly t: SimTime; readonly k: 'treeBuy'; readonly node: string }
   /** 番頭さんの ON/OFF（未所持は rejected 'not-owned', spec/25）。 */
@@ -115,6 +117,7 @@ export type SimEvent =
   | { readonly k: 'fuelEmpty'; readonly at: SimTime }
   | { readonly k: 'fuelRefilled'; readonly at: SimTime }
   | { readonly k: 'closed'; readonly at: SimTime; readonly regularPoints: number; readonly points?: number | undefined } // points は今回得た常連P（0 は省略, spec/25）
+  | { readonly k: 'opened'; readonly at: SimTime; readonly auto: boolean } // 開店（auto は rest_max_ms で自動に開いた時, D-107）
   | { readonly k: 'rejected'; readonly at: SimTime; readonly action: Action['k']; readonly reason: string }
   | { readonly k: 'achieved'; readonly id: string; readonly at: SimTime };
 
@@ -293,6 +296,8 @@ export interface HallProjection {
   readonly achievements: AchievementsView;
   /** 常連ツリー（経済が IdleEconomy の時だけ, spec/25）。 */
   readonly tree?: TreeView | undefined;
+  /** 休業（閉店から開店まで。休業中でなければ null, D-107）。 */
+  readonly rest: RestView | null;
 }
 
 /** 発射グリッドms（絶対時刻の倍数に揃える）。 */
@@ -456,6 +461,7 @@ export function projectSnapshot(
       maxChain: (snap.totals as Partial<Totals>).maxChain === undefined ? 0 : (snap.totals as Totals).maxChain,
     },
     closes: snap.closes === undefined ? [] : snap.closes.slice(),
+    rest: null,
     chain: spinSnap.chain === undefined ? 0 : spinSnap.chain,
     chainBalls: spinSnap.chainBalls === undefined ? 0 : spinSnap.chainBalls,
     shoot: { on: snap.shootOn, rate: snap.shootRate },
@@ -794,6 +800,10 @@ export class Engine {
       this.actionsState.push({ t: a.t, k: 'bantou', on: a.on });
       return;
     }
+    if (a.k === 'open') {
+      this.actionsState.push({ t: a.t, k: 'open' });
+      return;
+    }
     this.actionsState.push({ t: a.t, k: 'close' });
   }
 
@@ -957,6 +967,10 @@ export class Engine {
     if (nt < nxt) {
       nxt = nt;
     }
+    const openAt = this.autoOpenAt();
+    if (openAt !== null && openAt > cur && openAt < nxt) {
+      nxt = openAt;
+    }
     if (this.activeNoticeState !== null && this.activeNoticeState.expiresAt > cur && this.activeNoticeState.expiresAt < nxt) {
       nxt = this.activeNoticeState.expiresAt;
     }
@@ -1024,7 +1038,7 @@ export class Engine {
 
   /** 前面時間を予告タイマーに加算する（区間[prev, cur)のfgで減算。発動はapplyNoticeAt）。 */
   private accountFgTime(prev: SimTime, cur: SimTime, fg: boolean): void {
-    if (cur <= prev || !fg || this.activeNoticeState !== null) {
+    if (cur <= prev || !fg || this.activeNoticeState !== null || this.isResting()) {
       return;
     }
     if (this.noticeInFgMsState >= MAX_SAFE_MS) {
@@ -1040,6 +1054,11 @@ export class Engine {
 
   /** 同時刻のgrant/actionを適用する（経済付きは上限・検証を委譲）。 */
   private applyInputsAt(at: SimTime, out: SimEvent[]): void {
+    // 自動の開店は同時刻の入力より先（rest_max_ms ちょうど。advance・lookahead・留守中で同じ, D-107）。
+    const openAt = this.autoOpenAt();
+    if (openAt !== null && at >= openAt) {
+      this.applyOpenAt(at, true, out);
+    }
     while (true) {
       const g = this.grantsState[this.grantIdxState] as Grant | undefined;
       if (g === undefined || g.at !== at) {
@@ -1048,8 +1067,15 @@ export class Engine {
       this.grantIdxState = this.grantIdxState + 1;
       const prodMin = g.prodMin === undefined ? 0 : g.prodMin;
       const bonusHolds = g.bonusHolds === undefined ? 0 : g.bonusHolds;
-      const balls = prodMin > 0 ? this.readRefPerSec() * prodMin * this.readProdMinMult() * 60 : 0;
-      if (balls > 0) {
+      const resting = this.isResting();
+      let balls = 0;
+      if (prodMin > 0) {
+        balls = resting
+          ? ((this.econHook('onRestGrant') as (m: number) => number).bind(this.economy))(prodMin)
+          : this.readRefPerSec() * prodMin * this.readProdMinMult() * 60;
+      }
+      // 休業中の即時の玉は経済の restPendingBalls に貯め、開店で持ち玉に足す（D-107）。
+      if (balls > 0 && !resting) {
         this.ballsState = addAmount(this.ballsState, balls);
         this.noteEconomyGain(balls);
       }
@@ -1090,7 +1116,9 @@ export class Engine {
       }
       this.actionIdxState = this.actionIdxState + 1;
       if (a.k === 'shoot') {
-        if (!this.isRateAllowed(a.rate)) {
+        if (a.on && this.isResting()) {
+          out.push({ k: 'rejected', at, action: a.k, reason: 'resting' });
+        } else if (!this.isRateAllowed(a.rate)) {
           out.push({ k: 'rejected', at, action: a.k, reason: 'locked-rate' });
         } else {
           this.shootOnState = a.on;
@@ -1158,31 +1186,29 @@ export class Engine {
           (hook.bind(this.economy))(a.on);
         }
       } else if (a.k === 'close') {
+        // 閉店は休業に入るだけ（リセットは開店で, D-107）。
         const hook = this.econHook('onClose') as
-          | ((balls: number) => { ok: true; balls: number; gain: number } | { ok: false; reason: string })
+          | ((at: number) => { ok: true; gain: number; points: number } | { ok: false; reason: string })
           | undefined;
         if (hook === undefined || typeof hook !== 'function') {
           out.push({ k: 'rejected', at, action: a.k, reason: 'not-implemented' });
         } else {
           const runHook = this.econHook('getRunTotal') as (() => number) | undefined;
           const runTotal = runHook !== undefined && typeof runHook === 'function' ? (runHook.bind(this.economy))() : 0;
-          const r = (hook.bind(this.economy))(this.ballsState);
+          const r = (hook.bind(this.economy))(at);
           if (r.ok) {
-            this.ballsState = r.balls;
             this.closesState.push({ at, runTotal, gain: r.gain });
-            const points = (r as { points?: number }).points;
-            if (points !== undefined && points > 0) {
-              out.push({ k: 'closed', at, regularPoints: r.gain, points });
+            if (r.points > 0) {
+              out.push({ k: 'closed', at, regularPoints: r.gain, points: r.points });
             } else {
               out.push({ k: 'closed', at, regularPoints: r.gain });
             }
-            this.syncHoldMax();
-            this.clearNailQCache();
-            this.autoAccState = 0;
           } else {
             out.push({ k: 'rejected', at, action: a.k, reason: r.reason });
           }
         }
+      } else if (a.k === 'open') {
+        this.applyOpenAt(at, false, out);
       } else if (a.k === 'treeBuy') {
         const hook = this.econHook('buyTreeNode') as
           | ((id: string, at: number) => { ok: true } | { ok: false; reason: string })
@@ -1215,6 +1241,42 @@ export class Engine {
         out.push({ k: 'rejected', at, action: unknownKind, reason: 'not-implemented' });
       }
     }
+  }
+
+  /** 休業中か（経済のフック。無ければ休業しない, D-107）。 */
+  private isResting(): boolean {
+    const hook = this.econHook('isResting') as (() => boolean) | undefined;
+    return hook !== undefined && typeof hook === 'function' && (hook.bind(this.economy))() === true;
+  }
+
+  /** 自動で開店する時刻（休業中でなければ null）。 */
+  private autoOpenAt(): SimTime | null {
+    const hook = this.econHook('getAutoOpenAt') as (() => number | null) | undefined;
+    if (hook === undefined || typeof hook !== 'function') {
+      return null;
+    }
+    return (hook.bind(this.economy))();
+  }
+
+  /** 開店（手の open と自動の開店で共通。玉は start_balls ＋休業中の行動の玉、強化の段が変わるので保留上限・釘を読み直す）。 */
+  private applyOpenAt(at: SimTime, auto: boolean, out: SimEvent[]): void {
+    const hook = this.econHook('onOpen') as
+      | (() => { ok: true; balls: number } | { ok: false; reason: string })
+      | undefined;
+    if (hook === undefined || typeof hook !== 'function') {
+      out.push({ k: 'rejected', at, action: 'open', reason: 'not-implemented' });
+      return;
+    }
+    const r = (hook.bind(this.economy))();
+    if (!r.ok) {
+      out.push({ k: 'rejected', at, action: 'open', reason: r.reason });
+      return;
+    }
+    this.ballsState = r.balls;
+    this.syncHoldMax();
+    this.clearNailQCache();
+    this.autoAccState = 0;
+    out.push({ k: 'opened', at, auto });
   }
 
   /** 留守を開始する（presence false時。集計の起点を記録）。 */
@@ -1439,7 +1501,7 @@ export class Engine {
       }
       return;
     }
-    if (!this.fgState || this.noticeInFgMsState > 0) {
+    if (!this.fgState || this.noticeInFgMsState > 0 || this.isResting()) {
       return;
     }
     const id = this.noticeSeqState;
@@ -1668,7 +1730,7 @@ export class Engine {
   /** 同時刻の発射（600ms倍数のみ。前面shootは即時・autoは生産×shareをunitで割る蓄積・燃料0/止め打ち満タン/持ち玉<unitで停止・釘でout→start1, D-090）。 */
   private applyFiringAt(at: SimTime, out: SimEvent[]): void {
     const rem = at - Math.floor(at / FIRE_INTERVAL_MS) * FIRE_INTERVAL_MS;
-    if (rem !== 0) {
+    if (rem !== 0 || this.isResting()) {
       return;
     }
     if (this.fgState && this.shootOnState) {
@@ -2240,6 +2302,8 @@ export class Engine {
     const shop = shopHook !== undefined && typeof shopHook === 'function' ? (shopHook.bind(this.economy))() : undefined;
     const treeHook = this.econHook('getTreeView') as (() => TreeView) | undefined;
     const tree = treeHook !== undefined && typeof treeHook === 'function' ? (treeHook.bind(this.economy))() : undefined;
+    const restHook = this.econHook('getRestView') as (() => RestView | null) | undefined;
+    const rest = restHook !== undefined && typeof restHook === 'function' ? (restHook.bind(this.economy))() : null;
     if (
       perSecHook === undefined ||
       boostHook === undefined ||
@@ -2251,7 +2315,7 @@ export class Engine {
       const feverMs = feverHook !== undefined && typeof feverHook === 'function'
         ? (feverHook.bind(this.economy))() as number
         : 0;
-      return { ...baseWithRef, feverMs, shop, tree };
+      return { ...baseWithRef, feverMs, shop, tree, rest };
     }
     const perSec = (perSecHook.bind(this.economy))(this.fgState, this.fuelMsState);
     const boostMs = (boostHook.bind(this.economy))();
@@ -2266,7 +2330,7 @@ export class Engine {
       const x = periodS > 0 ? this.nowMsState / 1000 / periodS : 0;
       yakumono.push({ id: v.id, lv: v.lv, awakened: v.awakened, nextPrice: v.nextPrice, phase: x - Math.floor(x), periodS: periodS > 0 ? periodS : undefined });
     }
-    return { ...baseWithRef, perSec, boostMs, yakumono, feverMs, shop, tree };
+    return { ...baseWithRef, perSec, boostMs, yakumono, feverMs, shop, tree, rest };
   }
 
   /** 役物の実効周期秒（Lv0・経済なしは0）。 */

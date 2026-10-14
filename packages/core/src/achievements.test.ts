@@ -256,7 +256,7 @@ test('旧 v5 の awakenTotal は今の周回の Σawakened', () => {
   const old = loadEconomy();
   old.restore(v5);
   expect(old.getAwakenTotal()).toBe(3);
-  expect(old.snapshot().v).toBe(7);
+  expect(old.snapshot().v).toBe(8);
   expect(old.onAchievementTick(0, NO_ENGINE)).toEqual(['awakenTotal_1']);
 });
 
@@ -272,6 +272,7 @@ test('閉店しても達成・achMult・覚醒の累計は残る', () => {
   const mult = econ.achMult();
   expect(mult).toBe(1 + 0.01 * ids.length);
   expect(econ.onClose(0).ok).toBe(true);
+  expect(econ.onOpen().ok).toBe(true);
   expect(econ.achMult()).toBe(mult);
   expect(econ.getAwakenTotal()).toBe(1);
   expect(econ.getAchievementsView(NO_ENGINE).done.length).toBe(ids.length);

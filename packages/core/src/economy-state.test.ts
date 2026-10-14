@@ -209,8 +209,12 @@ test('閉店は条件・常連P・リセット範囲', () => {
   expect(done.ok).toBe(true);
   if (done.ok) {
     expect(done.gain).toBe(1);
-    expect(done.balls).toBe(econ.startBalls());
-    expect(done.balls).toBeGreaterThan(0);
+  }
+  const opened = econ.onOpen();
+  expect(opened.ok).toBe(true);
+  if (opened.ok) {
+    expect(opened.balls).toBe(econ.startBalls());
+    expect(opened.balls).toBeGreaterThan(0);
   }
   expect(econ.getRegular()).toBe(1);
   expect(econ.getRunTotal()).toBe(0);
@@ -229,17 +233,20 @@ test('常連Pは行動由来が上限・生産×(1+1.0×P)（D-049）', () => {
   econ.noteGain(27000000000);
   const none = econ.onClose(0);
   expect(none.ok && none.gain).toBe(0);
+  econ.onOpen();
   expect(econ.getRegular()).toBe(0);
   // 行動14枚で行動由来2 → 獲得2
   econ.noteGain(1000000000);
   econ.onGrant(0, 14, undefined, 0, 0);
   const two = econ.onClose(0);
   expect(two.ok && two.gain).toBe(2);
+  econ.onOpen();
   // 行動を増やしても玉由来3（28e9）で頭打ち
   econ.noteGain(1000000000);
   econ.onGrant(0, 70, undefined, 0, 0);
   const cap = econ.onClose(0);
   expect(cap.ok && cap.gain).toBe(1);
+  econ.onOpen();
   expect(econ.getRegular()).toBe(3);
   const buy = econ.onBuy('windmill', 1, 1000, 0);
   expect(buy.ok).toBe(true);
@@ -275,7 +282,7 @@ test('発射単価は rate×ref×shotS（切り捨て・最低 rate）・役物�
   const old = loadEconomy();
   old.restore(v3);
   expect(old.getRefPerSec()).toBe(ref);
-  expect(old.snapshot().v).toBe(7);
+  expect(old.snapshot().v).toBe(8);
   expect('jackpotFeverMult' in (old.snapshot() as unknown as Record<string, unknown>)).toBe(false);
   // 旧版 snapshot（v2）は累計獲得メダル0で読む
   const v2: Record<string, unknown> = { ...(econ.snapshot() as unknown as Record<string, unknown>), v: 2 };

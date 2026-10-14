@@ -52,6 +52,7 @@ function closeWith(econ: IdleEconomy, balls: number, medals: number): { gain: nu
   if (!r.ok) {
     throw new Error('close failed: ' + r.reason);
   }
+  econ.onOpen();
   return { gain: r.gain, points: r.points };
 }
 
@@ -190,7 +191,7 @@ test('v6 から復元: points = pointsEarned = 10 × regular・tree 空・openBo
   const back = make('small');
   back.restore(v6);
   const s = back.snapshot();
-  expect(s.v).toBe(7);
+  expect(s.v).toBe(8);
   expect(s.points).toBe(10 * regular);
   expect(s.pointsEarned).toBe(10 * regular);
   expect(s.tree).toEqual([]);

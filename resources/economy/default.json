@@ -39,7 +39,7 @@
     "bonus_1_in": 10,
     "bonus_weight": 5
   },
-  "close": { "required_run_total": 10000000000, "divisor": 12000000000, "medals_per_point": 28, "regular_mult": 1.0, "start_balls": 100 },
+  "close": { "required_run_total": 10000000000, "divisor": 12000000000, "medals_per_point": 28, "regular_mult": 1.0, "start_balls": 100, "rest_max_ms": 1800000 },
   "prod_ref": { "min_per_sec": 1 },
   "achievements": {
     "mult_per": 0.01,

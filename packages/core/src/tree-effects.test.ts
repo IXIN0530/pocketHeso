@@ -61,6 +61,7 @@ function close(econ: IdleEconomy): void {
   econ.noteGain(1000);
   const r = econ.onClose(0);
   expect(r.ok).toBe(true);
+  expect(econ.onOpen().ok).toBe(true);
 }
 
 test('空のツリー: 値は従来どおり（intervalMult 1・treeMult 1・price 1）', () => {
