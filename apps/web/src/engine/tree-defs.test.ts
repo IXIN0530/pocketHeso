@@ -1,7 +1,7 @@
 import type { TreeNodeView } from '@ph/core';
 import { expect, test } from 'vitest';
 import { formatClock } from '../stores/format.ts';
-import { closeBreakdown, groupTier, openBoostMult, stateMark, TREE_NODE_TEXT, tierRemaining } from './tree-defs.ts';
+import { closeBreakdown, closeExplain, groupTier, openBoostMult, stateMark, TREE_NODE_TEXT, tierRemaining } from './tree-defs.ts';
 
 const node = (id: string, tier: number, state: TreeNodeView['state'], cost = 3): TreeNodeView => ({ id, tier, cost, req: [], state });
 
@@ -43,4 +43,26 @@ test('閉店の常連P の内訳（ランク・累計玉の段・口コミ）', 
 test('残り時間は 時:分:秒', () => {
   expect(formatClock(4325000)).toBe('1:12:05');
   expect(formatClock(0)).toBe('0:00:00');
+});
+
+test('閉店の説明: 玉由来・行動由来の次の +1 と、2つの累計玉の書き分け（P11-T2）', () => {
+  const c = {
+    runTotal: 3e9,
+    required: 1e10,
+    ready: false,
+    gain: 0,
+    byBalls: 2,
+    byMedals: 5,
+    totalTotal: 1.5e11,
+    nextBallsAt: 27 * 12e9,
+    nextMedalsAt: 6 * 28,
+    points: 0,
+  };
+  const text = closeExplain(c, 150, 1).join('\n');
+  expect(text).toContain('∛(これまでの累計玉 ÷ 120億)');
+  expect(text).toContain('次の +1 は 3240億玉（あと 1740億玉）');
+  expect(text).toContain('累計メダル ÷ 28');
+  expect(text).toContain('次の +1 は 168枚（あと 18枚）');
+  expect(text).toContain('「今回」の累計玉が 100億');
+  expect(text).toContain('「これまで」の累計玉');
 });

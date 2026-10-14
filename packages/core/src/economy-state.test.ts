@@ -390,12 +390,31 @@ test('強化画面の表示は onBuy・onAwaken・onClose の価格と条件に�
   expect(c0.byBalls).toBe(2);
   expect(c0.byMedals).toBe(0);
   expect(c0.gain).toBe(0);
+  // 表示用: これまでの累計玉・次の +1 の境目（divisor 1e9・medals_per_point 7）
+  expect(c0.totalTotal).toBe(8000000000);
+  expect(c0.nextBallsAt).toBe(27000000000);
+  expect(c0.nextMedalsAt).toBe(7);
   econ.onGrant(0, 14, undefined, 0, 0);
   const c1 = econ.getShopView().close;
   expect(c1.gain).toBe(2);
+  expect(c1.nextMedalsAt).toBe((c1.byMedals + 1) * 7);
   const closed = econ.onClose(0);
   expect(closed.ok && closed.gain).toBe(c1.gain);
   expect(econ.getShopView().regular).toBe(2);
+});
+
+test('閉店の次の +1: 玉由来 0 の時は divisor ちょうど（P11-T2）', () => {
+  const econ = loadEconomy();
+  const c = econ.getShopView().close;
+  expect(c.byBalls).toBe(0);
+  expect(c.totalTotal).toBe(0);
+  expect(c.nextBallsAt).toBe(1000000000);
+  econ.noteGain(999999999);
+  expect(econ.getShopView().close.byBalls).toBe(0);
+  econ.noteGain(1);
+  const c1 = econ.getShopView().close;
+  expect(c1.byBalls).toBe(1);
+  expect(c1.nextBallsAt).toBe(8000000000);
 });
 
 test('Projection に強化画面の表示とオート打ちの状態が載る', () => {

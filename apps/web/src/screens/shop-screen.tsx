@@ -5,7 +5,7 @@ import { CountUp } from '../components/count-up.tsx';
 import { HoldButton } from '../components/hold-button.tsx';
 import { Segmented } from '../components/segmented.tsx';
 import { Switch } from '../components/switch.tsx';
-import { closeBreakdown } from '../engine/tree-defs.ts';
+import { closeBreakdown, closeExplain } from '../engine/tree-defs.ts';
 import { TreeSheet, rankText } from './tree-sheet.tsx';
 import { act, useEngine } from '../stores/engine.ts';
 import { formatNum } from '../stores/format.ts';
@@ -195,8 +195,19 @@ export function ShopScreen() {
           今回 {formatNum(c.runTotal)} / {formatNum(c.required)}玉 ・ 獲得見込み ランク +{c.gain}・常連P +{c.points}
         </p>
         <p className={styles.note}>
-          ランクの上がり幅は「玉由来 {c.byBalls}」と「行動由来 {c.byMedals}（累計メダル {shop.medalsEarned}枚 ÷ {economyJson.close.medals_per_point}）」の小さい方（今 ランク{shop.regular}）。
+          ランクの上がり幅は「玉由来 {c.byBalls}」と「行動由来 {c.byMedals}」の小さい方（今 ランク{shop.regular}）。
         </p>
+        <details className={styles.note}>
+          <summary>計算のしかた</summary>
+          <ul>
+            {closeExplain(c, shop.medalsEarned, shop.regular).map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+            <li>
+              今回の内訳: ランク +{c.gain}＝{bd.rank}P・累計玉の段 +{bd.bonus}・口コミ +{bd.kuchikomi}（常連P +{c.points}）
+            </li>
+          </ul>
+        </details>
         {c.ready && !closing && (
           <div className={styles.row}>
             <button className={styles.danger} disabled={busy} onClick={() => setClosing(true)}>

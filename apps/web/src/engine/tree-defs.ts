@@ -1,7 +1,8 @@
 // 常連ツリーの画面用の定義（名前・説明は economy JSON の tree.nodes から。系統は spec/25 の表, 52 個）。
 // 画面から読むので Core のパーサを通さず JSON の tree だけを取る（検証は Worker 側の parseEconomy が起動時に行う）。
-import type { TreeNodeView } from '@ph/core';
-import { tree } from '../../../../resources/economy/default.json';
+import type { ShopCloseView, TreeNodeView } from '@ph/core';
+import { formatNum } from '../stores/format.ts';
+import { close, tree } from '../../../../resources/economy/default.json';
 
 export interface TreeNodeText {
   readonly name: string;
@@ -140,4 +141,17 @@ export function closeBreakdown(gain: number, runTotal: number, points: number): 
   let bonus = 0;
   for (const at of RUN_BONUS_AT) if (runTotal >= at) bonus += 1;
   return { rank, bonus, kuchikomi: points - rank - bonus };
+}
+
+/** 閉店カードの「計算のしかた」の各行（式の定数は economy JSON から）。2つの累計玉（今回／これまで）を書き分ける。 */
+export function closeExplain(c: ShopCloseView, medalsEarned: number, rank: number): string[] {
+  const n = (v: number) => formatNum(v);
+  const tiers = RUN_BONUS_AT.map((at) => n(at)).join('・');
+  return [
+    `ランクの上がり幅 ＝ min(玉由来, 行動由来) − 今のランク（今 ${rank}）`,
+    `玉由来 ＝ ∛(これまでの累計玉 ÷ ${n(close.divisor)}) の切り捨て。今 これまで${n(c.totalTotal)}玉 → ${c.byBalls}。次の +1 は ${n(c.nextBallsAt)}玉（あと ${n(Math.max(0, c.nextBallsAt - c.totalTotal))}玉）`,
+    `行動由来 ＝ 累計メダル ÷ ${close.medals_per_point} の切り捨て。今 ${n(medalsEarned)}枚 → ${c.byMedals}。次の +1 は ${n(c.nextMedalsAt)}枚（あと ${n(Math.max(0, c.nextMedalsAt - medalsEarned))}枚）`,
+    `閉店の条件は「今回」の累計玉が ${n(c.required)}。玉由来は「これまで」の累計玉（閉店で戻りません）`,
+    `常連P ＝ ランク +1 につき ${POINTS_PER_RANK} ＋ 累計玉の段（今回の累計玉が ${tiers}… を超えた数）＋ 口コミ`,
+  ];
 }

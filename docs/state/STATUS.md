@@ -2,8 +2,8 @@
 <!-- 30行以内を維持。古い Notes は削除してよい（履歴は git log にある） -->
 
 - Current phase: P11（v1.2 の手直し → `docs/plan/P11-feedback-1-2.md`）。P8-T7（任意）と P7 再開は人間の指示待ち
-- Last done: P11-T1（留守サマリー: 5分未満は出さない・タップ不要のバナー・D-106。build/test OK、実機は T5）。その前: P10-T9（v1.2.0 を main へ ff マージ・タグ v1.2.0 を push。build/test/release-check OK）。本番の確認は人間待ち。その前: P10-T8（実機 OK）
-- Next: P11-T2（閉店カード: 常連ランク・常連P の計算式。Core に表示用の値を足す）
+- Last done: P11-T2（閉店カードに「計算のしかた」: 玉由来・行動由来の式と次の +1、2つの累計玉を書き分け。Core は ShopCloseView に表示用 3 値を足しただけで golden 不変。実機は T5）。その前: P11-T1（留守サマリー: 5分未満は出さない・タップ不要のバナー・D-106。build/test OK、実機は T5）。その前: P10-T9（v1.2.0 を main へ ff マージ・タグ v1.2.0 を push。build/test/release-check OK）。本番の確認は人間待ち。その前: P10-T8（実機 OK）
+- Next: P11-T3（設定: オート打ちのレート選択の崩れを直す）
 - Owner hint: Claude Code（Sonnet）
 - Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T12 → T13 → T2 は人間の指示で再開
 
@@ -16,6 +16,6 @@
 - 既定機種の人間確認待ち（light/rush/ltのどれを既定にするか。P3バランスに影響）
 
 ## Notes（最新3件まで）
+- [P11-T2]: 式の定数（120億・28・10・段）は economy JSON から読む。説明文は `tree-defs.ts` の `closeExplain`（テスト付き）。nextBallsAt は (byBalls+1)³×divisor を掛け算で出す。Sonnet
 - [P11-T1]: バナーはタブバーの上（fixed）に全タブ共通で出す（ホール上部のトーストと重ならないため）。ストアに `awayBanner` を足し、タップで `away`（シート）に移す。規則は `stores/away.ts`。全角スペースは lint で弾かれるので半角2つ。Sonnet
 - [P10-T8]: 実機確認 OK（人間）。Debug に常連P/番頭さんの直接付与は無く、x3600 で閉店を重ねて確認した。T9 は人間のリリース指示まで着手しない。Sonnet
-- [P10-T7]: 見た目は `board/look.ts` の resolveLook(所持unlocks, looksOff)→BoardScene.setLook。dendou は金の筐体が chrome より優先、称号は HudCanvas の隅に常時描画。実機で見るには Debug の x3600 で閉店→常連P→段1の lamp_gold(5P)等を購入（金の玉は段4・殿堂入りは段5で遠い）。core の tree-engine.test の 24h advance 1.5倍判定は負荷で稀に落ちる（再実行で通る、今回触っていない）。全部 Sonnet

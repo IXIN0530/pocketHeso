@@ -130,6 +130,12 @@ export interface ShopCloseView {
   readonly gain: number;
   readonly byBalls: number;
   readonly byMedals: number;
+  /** これまでの累計玉（閉店で戻らない）。玉由来の元。 */
+  readonly totalTotal: number;
+  /** 玉由来が +1 になる累計玉 = (byBalls+1)³ × divisor。 */
+  readonly nextBallsAt: number;
+  /** 行動由来が +1 になる累計メダル = (byMedals+1) × medalsPerPoint。 */
+  readonly nextMedalsAt: number;
   /** 今閉店した時に得る常連P（spec/25）。 */
   readonly points: number;
 }
@@ -1356,6 +1362,8 @@ export class IdleEconomy implements EconomyPort {
       staged('rate', this.rateStageState, u.rateMedalCosts, u.rates, 'medals'),
     ];
     const c = this.spec.close;
+    const byBalls = ballPoints(this.totalTotalState, c.divisor);
+    const byMedals = Math.floor(this.medalsEarnedState / c.medalsPerPoint);
     return {
       yakumono,
       upgrades,
@@ -1364,8 +1372,11 @@ export class IdleEconomy implements EconomyPort {
         required: c.requiredRunTotal,
         ready: this.runTotalState >= c.requiredRunTotal,
         gain: closeGain(this.totalTotalState, c.divisor, this.regularState, this.medalsEarnedState, c.medalsPerPoint),
-        byBalls: ballPoints(this.totalTotalState, c.divisor),
-        byMedals: Math.floor(this.medalsEarnedState / c.medalsPerPoint),
+        byBalls,
+        byMedals,
+        totalTotal: this.totalTotalState,
+        nextBallsAt: (byBalls + 1) * (byBalls + 1) * (byBalls + 1) * c.divisor,
+        nextMedalsAt: (byMedals + 1) * c.medalsPerPoint,
         points: this.nextClosePoints(),
       },
       regular: this.regularState,
