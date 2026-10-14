@@ -2,12 +2,13 @@
 <!-- 30行以内を維持。古い Notes は削除してよい（履歴は git log にある） -->
 
 - Current phase: P11（v1.2 の手直し → `docs/plan/P11-feedback-1-2.md`）。P8-T7（任意）と P7 再開は人間の指示待ち
-- Last done: P11-T4（記録の実績: 達成済みは「10月12日 達成」、次の1つは「n%」（切り捨て・99で止める）＋バー＋小さく「現在値 / しきい値」、達成済みは太字。build/test OK、実機は T5）。その前: P11-T3（設定のオート打ち: レートを数字だけの dense Segmented にして下に「1発 n玉（生産 s秒 × r パチ）」、「割合」「レート（パチ）」の見出しを追加。他の Segmented は最大5項目で dense 済み/3項目。build/test OK、実機は T5）。その前: P11-T2（閉店カードに「計算のしかた」: 玉由来・行動由来の式と次の +1、2つの累計玉を書き分け。Core は ShopCloseView に表示用 3 値を足しただけで golden 不変。実機は T5）。その前: P11-T1（留守サマリー: 5分未満は出さない・タップ不要のバナー・D-106。build/test OK、実機は T5）。その前: P10-T9（v1.2.0 を main へ ff マージ・タグ v1.2.0 を push。build/test/release-check OK）。本番の確認は人間待ち。その前: P10-T8（実機 OK）
-- Next: P11-T5（実機確認: dev を push 済み。人間が手順 1〜4 を確認して結果を Notes に。OK なら T6 はリリース指示待ち）
+- Last done: P11-T6（v1.2.1 を main へ ff マージ・タグ v1.2.1 を push。build/test/release-check OK、T5 実機は人間 OK）。本番の確認は人間待ち。その前: P11-T4（記録の実績: 達成済みは「10月12日 達成」、次の1つは「n%」（切り捨て・99で止める）＋バー＋小さく「現在値 / しきい値」、達成済みは太字。build/test OK、実機は T5）。その前: P11-T3（設定のオート打ち: レートを数字だけの dense Segmented にして下に「1発 n玉（生産 s秒 × r パチ）」、「割合」「レート（パチ）」の見出しを追加。他の Segmented は最大5項目で dense 済み/3項目。build/test OK、実機は T5）。その前: P11-T2（閉店カードに「計算のしかた」: 玉由来・行動由来の式と次の +1、2つの累計玉を書き分け。Core は ShopCloseView に表示用 3 値を足しただけで golden 不変。実機は T5）。その前: P11-T1（留守サマリー: 5分未満は出さない・タップ不要のバナー・D-106。build/test OK、実機は T5）。その前: P10-T9（v1.2.0 を main へ ff マージ・タグ v1.2.0 を push。build/test/release-check OK）。本番の確認は人間待ち。その前: P10-T8（実機 OK）
+- Next: P11-T6 の本番確認（人間）。OK なら P11 完了
 - Owner hint: 人間（手順は Claude Code（Sonnet））
 - Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T12 → T13 → T2 は人間の指示で再開
 
 ## Blockers
+- v1.2.1 の本番確認が人間待ち（Debug が無い・バージョン v1.2.1・短い留守でサマリーが出ない・オート打ちの設定が崩れない）
 - v1.2.0 の本番確認が人間待ち（Debug が無い・バージョン v1.2.0・既存セーブで常連P・ツリーで開けて閉店後も残る）
 - **P10-T5 検証 5・6 の 2 週が NG（人間判断、T6 以降は進めてよい）**: 開店ダッシュを割り戻すと 12週中10週は 3.7〜5.4 だが、lt r74 3週目 6.08（基準 ≤5.5）・rush r180 4週目 7.00（≤6.0）。役物 Lv の段差による一時的な週。A そのまま（推奨）/ B densetsu・meiten の prod_add を下げて再試算。詳細 `docs/state/econ-20261013-p10.md`・D-105
 - Vercel 設定の人間確認待ち（Production の `VITE_YOLP_APPID`・本番ドメイン・Deployment Protection なし）
