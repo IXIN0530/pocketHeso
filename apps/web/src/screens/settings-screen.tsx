@@ -5,6 +5,7 @@ import { Switch } from '../components/switch.tsx';
 import { isStandalone } from '../platform/pwa.ts';
 import { loadSettings, openStorage, type Db } from '../platform/storage.ts';
 import { formatFuel } from '../stores/activity.ts';
+import { formatNum } from '../stores/format.ts';
 import { clock, dbNameFor } from '../stores/clock.ts';
 import { act, resetGame, useEngine } from '../stores/engine.ts';
 import { setPrefs, usePrefs } from '../stores/prefs.ts';
@@ -83,14 +84,24 @@ export function SettingsScreen() {
               <p className={styles.note}>
                 打たない間も自動で打ちます（燃料が切れると止まります{tomeuchi ? '。保留が満タンの間は止め打ち' : ''}）。
               </p>
-              <Segmented label="オート打ちの割合" options={AUTO_SHARES} value={p.auto.share} onChange={(share) => send({ k: 'auto', share, rate: p.auto.rate })} />
+              <div className={styles.field}>
+                <span className={styles.fieldLabel}>割合</span>
+                <Segmented label="オート打ちの割合" options={AUTO_SHARES} value={p.auto.share} onChange={(share) => send({ k: 'auto', share, rate: p.auto.rate })} />
+              </div>
               {p.rates.length > 1 && (
-                <Segmented
-                  label="オート打ちのレート"
-                  options={p.rates.map((r, i) => [r, `${r}パチ 1発${p.rateCosts[i] ?? r}玉`] as const)}
-                  value={p.auto.rate}
-                  onChange={(rate) => send({ k: 'auto', share: p.auto.share, rate })}
-                />
+                <div className={styles.field}>
+                  <span className={styles.fieldLabel}>レート（パチ）</span>
+                  <Segmented
+                    label="オート打ちのレート"
+                    dense
+                    options={p.rates.map((r) => [r, String(r)] as const)}
+                    value={p.auto.rate}
+                    onChange={(rate) => send({ k: 'auto', share: p.auto.share, rate })}
+                  />
+                  <p className={styles.note}>
+                    1発 {formatNum(p.rateCosts[p.rates.indexOf(p.auto.rate)] ?? p.auto.rate)}玉（生産{p.shotS}秒 × {p.auto.rate}パチ）
+                  </p>
+                </div>
               )}
             </>
           ) : (
