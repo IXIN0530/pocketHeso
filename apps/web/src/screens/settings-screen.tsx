@@ -8,6 +8,7 @@ import { formatFuel } from '../stores/activity.ts';
 import { clock, dbNameFor } from '../stores/clock.ts';
 import { act, resetGame, useEngine } from '../stores/engine.ts';
 import { setPrefs, usePrefs } from '../stores/prefs.ts';
+import { LOOK_KEYS, LOOK_TEXT } from '../board/look.ts';
 import { SPIKE_NAMES } from '../spikes/spike-names.ts';
 import { SavePanel } from './save-panel.tsx';
 import { AboutSheet, OnboardingSheet, markOnboarded } from './onboarding-sheet.tsx';
@@ -121,6 +122,26 @@ export function SettingsScreen() {
           <input className={styles.input} type="range" min={0} max={100} step={10} value={prefs.volume} onChange={(e) => setPrefs({ volume: Number(e.target.value) })} />
         </label>
         <p className={styles.note}>最初に画面をタップした後から鳴ります。消音スイッチが入っていると鳴らないことがあります。</p>
+      </section>
+      <section className={styles.card}>
+        <h2>見た目</h2>
+        <p className={styles.note}>常連ツリーで開けた見た目を選べます（この端末だけの設定です）。</p>
+        {LOOK_KEYS.map((k) => {
+          const owned = p?.tree?.unlocks.includes(k) === true;
+          return owned ? (
+            <Switch
+              key={k}
+              checked={!prefs.looksOff.includes(k)}
+              onChange={(on) => setPrefs({ looksOff: on ? prefs.looksOff.filter((x) => x !== k) : [...prefs.looksOff, k] })}
+            >
+              {LOOK_TEXT[k].name}（{LOOK_TEXT[k].desc}）
+            </Switch>
+          ) : (
+            <p key={k} className={styles.note}>
+              {LOOK_TEXT[k].name}: 常連ツリーで開けると選べます
+            </p>
+          );
+        })}
       </section>
       <section className={styles.card}>
         <h2>連携と登録地点</h2>

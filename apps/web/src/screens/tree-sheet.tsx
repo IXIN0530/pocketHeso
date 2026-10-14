@@ -4,10 +4,12 @@ import { HoldButton } from '../components/hold-button.tsx';
 import { Segmented } from '../components/segmented.tsx';
 import { Sheet } from '../components/sheet.tsx';
 import { groupTier, stateMark, TREE_NODE_TEXT, TREE_TIER_NAMES, tierRemaining } from '../engine/tree-defs.ts';
+import { playToastCue } from '../fx/fx-host.ts';
 import { act, useEngine } from '../stores/engine.ts';
 import { formatNum } from '../stores/format.ts';
 import styles from './tree.module.css';
 
+let cueSerial = 0;
 const report = (e: unknown) => useEngine.setState({ error: e instanceof Error ? e.message : String(e) });
 
 /** 行の前提の表示（「← 呼び込み」）。 */
@@ -102,7 +104,12 @@ export function TreeSheet({ tree, onDismiss }: { tree: TreeView; onDismiss: () =
               className={styles.buyBtn}
               disabled={sel.state !== 'buyable'}
               onFire={async () => {
-                await act({ k: 'treeBuy', node: sel.id }).catch(report);
+                const before = tree.tierOpen.filter(Boolean).length;
+                const ok = await act({ k: 'treeBuy', node: sel.id }).then(() => true, (e: unknown) => (report(e), false));
+                if (ok) {
+                  const now = useEngine.getState().projection?.tree?.tierOpen.filter(Boolean).length ?? before;
+                  playToastCue(now > before ? 'tierOpened' : 'treeBought', useEngine.getState().seed, ++cueSerial);
+                }
                 setPicked(null);
               }}
             >

@@ -61,6 +61,8 @@ export class HudCanvas {
   visible = false;
   /** reduced-motion: 入りの拡大をしない。 */
   calm = false;
+  /** 液晶の隅に称号「殿堂入り」を常に出す（見た目の解放, spec/25）。 */
+  title = false;
 
   constructor() {
     const c = document.createElement('canvas');
@@ -75,8 +77,8 @@ export class HudCanvas {
 
   /** 表示を反映する（変わらなければ描き直さない）。 */
   update(v: HudView | null): void {
-    const key = v ? this.keyOf(v) : '';
-    this.visible = v !== null;
+    const key = (v ? this.keyOf(v) : '') + (this.title ? '|t' : '');
+    this.visible = v !== null || this.title;
     this.dim = !v ? 0 : v.k === 'round' ? 0.75 : 0.6 * fadeOut(v.t, HUD_RESULT_MS);
     if (key === this.key) return;
     this.key = key;
@@ -84,6 +86,7 @@ export class HudCanvas {
     ctx.clearRect(0, 0, W, H);
     if (v?.k === 'round') this.drawRound(v);
     else if (v?.k === 'result') this.drawResult(v);
+    if (this.title) this.text('殿堂入り', W - 18, 30, 26, 'gold', { align: 'right', alpha: 0.9 });
     this.texture.needsUpdate = true;
   }
 

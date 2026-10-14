@@ -8,10 +8,12 @@ export interface Prefs {
   readonly volume: number;
   /** 操作の触覚（iPhone はスイッチの触覚を借りる, platform/haptic.ts）。 */
   readonly haptics: boolean;
+  /** 見た目の解放のうち「使わない」ものの key（常連ツリーで開けても選んで外せる, spec/25）。 */
+  readonly looksOff: readonly string[];
 }
 
 const KEY = 'pocketheso.prefs';
-const DEFAULTS: Prefs = { bloom: true, volume: 70, haptics: true };
+const DEFAULTS: Prefs = { bloom: true, volume: 70, haptics: true, looksOff: [] };
 
 function load(): Prefs {
   try {
@@ -20,6 +22,7 @@ function load(): Prefs {
       bloom: typeof raw.bloom === 'boolean' ? raw.bloom : DEFAULTS.bloom,
       volume: typeof raw.volume === 'number' ? Math.min(100, Math.max(0, raw.volume)) : DEFAULTS.volume,
       haptics: typeof raw.haptics === 'boolean' ? raw.haptics : DEFAULTS.haptics,
+      looksOff: Array.isArray(raw.looksOff) ? raw.looksOff.filter((k): k is string => typeof k === 'string') : DEFAULTS.looksOff,
     };
   } catch {
     return DEFAULTS;

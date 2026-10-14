@@ -11,6 +11,7 @@ import { usePrefs } from '../stores/prefs.ts';
 import { usePreview } from '../stores/preview.ts';
 import { BoardScene, type DrawInfo, type PatternInfo } from './board-scene.ts';
 import type { FrameStats } from './frame-stats.ts';
+import { resolveLook } from './look.ts';
 import styles from './board.module.css';
 
 const errText = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message}` : String(e));
@@ -46,6 +47,11 @@ export function BoardCanvas({ active = true }: { active?: boolean }) {
     const offAudio = installAudioUnlock();
     scene.setBloom(usePrefs.getState().bloom);
     const offPrefs = usePrefs.subscribe((p) => scene.setBloom(p.bloom));
+    const applyLook = () => scene.setLook(resolveLook(useEngine.getState().projection?.tree?.unlocks ?? [], usePrefs.getState().looksOff));
+    applyLook();
+    const offLookPrefs = usePrefs.subscribe((p, prev) => {
+      if (p.looksOff !== prev.looksOff) applyLook();
+    });
     const offShots = onShots((shots) => scene.addShots(shots));
     const offView = onView((p, events) => scene.pushView(p, events));
     const showYaku = (p: ReturnType<typeof useEngine.getState>['projection']) => {
@@ -59,7 +65,10 @@ export function BoardCanvas({ active = true }: { active?: boolean }) {
     };
     setRound(useEngine.getState().machineId);
     const offYaku = useEngine.subscribe((s, prev) => {
-      if (s.projection !== prev.projection) showYaku(s.projection);
+      if (s.projection !== prev.projection) {
+        showYaku(s.projection);
+        applyLook();
+      }
       if (s.seed !== prev.seed) scene.setSeed(s.seed);
       if (s.machineId !== prev.machineId) setRound(s.machineId);
     });
@@ -84,6 +93,7 @@ export function BoardCanvas({ active = true }: { active?: boolean }) {
       offYaku();
       offPreview();
       offPrefs();
+      offLookPrefs();
       offAudio();
       sceneRef.current = null;
       scene.destroy();

@@ -113,6 +113,12 @@ export class LcdReels {
     this.material = lcdMaterial(atlas, textAtlas, textRows, this.hud.texture, tokuTexture());
   }
 
+  /** 見た目の解放: 背景を夜桜に・液晶の隅に称号「殿堂入り」(spec/25)。 */
+  setTheme(sakura: boolean, title: boolean): void {
+    this.material.uniforms.uSakura!.value = sakura ? 1 : 0;
+    this.hud.title = title;
+  }
+
   get reach(): boolean {
     return this.reachMs >= 0;
   }
@@ -376,6 +382,7 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: 
       uFlash: { value: 0 },
       uWin: { value: 0 },
       uCalm: { value: 0 },
+      uSakura: { value: 0 },
       uHud: { value: hud },
       uHudOn: { value: 0 },
       uHudDim: { value: 0 },
@@ -402,7 +409,7 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: 
       uniform float uCurToku;
       uniform sampler2D uTokuTex;
       uniform vec4 uBlink;    // 灰色で点滅する保留（変化する保留, D-075）
-      uniform float uCur, uTime, uReach, uFlash, uWin, uCalm;
+      uniform float uCur, uTime, uReach, uFlash, uWin, uCalm, uSakura;
       uniform float uBrk;     // 保留が割れる演出の経過秒（-1 は無し）
       varying vec2 vUv;
       const float SYM_H = 0.46;
@@ -690,6 +697,15 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: 
         // 背景: 夜空の紫 + 回る光条。
         vec3 col = mix(vec3(0.01, 0.015, 0.08), vec3(0.09, 0.02, 0.22), vUv.y);
         col += rays * max(0.0, 1.0 - r) * vec3(0.10, 0.05, 0.28);
+        // 夜桜（見た目の解放）: 藍の夜に桜色の光条と、ゆっくり落ちる花びら。
+        if (uSakura > 0.5) {
+          col = mix(vec3(0.015, 0.01, 0.07), vec3(0.2, 0.035, 0.13), vUv.y);
+          col += rays * max(0.0, 1.0 - r) * vec3(0.30, 0.09, 0.17);
+          vec2 pg = vec2(vUv.x * 14.0 + sin(uTime * 0.4 + vUv.y * 5.0) * 0.4, vUv.y * 9.0 + uTime * mix(0.35, 0.0, uCalm));
+          vec2 pc = fract(pg) - 0.5;
+          float pid = hash1(floor(pg.x) * 7.0 + floor(pg.y) * 13.0);
+          col += (1.0 - smoothstep(0.05, 0.13, length(pc * vec2(1.0, 1.7) + (pid - 0.5) * 0.4))) * step(0.55, pid) * vec3(0.95, 0.55, 0.7) * 0.45;
+        }
         // リーチ: 赤く脈打つ。
         col = mix(col, vec3(0.45, 0.01, 0.04) * (0.6 + 0.4 * sin(uTime * 12.0)) * (1.2 - r), uReach * 0.8);
         // SP リーチ: 赤黒の背景に外へ流れる集中線。

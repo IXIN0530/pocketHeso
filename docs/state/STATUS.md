@@ -2,9 +2,9 @@
 <!-- 30行以内を維持。古い Notes は削除してよい（履歴は git log にある） -->
 
 - Current phase: P10（常連ツリー: 常連Pの使い道・数ヶ月遊べる設計）→ `docs/plan/P10-prestige-tree.md`。最優先。P8-T7（任意）と P7 再開は人間の指示待ち
-- Last done: P10-T6（常連ツリーの画面: tree-sheet・強化タブの行と番頭さん・閉店の内訳と「常連ツリーへ」・ホール HUD の開店ダッシュ札・呼び名をランク/常連P にそろえた。実機確認は人間待ち）
-- Next: P10-T7（見た目の解放と演出）
-- Owner hint: Claude Code（Sonnet）
+- Last done: P10-T7（見た目の解放5種: 筐体のクローム/金・金のLED・金の玉・液晶「夜桜」・称号「殿堂入り」を既存描画の値差し替えで。設定の「見た目」で選択（prefs.looksOff, セーブ外）。pack に treeBought/tierOpened。実機確認は人間待ち）。その前: P10-T6（常連ツリーの画面: tree-sheet・強化タブの行と番頭さん・閉店の内訳と「常連ツリーへ」・ホール HUD の開店ダッシュ札・呼び名をランク/常連P にそろえた。実機確認は人間待ち）
+- Next: P10-T8（実機確認の手順を渡す。Owner は人間、手順は Claude Code（Sonnet））
+- Owner hint: 人間（手順は Claude Code（Sonnet））
 - Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T12 → T13 → T2 は人間の指示で再開
 
 ## Blockers
@@ -15,6 +15,6 @@
 - 既定機種の人間確認待ち（light/rush/ltのどれを既定にするか。P3バランスに影響）
 
 ## Notes（最新3件まで）
+- [P10-T7]: 見た目は `board/look.ts` の resolveLook(所持unlocks, looksOff)→BoardScene.setLook。dendou は金の筐体が chrome より優先、称号は HudCanvas の隅に常時描画。実機で見るには Debug の x3600 で閉店→常連P→段1の lamp_gold(5P)等を購入（金の玉は段4・殿堂入りは段5で遠い）。core の tree-engine.test の 24h advance 1.5倍判定は負荷で稀に落ちる（再実行で通る、今回触っていない）。全部 Sonnet
 - [P10-T6]: 系統は JSON に欄が無いので `engine/tree-defs.ts` に id→系統の表（52個、テストで全件確認）。開店ダッシュの倍率は所持ノードの open_boost から web で計算（TreeView に倍率が無いため）。Debug に常連P を入れる口は無い: 実機は既存セーブ（ランク≥1 なら 10×ランク）か、Debug の x3600 で閉店まで進めて得る。全部 Sonnet
 - [P10-T5]: 暫定の比 6〜9.8 は閉店日の日末に開店ダッシュ ×2.5 が乗ったため。econ の `perSecFgNoDash` で割り戻して判定（D-105）。R/T の初回閉店は runBonus 0 で常連P 10（基準の下限を 10 に）。lt の EV 1.36 はツリーと無関係の既存値。重い試算は 182日 1本 約45分。econ.ts・検証の実行は Sonnet、判定・再計測・spec/DECISIONS は Opus
-- [P10-T4]: 番頭さんは economyTick の直後（並び economyTick → 番頭さん → achieved）で、留守中サマリーでは使った玉を発射と同じく足し戻す。notice_auto は背面なら受け取らず、期限内に前面へ戻った時刻に受け取る。遅れ0は出現と同時。ShopView の閉店見込みは既存の `close.points`（名前は nextClosePoints にしていない）。テストは tree-engine.test.ts 7件。web と spec/22 は Sonnet

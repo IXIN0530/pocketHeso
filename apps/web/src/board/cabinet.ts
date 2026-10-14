@@ -52,12 +52,16 @@ export interface CabinetPalette {
   smoke: number;
   accent: number;
   led: number;
+  /** パールの装甲の金属感（既定 0 = 樹脂）。クローム・金で上げる。 */
+  metal?: number;
 }
 
 /** 配色（図の Palettes と同じ）。切り替えはここだけ。 */
 export const PALETTES = {
   'pearl-violet': { body: 0xeef0f6, trim: 0x1a1922, smoke: 0x0b0b12, accent: 0x7a3cff, led: 0xcdeeff },
   'gunmetal-crimson': { body: 0x4a505d, trim: 0x101115, smoke: 0x08080b, accent: 0xe3122c, led: 0xffffff },
+  chrome: { body: 0xd2d7e0, trim: 0x23262e, smoke: 0x0b0b12, accent: 0x9fb0c8, led: 0xe4faff, metal: 0.9 },
+  gold: { body: 0xe9bd4c, trim: 0x2a1d08, smoke: 0x0b0a08, accent: 0xffc83a, led: 0xfff0c0, metal: 0.9 },
   'pearl-cyan': { body: 0xf1f4f8, trim: 0x161a22, smoke: 0x0a0c12, accent: 0x00aee0, led: 0xe4faff },
 } as const satisfies Record<string, CabinetPalette>;
 
@@ -242,7 +246,8 @@ export class Cabinet {
   private readonly dome: MeshPhysicalMaterial;
   private readonly core: MeshBasicMaterial;
   private readonly accentMat: MeshPhysicalMaterial;
-  private readonly pal: CabinetPalette;
+  private pal: CabinetPalette;
+  private trimMat!: MeshPhysicalMaterial;
   private readonly c = new Color();
   private readonly glossy: MeshStandardMaterial[] = [];
   private readonly pearl: MeshPhysicalMaterial;
@@ -255,7 +260,7 @@ export class Cabinet {
     // 本体（黒つや）: 外形から窓をくり抜く。
     const body = mirroredShape(BODY);
     body.holes.push(roundedRect(BEZEL.halfW - 1, BEZEL.halfH - 1, BEZEL.r));
-    const trimMat = new MeshPhysicalMaterial({ color: palette.trim, metalness: 0.1, roughness: 0.5, clearcoat: 1, clearcoatRoughness: 0.04 });
+    const trimMat = (this.trimMat = new MeshPhysicalMaterial({ color: palette.trim, metalness: 0.1, roughness: 0.5, clearcoat: 1, clearcoatRoughness: 0.04 }));
     g.add(new Mesh(extrude(body, Z_BODY, 10, 2.5), trimMat));
 
     // パールの装甲（翼・眉・V 字の板）。
@@ -441,6 +446,22 @@ export class Cabinet {
     pushGeo.translate(BUTTON.x, -372, Z_ACCENT + 3.2);
     const labels = new MeshBasicMaterial({ map: labelTexture(palette), transparent: true, depthWrite: false });
     g.add(new Mesh(merge([logoGeo, pushGeo]), labels));
+  }
+
+  /** 配色を差し替える（見た目の解放, spec/25）。形・材質の種類はそのまま、色と金属感だけ。ロゴの文字の絵は変えない。 */
+  setPalette(p: CabinetPalette): void {
+    this.pal = p;
+    this.trimMat.color.setHex(p.trim);
+    this.pearl.color.setHex(p.body).multiplyScalar(0.93);
+    this.pearl.metalness = p.metal ?? 0;
+    this.smoke.color.setHex(p.smoke);
+    this.accentMat.color.setHex(p.accent);
+    this.accentMat.emissive.setHex(p.accent);
+    this.dome.color.setHex(p.accent);
+    for (const m of [this.led, this.emblem]) {
+      m.uniforms.uLed!.value.setHex(p.led);
+      m.uniforms.uAccent!.value.setHex(p.accent);
+    }
   }
 
   /** 筐体の材質（と盤面側で共有しているクローム）にだけ bakeCabinetEnv の映り込みを使う。 */

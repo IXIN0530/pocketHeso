@@ -65,7 +65,8 @@ import { PREVIEW_TAIL_MS, type PreviewRequest } from '../stores/preview.ts';
 import { LCD_RECT, bakeBoard, bakeGlare, bakeHall, bakeSoftDot, bakeSymbolAtlas, bakeTextAtlas } from './art.ts';
 import { BallTracks, DISPLAY_LAG_MS, MAX_BALLS, PREROLL_MS } from './ball-tracks.ts';
 import { DEFAULT_ROUND, jackpotHud, resultCue, type HudView, type JackpotRound } from './jackpot-hud.ts';
-import { CAB, Cabinet, bakeCabinetEnv, ledTube } from './cabinet.ts';
+import { CAB, Cabinet, PALETTES, bakeCabinetEnv, ledTube } from './cabinet.ts';
+import { DEFAULT_LOOK, sameLook, type Look } from './look.ts';
 import { summarize, type FrameStats } from './frame-stats.ts';
 import { LcdReels, type SpinShow } from './lcd.ts';
 import { LcdTimeline, sakibareTimes, shownLcdState, type LcdState } from './lcd-timeline.ts';
@@ -171,6 +172,8 @@ export class BoardScene {
   private readonly ballShadows: InstancedMesh;
   private readonly yaku: Yaku[] = [];
   private readonly cabinet = new Cabinet();
+  private ballMat!: MeshStandardMaterial;
+  private look: Look = DEFAULT_LOOK;
   private readonly rainbow: Mesh<PlaneGeometry, ShaderMaterial>;
   /** 全画面フラッシュとブルームの期間（CueSheet から, spec/43）。 */
   private readonly flashLayer: FlashLayer;
@@ -252,7 +255,7 @@ export class BoardScene {
 
     // 玉: ジオメトリとマテリアルを全玉で共有（spec/50）。
     const ballGeo = new SphereGeometry(BALL_RADIUS_MM, 28, 18);
-    const ballMat = new MeshStandardMaterial({ color: 0xffffff, metalness: 1, roughness: 0.08 });
+    const ballMat = (this.ballMat = new MeshStandardMaterial({ color: 0xffffff, metalness: 1, roughness: 0.08 }));
     for (let i = 0; i < MAX_BALLS; i++) {
       const m = new Mesh(ballGeo, ballMat);
       m.visible = false;
@@ -370,6 +373,17 @@ export class BoardScene {
   }
 
   /** 当たり演出のブルーム（設定の「光のにじみ」。OFF なら composer を通さない）。 */
+  /** 見た目の解放（金のランプ・夜桜・クローム・金の玉・殿堂入り, spec/25）。既存の描画の色・値の差し替えだけ。 */
+  setLook(look: Look): void {
+    if (sameLook(look, this.look)) return;
+    this.look = look;
+    const base = look.cabinet === 'gold' ? PALETTES.gold : look.cabinet === 'chrome' ? PALETTES.chrome : PALETTES['pearl-violet'];
+    this.cabinet.setPalette(look.lamp === 'gold' ? { ...base, led: 0xffd877 } : base);
+    this.ballMat.color.setHex(look.ball === 'gold' ? 0xffd34d : 0xffffff);
+    this.ballMat.roughness = look.ball === 'gold' ? 0.2 : 0.08;
+    this.lcd.setTheme(look.lcd === 'sakura', look.title);
+  }
+
   setBloom(on: boolean): void {
     this.bloomOn = on;
   }

@@ -303,6 +303,21 @@
       ]
     },
     {
+      "pattern": "treeBought",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "hold_up" },
+        { "at": 0, "kind": "haptic", "pattern": [20] }
+      ]
+    },
+    {
+      "pattern": "tierOpened",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "hold_up" },
+        { "at": 160, "kind": "sound", "bus": "se", "asset": "kime" },
+        { "at": 0, "kind": "haptic", "pattern": [30, 30, 50] }
+      ]
+    },
+    {
       "pattern": "bonus_end",
       "cues": [{ "at": 0, "kind": "sound", "bus": "se", "asset": "hold_up" }]
     },
