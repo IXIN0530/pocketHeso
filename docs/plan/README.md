@@ -16,6 +16,7 @@
 | P9 | P9-update-1-1.md | Claude Code | v1.1: 大当たりのラウンド5倍速・永続の実績（生産倍率）・レート選択の表示修正・v1.1.0 リリース | 中 |
 | P10 | P10-prestige-tree.md | Claude Code | v1.2: 常連ツリー（常連P の使い道）・v1.2.0 リリース | 大 |
 | P11 | P11-feedback-1-2.md | Claude Code | v1.2.1: 留守サマリーのバナー化・常連P の式の表示・オート打ち UI・実績の表記 | 小 |
+| P12 | P12-rest-phase.md | Claude Code | v1.3: 閉店後の休業（常連P を使ってから開店）・v1.3.0 リリース | 中 |
 
 並行可能: P1〜P3（Muse）と P4-T1〜T3（Claude。claims は Core の型だけに依存）。P5 は P2-T5 完了が前提。
 
