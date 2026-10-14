@@ -194,6 +194,7 @@ r = close.regular_mult（1.0）+ Σregular_add
 - 保存: IdleEconomy v8 に `restAt: number | null`・`restPendingBalls: number`（v7 以前は null・0）。web の `SNAPSHOT_VERSION` +1。
 - 決定論・試算: `close` と `open` を**同じ t**で続けて出し、間に何も買わなければ、今の `close` と玉・役物・イベント（`opened` を除く）が完全に一致する（テストで確認）。
   pachisim の greedy は「閉店 → 買える物を買う → 同じ t で開店」。starter・keep・openBoost が1周早く効くので検証 3・5・6 は測り直す（閉店日と gain は不変条件1で変わらない）。
+  実測（P12-T2）: 1・2・7 は従来と一致、3 は1週目から off の ×1.10〜1.23。5・6 は `--tree all` に休業で買う物が無いので従来と同値（`docs/state/econ-20261014-p12.md`）。
 - 新台入替（D-082, 未実装）を作る時は機種の選択を `open` に付ける。
 
 ### 番頭さん（役物の自動購入）

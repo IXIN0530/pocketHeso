@@ -8,6 +8,7 @@ import {
   ballPoints,
   buildGrowthTable,
   closeGain,
+  treeClosePoints,
   treeRunBonus,
   growthPow,
   parseEconomyText,
@@ -602,6 +603,57 @@ export function runEcon(
     minTreeCost = c < minTreeCost ? c : minTreeCost;
   }
 
+  // 開いていて買える最も安いもの（同額は一覧の順）から買えるだけ買う（閉店直後に常連P が入った時）。
+  // Engine の入力は次の advance で処理されるため、状態（所持・段・P）は手元で更新して続けて選ぶ。
+  const greedyBuy = (t: number, ptsStart: number): void => {
+    const tv = eng.project().tree;
+    if (tv !== undefined) {
+      const nodes = spec.tree.nodes;
+      const owned: boolean[] = tv.nodes.map((n) => n.state === 'owned');
+      let pts = ptsStart;
+      while (true) {
+        const countByTier = [0, 0, 0, 0, 0];
+        for (let i = 0; i < nodes.length; i = i + 1) {
+          if (owned[i] === true) {
+            const ti = (nodes[i] as { tier: number }).tier - 1;
+            countByTier[ti] = (countByTier[ti] as number) + 1;
+          }
+        }
+        const tierOpen: boolean[] = [];
+        let below = 0;
+        for (let ti = 0; ti < 5; ti = ti + 1) {
+          tierOpen.push(below >= (spec.tree.tierUnlock[ti] as number));
+          below = below + (countByTier[ti] as number);
+        }
+        let pick = -1;
+        for (let i = 0; i < nodes.length; i = i + 1) {
+          const n = nodes[i] as { tier: number; cost: number; req: readonly string[] };
+          if (owned[i] === true || tierOpen[n.tier - 1] !== true || n.cost > pts) {
+            continue;
+          }
+          let reqOk = true;
+          for (let k = 0; k < n.req.length; k = k + 1) {
+            const ri = nodes.findIndex((x) => x.id === n.req[k]);
+            if (ri < 0 || owned[ri] !== true) {
+              reqOk = false;
+            }
+          }
+          if (reqOk && (pick < 0 || n.cost < (nodes[pick] as { cost: number }).cost)) {
+            pick = i;
+          }
+        }
+        if (pick < 0) {
+          break;
+        }
+        const node = nodes[pick] as { id: string; cost: number };
+        eng.appendAction({ t, k: 'treeBuy', node: node.id });
+        owned[pick] = true;
+        treeBuys.push({ day: dayOf(t), id: node.id, cost: node.cost });
+        pts = pts - node.cost;
+      }
+    }
+  };
+
   while (t < end) {
     while (idx < inputs.length && (inputs[idx] as EconInput).t === t) {
       const input = inputs[idx] as EconInput;
@@ -615,54 +667,7 @@ export function runEcon(
       idx = idx + 1;
     }
     if (treeOpts.tree === 'greedy' && econ.snapshot().points >= minTreeCost) {
-      // 開いていて買える最も安いもの（同額は一覧の順）から買えるだけ買う（閉店直後などの常連P が入った時）。
-      // Engine の入力は次の advance で処理されるため、状態（所持・段・P）は手元で更新して続けて選ぶ。
-      const tv = eng.project().tree;
-      if (tv !== undefined) {
-        const nodes = spec.tree.nodes;
-        const owned: boolean[] = tv.nodes.map((n) => n.state === 'owned');
-        let pts = tv.points;
-        while (true) {
-          const countByTier = [0, 0, 0, 0, 0];
-          for (let i = 0; i < nodes.length; i = i + 1) {
-            if (owned[i] === true) {
-              const ti = (nodes[i] as { tier: number }).tier - 1;
-              countByTier[ti] = (countByTier[ti] as number) + 1;
-            }
-          }
-          const tierOpen: boolean[] = [];
-          let below = 0;
-          for (let ti = 0; ti < 5; ti = ti + 1) {
-            tierOpen.push(below >= (spec.tree.tierUnlock[ti] as number));
-            below = below + (countByTier[ti] as number);
-          }
-          let pick = -1;
-          for (let i = 0; i < nodes.length; i = i + 1) {
-            const n = nodes[i] as { tier: number; cost: number; req: readonly string[] };
-            if (owned[i] === true || tierOpen[n.tier - 1] !== true || n.cost > pts) {
-              continue;
-            }
-            let reqOk = true;
-            for (let k = 0; k < n.req.length; k = k + 1) {
-              const ri = nodes.findIndex((x) => x.id === n.req[k]);
-              if (ri < 0 || owned[ri] !== true) {
-                reqOk = false;
-              }
-            }
-            if (reqOk && (pick < 0 || n.cost < (nodes[pick] as { cost: number }).cost)) {
-              pick = i;
-            }
-          }
-          if (pick < 0) {
-            break;
-          }
-          const node = nodes[pick] as { id: string; cost: number };
-          eng.appendAction({ t, k: 'treeBuy', node: node.id });
-          owned[pick] = true;
-          treeBuys.push({ day: dayOf(t), id: node.id, cost: node.cost });
-          pts = pts - node.cost;
-        }
-      }
+      greedyBuy(t, econ.snapshot().points);
     }
     const p = eng.project();
     if (treeOpts.bantou && !bantouSent && p.tree !== undefined && p.tree.bantou.owned) {
@@ -675,13 +680,17 @@ export function runEcon(
     if (fg && p.notice !== undefined) {
       eng.appendAction({ t, k: 'noticeTap', noticeId: p.notice.id });
     }
-    // 閉店直後は手元の写しが実状態と合わない（保持した強化・開始 Lv が効く）ため、ツリー使用時はこの回の覚醒・購入を次の回に回す。
+    // 開店直後は手元の写しが実状態と合わない（保持した強化・開始 Lv が効く）ため、ツリー使用時は役物の覚醒・購入だけ次の回に回す（常連ツリーの購入は閉店と同じ t で済ませる）。
     let closedNow = false;
     if (s.runTotal >= spec.close.requiredRunTotal) {
       const gain = closeGain(s.totalTotal, spec.close.divisor, s.regular, s.medalsEarned, spec.close.medalsPerPoint);
       if (gain >= 1) {
         eng.appendAction({ t, k: 'close' });
-        // 休業（D-107）は入れずに同じ t で開店する（従来の閉店と一致。閉店 → 買う → 開店 は P12-T2）。
+        // 閉店 → 休業のうちに常連P で買える物を全部買い（greedy）、同じ t で開店する（D-107。off は買わず続けて開店）。
+        if (treeOpts.tree === 'greedy') {
+          const gotPts = treeClosePoints(gain, s.runTotal, spec.tree, econ.getTreeTotals().pointsAdd);
+          greedyBuy(t, econ.snapshot().points + gotPts);
+        }
         eng.appendAction({ t, k: 'open' });
         closedNow = treeOpts.tree !== 'off';
         closes = closes + 1;
@@ -714,7 +723,8 @@ export function runEcon(
           best = c;
         }
       }
-      const reserve = s.autoOwned ? BUY_RESERVE : 0;
+      // 開店直後に keep でオートが残っても（持ち玉が start_balls だけで予備に届かず）買えず止まらないよう、役物 Lv が 1 つもない間は予備を残さない。
+      const reserve = s.autoOwned && s.lv.some((v) => v > 0) ? BUY_RESERVE : 0;
       if (best === null || balls - best.price < reserve) {
         break;
       }
