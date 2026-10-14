@@ -2,9 +2,9 @@
 <!-- 30行以内を維持。古い Notes は削除してよい（履歴は git log にある） -->
 
 - Current phase: P12（閉店後の休業 → `docs/plan/P12-rest-phase.md`）。P11-T6 の本番確認は Blockers。P8-T7（任意）と P7 再開は人間の指示待ち
-- Last done: P12-T2（pachisim greedy を「閉店 → 休業中に買えるだけ買う → 同じ t で開店」に。検証 1・2・7 は従来と一致、3 OK（1週目から off の ×1.10〜1.23）、5・6 は p10 と同値の NG。bot の予備の修正 D-109。記録 `docs/state/econ-20261014-p12.md`）。その前: P12-T1（Core: 休業と開店・IdleEconomy v8・D-108）
-- Next: P12-T3（web: 休業画面と開店）
-- Owner hint: Claude Code（Sonnet）
+- Last done: P12-T3（web: 閉店でツリーシート自動表示・「休業中　自動で開店まで M:SS」と「開店する」・帯「休業中　開店する ›」と pending・timing 小札・opened 演出・SNAPSHOT 7。build・test all OK）。その前: P12-T2
+- Next: P12-T4（実機確認）
+- Owner hint: 人間（手順は Claude Code（Sonnet））
 - Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T12 → T13 → T2 は人間の指示で再開
 
 ## Blockers
@@ -17,6 +17,6 @@
 - 既定機種の人間確認待ち（light/rush/ltのどれを既定にするか。P3バランスに影響）
 
 ## Notes（最新3件まで）
+- [P12-T3]: dev は未 push（T4 の手順渡しと一緒に push する）。帯と留守バナーは同じ位置で重なるが、留守バナーが5秒で消えた後に帯が見える。担当は Sonnet 推奨だが Opus で実行した旨を報告する
 - [P12-T2]: 5・6 の NG は P10-T5 と同じ値・同じ週なので新しい Blocker にせず既存の行に追記して T3 へ進める（人間が P10 で「先へ進めてよい」と判断済み）。econ.ts と試算は Sonnet（worker）、合否・spec/25・D-109 は Opus
 - [P12-T1]: web は T3 まで「開店する」が無く、dev で閉店すると30分後に自動で開く（dev は未 push）。pachisim は同じ t で open を足して従来どおり（閉店→買う→開店は T2）。web の tree-defs.test に timing を足しただけ。Opus
-- [P12 計画]: 人間の指摘（閉店直後に買った keep・starter・開店ダッシュが次の閉店まで効かない）から spec/25「休業」・D-107・P12 を追加。休業の上限 30分は spec/25 未決9（推奨で進める）。Opus
