@@ -3,7 +3,7 @@ import type { ClaimRecord } from '@ph/claims';
 import type { AchievementMetric, AchievementsView } from '@ph/core';
 import { ACHIEVEMENTS } from '../engine/achievement-defs.ts';
 import { loadLedger, openStorage } from '../platform/storage.ts';
-import { METRIC_LABEL, achievedCount, groupAchievements, multPercent } from '../stores/achievements.ts';
+import { METRIC_LABEL, achievedCount, achievedDateLabel, groupAchievements, multPercent, progressPercent } from '../stores/achievements.ts';
 import { describeRecord, formatFuel, formatProd } from '../stores/activity.ts';
 import { clock, dbNameFor } from '../stores/clock.ts';
 import { useEngine } from '../stores/engine.ts';
@@ -49,12 +49,6 @@ const dayLabel = (day: string) => {
   return `${Number(m)}/${Number(d)}`;
 };
 
-/** 達成日（M/D）。 */
-const dateLabel = (ms: number) => {
-  const d = new Date(ms);
-  return `${d.getMonth() + 1}/${d.getDate()}`;
-};
-
 /** 指標の値（基準生産/秒だけ小数1桁）。 */
 const metricNum = (metric: AchievementMetric, n: number) => formatNum(n, metric === 'refPerSec' ? 1 : 0);
 
@@ -72,21 +66,22 @@ function AchievementsCard({ view }: { view: AchievementsView }) {
             <small className={styles.note}>{METRIC_LABEL[g.metric]}</small>
             {g.done.map((d) => (
               <span key={d.id} className={styles.achDone}>
-                <span>★ {d.name}</span>
-                <small className={styles.note}>{dateLabel(d.at)}</small>
+                <b>★ {d.name}</b>
+                <small className={styles.note}>{achievedDateLabel(d.at)}</small>
               </span>
             ))}
             {g.next && (
               <span className={styles.achNext}>
-                <span className={styles.achDone}>
+                <span className={styles.achLine}>
                   <span>☆ {g.next.name}</span>
-                  <small className={styles.note}>
-                    {metricNum(g.metric, g.next.value)} / {metricNum(g.metric, g.next.at)}
-                  </small>
+                  <b className={styles.achPct}>{progressPercent(g.next.ratio)}%</b>
                 </span>
-                <span className={styles.bar} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor(g.next.ratio * 100)}>
-                  <span style={{ width: `${g.next.ratio * 100}%` }} />
+                <span className={styles.bar} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent(g.next.ratio)}>
+                  <span style={{ width: `${progressPercent(g.next.ratio)}%` }} />
                 </span>
+                <small className={styles.note}>
+                  {metricNum(g.metric, g.next.value)} / {metricNum(g.metric, g.next.at)}
+                </small>
               </span>
             )}
             {g.hidden > 0 && <small className={styles.note}>{'？？？ '.repeat(g.hidden).trim()}</small>}

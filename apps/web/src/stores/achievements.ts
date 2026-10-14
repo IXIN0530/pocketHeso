@@ -62,6 +62,15 @@ export function achievedCount(view: AchievementsView, list: readonly Achievement
   return view.done.filter((d) => ids.has(d.id)).length;
 }
 
+/** 達成日の表記（「10月12日 達成」。M/D だと進捗の分数に見えるため）。 */
+export const achievedDateLabel = (ms: number): string => {
+  const d = new Date(ms);
+  return `${d.getMonth() + 1}月${d.getDate()}日 達成`;
+};
+
+/** 進捗の % （切り捨て。未達成なので 99 で止める）。 */
+export const progressPercent = (ratio: number): number => Math.min(99, Math.max(0, Math.floor(ratio * 100 + 1e-9)));
+
 /** 生産の上乗せ（%、整数に丸める）。 */
 export const multPercent = (mult: number): number => Math.round((mult - 1) * 100);
 

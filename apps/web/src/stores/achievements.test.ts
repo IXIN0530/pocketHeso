@@ -1,7 +1,7 @@
 import type { AchievementDef, AchievementsView, EngineSimEvent } from '@ph/core';
 import { expect, test } from 'vitest';
 import { ACHIEVEMENTS } from '../engine/achievement-defs.ts';
-import { achievedCount, achievedIds, achievedToast, groupAchievements, multPercent } from './achievements.ts';
+import { achievedCount, achievedDateLabel, achievedIds, achievedToast, groupAchievements, multPercent, progressPercent } from './achievements.ts';
 
 const list: AchievementDef[] = [
   { id: 'firstHits_1', metric: 'firstHits', at: 1, name: '初当たり' },
@@ -56,4 +56,17 @@ test('画面の一覧は Core の parseEconomy と同じ', async () => {
   const { parseEconomy } = await import('@ph/core');
   const economy = await import('../../../../resources/economy/default.json');
   expect(ACHIEVEMENTS).toEqual(parseEconomy(economy.default).achievements);
+});
+
+test('達成日は「M月D日 達成」で、進捗の分数と区別できる', () => {
+  expect(achievedDateLabel(new Date(2026, 9, 12, 8).getTime())).toBe('10月12日 達成');
+  expect(achievedDateLabel(new Date(2026, 0, 5, 23).getTime())).toBe('1月5日 達成');
+});
+
+test('進捗 % は切り捨てで、未達成は 99 で止まる', () => {
+  expect(progressPercent(0.999)).toBe(99);
+  expect(progressPercent(0.29)).toBe(29);
+  expect(progressPercent(1)).toBe(99);
+  expect(progressPercent(0)).toBe(0);
+  expect(progressPercent(0.125)).toBe(12);
 });
