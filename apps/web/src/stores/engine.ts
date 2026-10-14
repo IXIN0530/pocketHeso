@@ -7,6 +7,7 @@ import { wrap, type Port, type Remote } from '../engine/rpc.ts';
 import type { EngineApi } from '../engine.worker.ts';
 import { deleteDB } from 'idb';
 import { DB_NAME, loadLedger, openStorage } from '../platform/storage.ts';
+import { shouldNoticeAway } from './away.ts';
 import { clock, dbNameFor } from './clock.ts';
 
 export interface EngineState {
@@ -17,6 +18,8 @@ export interface EngineState {
   readonly clockBack: boolean;
   /** 未読の留守中サマリー。 */
   readonly away: AwaySummary | null;
+  /** タップ不要のバナーで知らせている留守（5分以上, P11-T1）。タップで away（シート）になる。 */
+  readonly awayBanner: AwaySummary | null;
   readonly restoredFrom: BootResult['restoredFrom'] | null;
   /** 演出の分岐に使う seed（spec/43）。 */
   readonly seed: number;
@@ -30,6 +33,7 @@ export const useEngine = create<EngineState>(() => ({
   projection: null,
   clockBack: false,
   away: null,
+  awayBanner: null,
   restoredFrom: null,
   seed: 0,
   machineId: '',
@@ -106,8 +110,7 @@ async function onVisibility(): Promise<void> {
     const r = await need().presence(fg, clock.now());
     show(r);
     if (r.away !== null) {
-      lastAway = r.away;
-      useEngine.setState({ away: r.away });
+      noticeAway(r.away);
     }
   } catch (e) {
     useEngine.setState({ error: message(e) });
@@ -129,7 +132,8 @@ export async function startEngine(): Promise<void> {
     const boot = await remote.boot(clock.now(), dbNameFor(clock.scale));
     clock.catchUp(boot.projection.at);
     show(boot);
-    useEngine.setState({ status: 'ready', away: boot.away, restoredFrom: boot.restoredFrom });
+    useEngine.setState({ status: 'ready', restoredFrom: boot.restoredFrom });
+    if (boot.away !== null) noticeAway(boot.away);
   } catch (e) {
     useEngine.setState({ status: 'error', error: message(e) });
     return;
@@ -184,7 +188,8 @@ export function exportSave(): Promise<string> {
 export async function importSave(text: string): Promise<void> {
   const boot = await need().importSave(text, clock.now());
   show(boot);
-  useEngine.setState({ away: boot.away, restoredFrom: boot.restoredFrom });
+  useEngine.setState({ restoredFrom: boot.restoredFrom });
+  if (boot.away !== null) noticeAway(boot.away);
 }
 
 export function debugInfo() {
@@ -226,14 +231,32 @@ export async function resetGame(): Promise<void> {
   location.reload();
 }
 
+/** 留守のお知らせ: 5分未満は出さない。5分以上はバナー（Debug の showLastAway は規則に関わらずシート）。 */
+function noticeAway(away: AwaySummary): void {
+  lastAway = away;
+  if (shouldNoticeAway(away)) {
+    useEngine.setState({ awayBanner: away });
+  }
+}
+
 export function dismissAway(): void {
   useEngine.setState({ away: null });
+}
+
+export function dismissAwayBanner(): void {
+  useEngine.setState({ awayBanner: null });
+}
+
+/** バナーのタップ: 詳細のシートを開く。 */
+export function openAwayFromBanner(): void {
+  const { awayBanner } = useEngine.getState();
+  useEngine.setState({ away: awayBanner, awayBanner: null });
 }
 
 
 /** Debug: 直近の留守中サマリーをもう一度出す（無ければ false）。 */
 export function showLastAway(): boolean {
   if (lastAway === null) return false;
-  useEngine.setState({ away: lastAway });
+  useEngine.setState({ away: lastAway, awayBanner: null });
   return true;
 }

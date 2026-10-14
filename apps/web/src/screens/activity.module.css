@@ -227,3 +227,61 @@
   height: 100%;
   background: #e8b840;
 }
+
+/* 留守のバナー（P11-T1）: タブバーの上に出し、約5秒で消える。 */
+.awayBanner {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--tabbar-bottom, 10px) + var(--tabbar-h, 62px) + 10px);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: calc(100% - 32px);
+  max-width: 398px;
+  box-sizing: border-box;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(40, 32, 12, 0.94);
+  color: #ffe08a;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  transform: translateX(-50%);
+  animation: away-banner 5s ease-out both;
+}
+
+@keyframes away-banner {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+  6%,
+  90% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes away-banner-fade {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  6%,
+  90% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .awayBanner {
+    animation-name: away-banner-fade;
+  }
+}

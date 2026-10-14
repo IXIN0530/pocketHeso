@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { Sheet } from '../components/sheet.tsx';
 import { sound } from '../fx/fx-host.ts';
-import { dismissAway, useEngine } from '../stores/engine.ts';
+import { AWAY_BANNER_MS, awayBannerLines } from '../stores/away.ts';
+import { dismissAway, dismissAwayBanner, openAwayFromBanner, useEngine } from '../stores/engine.ts';
 import { formatNum, formatSpan, formatTime } from '../stores/format.ts';
 import { replayRequest, requestPreview } from '../stores/preview.ts';
 import styles from './activity.module.css';
@@ -60,5 +62,25 @@ export function AwayModal() {
         </button>
       </div>
     </Sheet>
+  );
+}
+
+/** 5分以上の留守を知らせるバナー（P11-T1）。操作不要で数秒で消え、タップで詳細のシートを開く。音・触覚は鳴らさない。 */
+export function AwayBanner() {
+  const banner = useEngine((s) => s.awayBanner);
+  useEffect(() => {
+    if (banner === null) return;
+    const id = setTimeout(dismissAwayBanner, AWAY_BANNER_MS);
+    return () => clearTimeout(id);
+  }, [banner]);
+  if (banner === null) {
+    return null;
+  }
+  return (
+    <button className={styles.awayBanner} onClick={openAwayFromBanner} role="status">
+      {awayBannerLines(banner).map((line) => (
+        <span key={line}>{line}</span>
+      ))}
+    </button>
   );
 }

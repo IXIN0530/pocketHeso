@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { TabBar } from '../components/tab-bar.tsx';
 import { isStandalone, setupServiceWorker } from '../platform/pwa.ts';
 import { ActivityScreen } from '../screens/activity-screen.tsx';
-import { AwayModal } from '../screens/away-modal.tsx';
+import { AwayBanner, AwayModal } from '../screens/away-modal.tsx';
 import { EngineStatus } from '../screens/engine-status.tsx';
 import { HallScreen } from '../screens/hall-screen.tsx';
 import { OnboardingGate } from '../screens/onboarding-sheet.tsx';
@@ -98,6 +98,7 @@ export function App() {
         </Suspense>
       )}
       <TabBar tabs={TABS} value={tab} onChange={changeTab} />
+      <AwayBanner />
       <AwayModal />
       <OnboardingGate standalone={standalone} />
     </main>

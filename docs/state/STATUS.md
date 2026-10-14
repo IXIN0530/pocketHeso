@@ -2,8 +2,8 @@
 <!-- 30行以内を維持。古い Notes は削除してよい（履歴は git log にある） -->
 
 - Current phase: P11（v1.2 の手直し → `docs/plan/P11-feedback-1-2.md`）。P8-T7（任意）と P7 再開は人間の指示待ち
-- Last done: P10-T9（v1.2.0 を main へ ff マージ・タグ v1.2.0 を push。build/test/release-check OK）。本番の確認は人間待ち。その前: P10-T8（実機 OK）
-- Next: P11-T1（留守サマリー: 5分未満は出さない・タップ不要のバナー）
+- Last done: P11-T1（留守サマリー: 5分未満は出さない・タップ不要のバナー・D-106。build/test OK、実機は T5）。その前: P10-T9（v1.2.0 を main へ ff マージ・タグ v1.2.0 を push。build/test/release-check OK）。本番の確認は人間待ち。その前: P10-T8（実機 OK）
+- Next: P11-T2（閉店カード: 常連ランク・常連P の計算式。Core に表示用の値を足す）
 - Owner hint: Claude Code（Sonnet）
 - Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T12 → T13 → T2 は人間の指示で再開
 
@@ -16,6 +16,6 @@
 - 既定機種の人間確認待ち（light/rush/ltのどれを既定にするか。P3バランスに影響）
 
 ## Notes（最新3件まで）
+- [P11-T1]: バナーはタブバーの上（fixed）に全タブ共通で出す（ホール上部のトーストと重ならないため）。ストアに `awayBanner` を足し、タップで `away`（シート）に移す。規則は `stores/away.ts`。全角スペースは lint で弾かれるので半角2つ。Sonnet
 - [P10-T8]: 実機確認 OK（人間）。Debug に常連P/番頭さんの直接付与は無く、x3600 で閉店を重ねて確認した。T9 は人間のリリース指示まで着手しない。Sonnet
 - [P10-T7]: 見た目は `board/look.ts` の resolveLook(所持unlocks, looksOff)→BoardScene.setLook。dendou は金の筐体が chrome より優先、称号は HudCanvas の隅に常時描画。実機で見るには Debug の x3600 で閉店→常連P→段1の lamp_gold(5P)等を購入（金の玉は段4・殿堂入りは段5で遠い）。core の tree-engine.test の 24h advance 1.5倍判定は負荷で稀に落ちる（再実行で通る、今回触っていない）。全部 Sonnet
-- [P10-T6]: 系統は JSON に欄が無いので `engine/tree-defs.ts` に id→系統の表（52個、テストで全件確認）。開店ダッシュの倍率は所持ノードの open_boost から web で計算（TreeView に倍率が無いため）。Debug に常連P を入れる口は無い: 実機は既存セーブ（ランク≥1 なら 10×ランク）か、Debug の x3600 で閉店まで進めて得る。全部 Sonnet
