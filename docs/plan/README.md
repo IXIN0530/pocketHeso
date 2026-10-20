@@ -17,6 +17,7 @@
 | P10 | P10-prestige-tree.md | Claude Code | v1.2: 常連ツリー（常連P の使い道）・v1.2.0 リリース | 大 |
 | P11 | P11-feedback-1-2.md | Claude Code | v1.2.1: 留守サマリーのバナー化・常連P の式の表示・オート打ち UI・実績の表記 | 小 |
 | P12 | P12-rest-phase.md | Claude Code | v1.3: 閉店後の休業（常連P を使ってから開店）・v1.3.0 リリース | 中 |
+| P13 | P13-feedback-1-3.md | Claude Code | v1.4: 抽選カスタム（先バレ）・先バレの時刻と音・大当たりの先出し・RUSH の変化保留・覚醒 v2 と役物を強くするツリー・v1.4.0 リリース | 大 |
 
 並行可能: P1〜P3（Muse）と P4-T1〜T3（Claude。claims は Core の型だけに依存）。P5 は P2-T5 完了が前提。
 

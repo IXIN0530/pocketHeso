@@ -1,10 +1,10 @@
 # STATUS
 <!-- 30行以内を維持。古い Notes は削除してよい（履歴は git log にある） -->
 
-- Current phase: P12（閉店後の休業 → `docs/plan/P12-rest-phase.md`）。P11-T6 の本番確認は Blockers。P8-T7（任意）と P7 再開は人間の指示待ち
-- Last done: P12-T5（v1.3.0 を main へ。タグ v1.3.0。P12-T4 実機は全て OK）。本番確認 OK（人間）
-- Next: 人間の指示待ち（P8-T7 任意 / P7 再開）。P12 完了
-- Owner hint: 人間（手順は Claude Code（Sonnet））
+- Current phase: P13（v1.4 抽選カスタム・先バレ・役物の強化 → `docs/plan/P13-feedback-1-3.md`）。P11-T6 の本番確認は Blockers。P8-T7（任意）と P7 再開は人間の指示待ち
+- Last done: P13 の計画を作成（人間のフィードバック 10/20 の 6 項目）。P12 は完了（v1.3.0）
+- Next: P13-T1（抽選カスタム。最優先）
+- Owner hint: Claude Code（Opus。Split で Sonnet）
 - Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T12 → T13 → T2 は人間の指示で再開
 
 ## Blockers
@@ -17,8 +17,6 @@
 - 既定機種の人間確認待ち（light/rush/ltのどれを既定にするか。P3バランスに影響）
 
 ## Notes（最新3件まで）
+- [P13 計画]: 先バレ音.mp3 は ~/Downloads にあったので `apps/web/public/sounds/先バレ音.mp3` へコピー（未コミット・T3 で改名して追加）。T7 は人間の OK で止まる
 - [P12-T5]: v1.3.0 を main へ・本番確認 OK。
 - [P12-T4]: 実機確認 1〜4 全て OK（人間）。
-- [P12-T3]: 帯と留守バナーは同じ位置で重なるが、留守バナーが5秒で消えた後に帯が見える。担当は Sonnet 推奨だが Opus で実行した旨を報告する
-- [P12-T2]: 5・6 の NG は P10-T5 と同じ値・同じ週なので新しい Blocker にせず既存の行に追記して T3 へ進める（人間が P10 で「先へ進めてよい」と判断済み）。econ.ts と試算は Sonnet（worker）、合否・spec/25・D-109 は Opus
-- [P12-T1]: web は T3 まで「開店する」が無く、dev で閉店すると30分後に自動で開く（dev は未 push）。pachisim は同じ t で open を足して従来どおり（閉店→買う→開店は T2）。web の tree-defs.test に timing を足しただけ。Opus
