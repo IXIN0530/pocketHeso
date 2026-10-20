@@ -404,6 +404,17 @@ export class LcdTimeline {
     return this.shown;
   }
 
+  /** まだ表示していない大当たりの開始の数と、終了の出玉の合計（ホールの状態行・持ち玉を液晶に揃える, P13-T4）。 */
+  pending(): { readonly jackpots: number; readonly payout: number } {
+    let jackpots = 0;
+    let payout = 0;
+    for (const e of this.queue) {
+      if (e.k === 'jackpotStarted') jackpots++;
+      else if (e.k === 'jackpotEnded') payout += e.payout;
+    }
+    return { jackpots, payout };
+  }
+
   /** まだ表示していない停止結果（当否が不明な変動の図柄を決める時に先を覗く）。 */
   peekResult(entry: number): boolean | null {
     for (const e of this.queue) {

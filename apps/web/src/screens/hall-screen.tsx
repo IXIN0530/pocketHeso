@@ -11,6 +11,7 @@ import { achievedIds, achievedToast } from '../stores/achievements.ts';
 import { act, onView, useEngine } from '../stores/engine.ts';
 import { formatClock, formatNum, formatTime } from '../stores/format.ts';
 import { usePrefs } from '../stores/prefs.ts';
+import { shownHall, useLcdView } from '../stores/lcd-view.ts';
 import { PREVIEW_TAIL_MS, usePreview } from '../stores/preview.ts';
 import { sakibareCustomBadge } from './sakibare-custom.tsx';
 import styles from './hall.module.css';
@@ -20,16 +21,17 @@ const BoardCanvas = lazy(() => import('../board/board-canvas.tsx'));
 
 
 /** 抽選モードの表示（spec/21 モード拡張）。 */
-export function modeLabel(p: Pick<HallProjection, 'mode' | 'stRemaining'>): string {
+export function modeLabel(p: { mode: HallProjection['mode']; stRemaining: number | null }): string {
+  const n = p.stRemaining === null ? '' : `残り${p.stRemaining}回`;
   switch (p.mode) {
     case 'normal':
       return '通常';
     case 'jitan':
-      return `時短 残り${p.stRemaining}回`;
+      return p.stRemaining === null ? '時短' : `時短 ${n}`;
     case 'st':
-      return `RUSH 残り${p.stRemaining}回`;
+      return p.stRemaining === null ? 'RUSH' : `RUSH ${n}`;
     case 'lt':
-      return `LT 残り${p.stRemaining}回`;
+      return p.stRemaining === null ? 'LT' : `LT ${n}`;
   }
 }
 
@@ -69,17 +71,34 @@ function AchievedToast() {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let key = 0;
-    const off = onView((_, events) => {
-      const text = achievedToast(achievedIds(events), ACHIEVEMENTS);
-      if (text === null) return;
+    let unwait: (() => void) | undefined;
+    const show = (text: string) => {
       key += 1;
       setToast({ text, key });
       playToastCue('achieved', useEngine.getState().seed, key);
       clearTimeout(timer);
       timer = setTimeout(() => setToast(null), TOAST_MS);
+    };
+    const off = onView((_, events) => {
+      const text = achievedToast(achievedIds(events), ACHIEVEMENTS);
+      if (text === null) return;
+      // 液晶がまだ大当たりを映していない間は結果を先に明かさない（P13-T4）。映したら出す。
+      const pending = (v: { pendingJackpots: number } | null) => v !== null && v.pendingJackpots > 0;
+      if (!pending(useLcdView.getState().view)) {
+        show(text);
+        return;
+      }
+      unwait?.();
+      unwait = useLcdView.subscribe((st) => {
+        if (pending(st.view)) return;
+        unwait?.();
+        unwait = undefined;
+        show(text);
+      });
     });
     return () => {
       off();
+      unwait?.();
       clearTimeout(timer);
     };
   }, []);
@@ -98,6 +117,7 @@ function AchievedToast() {
  */
 export function HallScreen({ active = true }: { active?: boolean }) {
   const projection = useEngine((s) => s.projection);
+  const lcdView = useLcdView((s) => s.view);
   const customBadge = sakibareCustomBadge(usePrefs((s) => s.sakibareCustom));
   const [busy, setBusy] = useState(false);
   const [tapped, setTapped] = useState(-1);
@@ -111,6 +131,7 @@ export function HallScreen({ active = true }: { active?: boolean }) {
 
   const p = projection;
   const notice = p?.notice && p.notice.expiresAt > p.at && p.notice.id !== tapped ? p.notice : null;
+  const shown = p ? shownHall(p, lcdView) : null;
   const resting = p?.rest !== undefined && p?.rest !== null;
 
   return (
@@ -151,7 +172,7 @@ export function HallScreen({ active = true }: { active?: boolean }) {
             <div>
               <dt>持ち玉</dt>
               <dd>
-                <CountUp value={p.balls} format={formatNum} />
+                <CountUp value={shown!.balls} format={formatNum} />
               </dd>
             </div>
             <div>
@@ -170,9 +191,9 @@ export function HallScreen({ active = true }: { active?: boolean }) {
             </div>
           </dl>
           <p className={styles.state}>
-            <span>{resting ? '本日閉店（休業中）' : modeLabel(p)}</span>
+            <span>{resting ? '本日閉店（休業中）' : modeLabel(shown!)}</span>
             <span>回転 {formatNum(p.totals.spins)}</span>
-            <span>大当たり {formatNum(p.totals.jackpots)}</span>
+            <span>大当たり {formatNum(shown!.jackpots)}</span>
             {resting && <span className={styles.stock}>オート打ち 休業中</span>}
             {p.tree !== undefined && p.tree.openBoostMs > 0 && (
               <span className={styles.stock}>
@@ -181,9 +202,9 @@ export function HallScreen({ active = true }: { active?: boolean }) {
             )}
             {customBadge !== null && <span className={styles.custom}>{customBadge}</span>}
             {p.bonusStock > 0 && <span className={styles.stock}>特別保留 ×{p.bonusStock}（待機）</span>}
-            {p.jackpot && (
+            {shown!.jackpot && (
               <span className={styles.hot}>
-                大当たり中 {p.jackpot.rounds}R{p.chain > 1 ? `・${p.chain}連` : ''}
+                大当たり中 {shown!.jackpot.rounds}R{shown!.chain > 1 ? `・${shown!.chain}連` : ''}
               </span>
             )}
           </p>

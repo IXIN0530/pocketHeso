@@ -70,6 +70,7 @@ import { CAB, Cabinet, PALETTES, bakeCabinetEnv, ledTube } from './cabinet.ts';
 import { DEFAULT_LOOK, sameLook, type Look } from './look.ts';
 import { summarize, type FrameStats } from './frame-stats.ts';
 import { LcdReels, type SpinShow } from './lcd.ts';
+import { setLcdView } from '../stores/lcd-view.ts';
 import { LcdTimeline, fireSakibares, sakibareTimes, shownLcdState, type LcdState } from './lcd-timeline.ts';
 
 export interface DrawInfo {
@@ -403,6 +404,7 @@ export class BoardScene {
 
   setRunning(running: boolean): void {
     this.last = 0;
+    if (!running) setLcdView(null);
     setFlashTarget(this.flashLayer, running);
     setSceneTarget(this.onSceneCue, running);
     this.renderer.setAnimationLoop(running ? (t) => this.frame(t) : null);
@@ -489,6 +491,20 @@ export class BoardScene {
       lcdState = pv;
       lcdNow = clockNow;
       lcdScale = 1;
+    }
+    // ホールの状態行・持ち玉を、液晶が映している状態に揃える（プレビュー・Debug の倍速は Projection のまま, P13-T4）。
+    if (pv || this.clock.scale !== 1) {
+      setLcdView(null);
+    } else {
+      const pend = this.lcdTimeline.pending();
+      const rush = lcdState.rush;
+      setLcdView({
+        jackpot: lcdState.jackpot ? { rounds: lcdState.jackpot.rounds } : null,
+        mode: rush?.mode ?? 'normal',
+        chain: rush?.chain ?? 0,
+        pendingJackpots: pend.jackpots,
+        pendingPayout: pend.payout,
+      });
     }
     // 見せる色（保留変化）。割れる変動は図柄と演出の起点を割れた後へずらす（D-075）。
     const shown = shownLcdState(lcdState, this.seed, lcdNow);
