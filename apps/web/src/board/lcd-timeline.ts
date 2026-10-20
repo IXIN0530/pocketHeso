@@ -341,6 +341,29 @@ export function sakibareTimes(s: LcdState, seed: number, hitProb: (mode: Lottery
   return out;
 }
 
+/**
+ * 今のフレームで鳴らす先バレ。fire は時刻に達して初めて気付いた保留（遅れすぎは除く）、next は次のフレームへ渡す済みの番号。
+ * 音は同じ時刻の先バレ（大当たり後の RUSH で自動保留がまとめて足される時など）で1回だけ（sound）、光は保留ごと（fire）。
+ */
+export function fireSakibares(
+  times: readonly { entry: number; at: number }[],
+  done: ReadonlySet<number>,
+  now: number,
+  lateMs: number,
+): { fire: { entry: number; at: number; sound: boolean }[]; next: Set<number> } {
+  const next = new Set<number>();
+  const fire: { entry: number; at: number; sound: boolean }[] = [];
+  const sounded = new Set<number>();
+  for (const { entry, at } of times) {
+    if (at > now) continue;
+    next.add(entry);
+    if (done.has(entry) || now - at > lateMs) continue;
+    fire.push({ entry, at, sound: !sounded.has(at) });
+    sounded.add(at);
+  }
+  return { fire, next };
+}
+
 export class LcdTimeline {
   private shown: LcdState = EMPTY;
   /** まだ表示時刻に達していないイベント（時刻順）。 */

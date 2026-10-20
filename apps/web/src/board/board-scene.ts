@@ -70,7 +70,7 @@ import { CAB, Cabinet, PALETTES, bakeCabinetEnv, ledTube } from './cabinet.ts';
 import { DEFAULT_LOOK, sameLook, type Look } from './look.ts';
 import { summarize, type FrameStats } from './frame-stats.ts';
 import { LcdReels, type SpinShow } from './lcd.ts';
-import { LcdTimeline, sakibareTimes, shownLcdState, type LcdState } from './lcd-timeline.ts';
+import { LcdTimeline, fireSakibares, sakibareTimes, shownLcdState, type LcdState } from './lcd-timeline.ts';
 
 export interface DrawInfo {
   calls: number;
@@ -610,13 +610,10 @@ export class BoardScene {
    * 時刻を大きく過ぎてから気付いた先バレ（背面から戻った時など）は鳴らさない。Debug の倍速では液晶だけ。
    */
   private noteSakibare(st: LcdState, now: number, scale: number): void {
-    const next = new Set<number>();
-    for (const { entry, at } of sakibareTimes(st, this.seed, this.hitProb)) {
-      if (at > now) continue;
-      next.add(entry);
-      if (this.sakibareDone.has(entry) || now - at > SAKIBARE_LATE_MS) continue;
+    const { fire, next } = fireSakibares(sakibareTimes(st, this.seed, this.hitProb), this.sakibareDone, now, SAKIBARE_LATE_MS);
+    for (const { entry, sound } of fire) {
       this.lcd.pulse();
-      if (scale === 1) playSideCue(SAKIBARE_CUE, this.seed, entry);
+      if (sound && scale === 1) playSideCue(SAKIBARE_CUE, this.seed, entry);
     }
     this.sakibareDone = next;
   }
