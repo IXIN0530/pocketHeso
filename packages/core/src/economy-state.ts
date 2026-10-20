@@ -1,6 +1,7 @@
 /** 放置経済の状態遷移（spec/23・spec/22入力節。P3-T2）。 */
 import type { AchievementDef, AchievementMetric, EconomySpec } from './economy-config.ts';
 import { ACHIEVEMENT_METRICS, ECONOMY_YAKUMONO_IDS } from './economy-config.ts';
+import { TREE_AWAKEN_LOW_COUNT, TREE_KEEP_TARGETS } from './tree-config.ts';
 import type { EconomyPort } from './economy.ts';
 import {
   addAmount,
@@ -24,6 +25,10 @@ import {
   treeSumEffects,
   treeTierOpen,
 } from './tree-state.ts';
+
+/** keep の awaken_low / awaken_all の添字（TREE_KEEP_TARGETS の順）。 */
+const TREE_KEEP_AWAKEN_LOW = TREE_KEEP_TARGETS.indexOf('awaken_low');
+const TREE_KEEP_AWAKEN_ALL = TREE_KEEP_TARGETS.indexOf('awaken_all');
 
 /** 旧レート表（D-090 前。[1,4,10,40,100,400,1000]。v4 以前の rateStage 移行用）。 */
 const LEGACY_RATES: readonly number[] = [1, 4, 10, 40, 100, 400, 1000];
@@ -51,7 +56,7 @@ export interface AchievementsView {
 
 /** IdleEconomy の複写（Engine の snapshot.economy に入る）。 */
 export interface IdleEconomySnapshot {
-  readonly v: 8;
+  readonly v: 9;
   readonly lv: readonly number[];
   readonly awakened: readonly number[];
   readonly idleStage: number;
@@ -90,6 +95,10 @@ export interface IdleEconomySnapshot {
   readonly restAt: number | null;
   /** 休業中の行動の即時の玉（開店で持ち玉に足す）。 */
   readonly restPendingBalls: number;
+  /** 今の周回の役物ごとの最高 Lv（覚醒で Lv を戻しても下がらない, P13-T6）。 */
+  readonly runMaxLv: readonly number[];
+  /** 前の周回の役物ごとの最高 Lv（閉店で runMaxLv を写す。starter_rel が使う）。 */
+  readonly prevMaxLv: readonly number[];
 }
 
 /** 休業の表示（Projection の rest, spec/25）。 */
@@ -117,6 +126,8 @@ export interface ShopYakumonoView {
   readonly prices: readonly (number | null)[];
   readonly awakenCost: number;
   readonly awakenReady: boolean;
+  /** 覚醒すると基準生産が何倍になるか（覚醒後 ÷ 今。燃料・前面・ブースト等の状態係数は含まない）。覚醒できない Lv なら null。 */
+  readonly awakenGain: number | null;
 }
 
 /** 強化の id（buy の target と同じ）。 */
@@ -294,6 +305,18 @@ function migrateTreeSave(points: number): TreeSave {
 }
 
 /** v7 のツリー部分を読んで検証する（pointsEarned = points + Σcost。未知の id もここでは残す）。 */
+/** 役物8種の Lv の配列（非負の整数）を読む。 */
+function readLv8(value: unknown, what: string): number[] {
+  if (!Array.isArray(value) || value.length !== 8) {
+    fail(what + ' must have 8 entries');
+  }
+  const out: number[] = [];
+  for (let i = 0; i < 8; i = i + 1) {
+    out.push(asNonNegInt(value[i] as number, what + '[' + i + ']'));
+  }
+  return out;
+}
+
 function readTreeSave(s: Record<string, unknown>): TreeSave {
   const points = asNonNegInt(s['points'] as number, 'points');
   const pointsEarned = asNonNegInt(s['pointsEarned'] as number, 'pointsEarned');
@@ -374,6 +397,8 @@ export class IdleEconomy implements EconomyPort {
   private bantouOnState = false;
   private restAtState: number | null = null;
   private restPendingBallsState = 0;
+  private runMaxLvState: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
+  private prevMaxLvState: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
   /** 今の周回の機種 id（prod_add_machine の照合用。保存しない。Engine が setMachineId で渡す）。 */
   private machineIdState = '';
   /** 一覧の添字ごとの所持（treeState から作る）。 */
@@ -398,7 +423,7 @@ export class IdleEconomy implements EconomyPort {
   /** 状態の複写。 */
   snapshot(): IdleEconomySnapshot {
     return {
-      v: 8,
+      v: 9,
       lv: [...this.lvState],
       awakened: [...this.awakenedState],
       idleStage: this.idleStageState,
@@ -427,12 +452,15 @@ export class IdleEconomy implements EconomyPort {
       bantouOn: this.bantouOnState,
       restAt: this.restAtState,
       restPendingBalls: this.restPendingBallsState,
+      runMaxLv: [...this.runMaxLvState],
+      prevMaxLv: [...this.prevMaxLvState],
     };
   }
 
   /**
    * 複写から復元する（v1 は fever=0、v1/v2 は累計獲得メダル=0、v3 以前の jackpotFeverMult は読んで捨てる、v4 以前は旧レート段を移行 D-090、
-   * v5 以前は実績なし・覚醒の累計＝今の周回の Σawakened, spec/24、v6 以前は常連P = points_per_rank × ランク・ツリー空, spec/25、v7 以前は休業でない, D-107）。
+   * v5 以前は実績なし・覚醒の累計＝今の周回の Σawakened, spec/24、v6 以前は常連P = points_per_rank × ランク・ツリー空, spec/25、v7 以前は休業でない, D-107、
+   * v8 以前は今の周回の最高 Lv = 今の Lv・前の周回の最高 Lv = 0, P13-T6）。
    * 一覧から消えたツリーの id は除いてその cost を常連P に返す（D-104）。
    */
   restore(s: unknown): void {
@@ -440,7 +468,7 @@ export class IdleEconomy implements EconomyPort {
       fail('snapshot must be an object');
     }
     const v = s['v'];
-    if (v !== 1 && v !== 2 && v !== 3 && v !== 4 && v !== 5 && v !== 6 && v !== 7 && v !== 8) {
+    if (v !== 1 && v !== 2 && v !== 3 && v !== 4 && v !== 5 && v !== 6 && v !== 7 && v !== 8 && v !== 9) {
       fail('snapshot version mismatch');
     }
     const lv = s['lv'];
@@ -462,7 +490,7 @@ export class IdleEconomy implements EconomyPort {
     const rateStageRaw = asNonNegInt(s['rateStage'] as number, 'rateStage');
     // v4 以前は旧レート表 [1,4,10,40,100,400,1000] の段。旧の最大解放レートを新表のそれ以下の最大に丸める（400・1000→100, D-090）。
     let rateStage = rateStageRaw;
-    if (v !== 5 && v !== 6 && v !== 7 && v !== 8) {
+    if (v !== 5 && v !== 6 && v !== 7 && v !== 8 && v !== 9) {
       const oldRate = rateStageRaw < LEGACY_RATES.length ? (LEGACY_RATES[rateStageRaw] as number) : 1000;
       const news = this.spec.upgrades.rates;
       let mapped = 0;
@@ -508,13 +536,13 @@ export class IdleEconomy implements EconomyPort {
       }
     }
     let medalsEarned = 0;
-    if (v === 3 || v === 4 || v === 5 || v === 6 || v === 7 || v === 8) {
+    if (v === 3 || v === 4 || v === 5 || v === 6 || v === 7 || v === 8 || v === 9) {
       medalsEarned = asNonNegInt(s['medalsEarned'] as number, 'medalsEarned');
       // v3 以前の jackpotFeverMult は読んで捨てる（D-080 で廃止）。
     }
     const achieved: AchievementRecord[] = [];
     let awakenTotal = 0;
-    if (v === 6 || v === 7 || v === 8) {
+    if (v === 6 || v === 7 || v === 8 || v === 9) {
       const rawAch = s['achieved'];
       if (!Array.isArray(rawAch)) {
         fail('achieved must be an array');
@@ -539,10 +567,10 @@ export class IdleEconomy implements EconomyPort {
         awakenTotal = awakenTotal + (awCopy[i] as number);
       }
     }
-    const treeSave = v === 7 || v === 8 ? readTreeSave(s) : migrateTreeSave(this.spec.tree.pointsPerRank * regular);
+    const treeSave = v === 7 || v === 8 || v === 9 ? readTreeSave(s) : migrateTreeSave(this.spec.tree.pointsPerRank * regular);
     let restAt: number | null = null;
     let restPendingBalls = 0;
-    if (v === 8) {
+    if (v === 8 || v === 9) {
       const ra = s['restAt'];
       restAt = ra === null ? null : asNonNegInt(ra as number, 'restAt');
       restPendingBalls = asFinite(s['restPendingBalls'] as number, 'restPendingBalls');
@@ -551,6 +579,18 @@ export class IdleEconomy implements EconomyPort {
       }
       if (restAt === null && restPendingBalls !== 0) {
         fail('restPendingBalls must be 0 when not resting');
+      }
+    }
+    let runMaxLv = [...lvCopy];
+    let prevMaxLv = [0, 0, 0, 0, 0, 0, 0, 0];
+    if (v === 9) {
+      runMaxLv = readLv8(s['runMaxLv'], 'runMaxLv');
+      prevMaxLv = readLv8(s['prevMaxLv'], 'prevMaxLv');
+      // 今の Lv を下回る最高 Lv は今の Lv に寄せる（最高 Lv は今の Lv 以上）
+      for (let i = 0; i < 8; i = i + 1) {
+        if ((runMaxLv[i] as number) < (lvCopy[i] as number)) {
+          runMaxLv[i] = lvCopy[i] as number;
+        }
       }
     }
     const dropped = treeDropUnknown(this.spec.tree.nodes, treeSave.tree);
@@ -584,6 +624,8 @@ export class IdleEconomy implements EconomyPort {
     this.bantouOnState = treeSave.bantouOn;
     this.restAtState = restAt;
     this.restPendingBallsState = restPendingBalls;
+    this.runMaxLvState = runMaxLv;
+    this.prevMaxLvState = prevMaxLv;
     this.rebuildTree();
   }
 
@@ -591,6 +633,8 @@ export class IdleEconomy implements EconomyPort {
   private rebuildTree(): void {
     this.treeOwned = treeOwnedFlags(this.spec.tree.nodes, this.treeState);
     this.treeTotalsState = treeSumEffects(this.spec.tree.nodes, this.treeOwned);
+    // resonance_add は basePerSec に入る
+    this.basePerSecCache = -1;
   }
 
   /** 所持ノードの効果の合計（T3/T4 の適用が見る）。 */
@@ -913,11 +957,34 @@ export class IdleEconomy implements EconomyPort {
     if (n === undefined) {
       fail('yakumono index out of range');
     }
+    return this.awakenMultOf(n as number);
+  }
+
+  /** 覚醒 n 回の倍率（mult^n を乗算で）。 */
+  private awakenMultOf(n: number): number {
     let m = 1;
-    for (let i = 0; i < (n as number); i = i + 1) {
+    for (let i = 0; i < n; i = i + 1) {
       m = m * this.spec.awaken.mult;
     }
     return m;
+  }
+
+  /** 共鳴の係数（awaken.resonance + Σresonance_add）。 */
+  private resonanceRate(): number {
+    return this.spec.awaken.resonance + this.treeTotalsState.resonanceAdd;
+  }
+
+  /** 共鳴の倍率 1 + 係数 × 覚醒の総数（今の周回の Σawakened。保持した覚醒も数える）。 */
+  private resonanceOf(aws: readonly number[]): number {
+    const rate = this.resonanceRate();
+    if (rate === 0) {
+      return 1;
+    }
+    let n = 0;
+    for (let i = 0; i < 8; i = i + 1) {
+      n = n + (aws[i] as number);
+    }
+    return 1 + rate * n;
   }
 
   /** 役物ごとの毎秒生産（強化・覚醒・マイルストーン込み、状態係数なし。Lv・覚醒が変わるまでキャッシュ）。 */
@@ -925,13 +992,13 @@ export class IdleEconomy implements EconomyPort {
     if (this.basePerSecCache >= 0) {
       return this.basePerSecCache;
     }
-    const sum = this.basePerSecOf(this.lvState, true);
+    const sum = this.basePerSecOf(this.lvState, this.awakenedState);
     this.basePerSecCache = sum;
     return sum;
   }
 
-  /** 役物の Lv から毎秒生産の和を出す（withAwaken が false なら覚醒なし＝開店直後の形）。 */
-  private basePerSecOf(lvs: readonly number[], withAwaken: boolean): number {
+  /** 役物の Lv と覚醒数から毎秒生産の和を出す（共鳴込み）。 */
+  private basePerSecOf(lvs: readonly number[], aws: readonly number[]): number {
     let sum = 0;
     for (let i = 0; i < 8; i = i + 1) {
       const def = this.spec.yakumono[i];
@@ -949,10 +1016,72 @@ export class IdleEconomy implements EconomyPort {
         this.spec.milestones.step,
         this.spec.milestones.stepFrom,
       );
-      const per = ((def as { yield: number }).yield * lv * (withAwaken ? this.yakumonoMult(i) : 1)) / period;
+      const per = ((def as { yield: number }).yield * lv * this.awakenMultOf(aws[i] as number)) / period;
       sum = sum + per;
     }
-    return sum;
+    if (sum === 0) {
+      return 0;
+    }
+    return sum * this.resonanceOf(aws);
+  }
+
+  /** 今のツリーで開店した時の役物 Lv（starter の絶対 Lv と、前の周回の最高 Lv × starter_rel の切り捨ての大きい方。前の役物が 0 なら 0）。 */
+  private openLvs(): number[] {
+    const t = this.treeTotalsState;
+    const out: number[] = [];
+    for (let i = 0; i < 8; i = i + 1) {
+      let lv = t.starter[i] as number;
+      if (t.starterRel > 0) {
+        const rel = Math.floor((this.prevMaxLvState[i] as number) * t.starterRel);
+        if (rel > lv) {
+          lv = rel;
+        }
+      }
+      if (i > 0 && (out[i - 1] as number) === 0) {
+        lv = 0;
+      }
+      out.push(lv);
+    }
+    return out;
+  }
+
+  /** 今のツリーで開店した時の覚醒数（keep awaken_all は全役物、awaken_low は風車〜クルーンを残す。他は 0）。 */
+  private openAwakened(): number[] {
+    const keep = this.treeTotalsState.keep;
+    const all = keep[TREE_KEEP_AWAKEN_ALL] === true;
+    const low = keep[TREE_KEEP_AWAKEN_LOW] === true;
+    const out: number[] = [];
+    for (let i = 0; i < 8; i = i + 1) {
+      out.push(all || (low && i < TREE_AWAKEN_LOW_COUNT) ? (this.awakenedState[i] as number) : 0);
+    }
+    return out;
+  }
+
+  /** 覚醒すると基準生産が何倍になるか（Lv が足りなければ null。今の生産が 0 なら null）。 */
+  private awakenGainOf(idx: number): number | null {
+    const lv = this.lvState[idx] as number;
+    if (lv < this.spec.awaken.minLv) {
+      return null;
+    }
+    const now = this.basePerSec();
+    if (!(now > 0)) {
+      return null;
+    }
+    const lvs = [...this.lvState];
+    const aws = [...this.awakenedState];
+    if (this.spec.awaken.resetLv) {
+      lvs[idx] = 0;
+    }
+    aws[idx] = (aws[idx] as number) + 1;
+    return this.basePerSecOf(lvs, aws) / now;
+  }
+
+  /** 今の周回の最高 Lv を今の Lv で更新する（Lv が増えた時に呼ぶ）。 */
+  private noteRunMax(idx: number): void {
+    const lv = this.lvState[idx] as number;
+    if (lv > (this.runMaxLvState[idx] as number)) {
+      this.runMaxLvState[idx] = lv;
+    }
   }
 
   /** 現在の毎秒生産（常連・連日・実績・ツリー・ブースト・予告フィーバー・開店ダッシュ・状態係数込み, spec/25）。 */
@@ -1007,9 +1136,9 @@ export class IdleEconomy implements EconomyPort {
     return ref > min ? ref : min;
   }
 
-  /** 今のツリーで開店した直後の基準生産（役物 Lv = starter・覚醒なし。休業中の行動の即時の玉に使う, D-108）。 */
+  /** 今のツリーで開店した直後の基準生産（役物 Lv・覚醒は開店時の形。休業中の行動の即時の玉に使う, D-108）。 */
   private openRefPerSec(): number {
-    const base = this.basePerSecOf(this.treeTotalsState.starter, false);
+    const base = this.basePerSecOf(this.openLvs(), this.openAwakened());
     const regularF = 1 + this.regularRate() * this.regularState;
     const ref = base * regularF * this.streakF() * this.achMult() * this.treeMult();
     const min = this.spec.prodRef.minPerSec;
@@ -1368,15 +1497,17 @@ export class IdleEconomy implements EconomyPort {
         );
       }
       const period = lv > 0 ? this.effectivePeriodSFor(def.id, lv) : 0;
+      const resonanceF = this.resonanceOf(this.awakenedState);
       yakumono.push({
         id: def.id,
         lv,
         awakened,
         locked: i > 0 && (this.lvState[i - 1] as number) < 1,
-        perSec: period > 0 ? (def.yield * lv * this.yakumonoMult(i)) / period : 0,
+        perSec: period > 0 ? ((def.yield * lv * this.yakumonoMult(i)) / period) * resonanceF : 0,
         prices,
         awakenCost: awakenMedalCost(this.awakenBase(), this.spec.awaken.medalGrowth, awakened),
         awakenReady: lv >= this.spec.awaken.minLv,
+        awakenGain: this.awakenGainOf(i),
       });
     }
     const u = this.spec.upgrades;
@@ -1481,6 +1612,7 @@ export class IdleEconomy implements EconomyPort {
         return { ok: false, reason: 'insufficient-balls' };
       }
       this.lvState[yIdx] = lv + count;
+      this.noteRunMax(yIdx);
       this.basePerSecCache = -1;
       return { ok: true, balls: curBalls - price, medals: curMedals };
     }
@@ -1584,7 +1716,7 @@ export class IdleEconomy implements EconomyPort {
     return { ok: false, reason: 'unknown-target' };
   }
 
-  /** 覚醒（Lv≥minLvでLv→0・倍率×10、メダル消費）。 */
+  /** 覚醒（Lv≥minLv で倍率 ×mult・reset_lv なら Lv→0、メダル消費。覚醒数は共鳴にも効く）。 */
   onAwaken(id: string, curMedals: number): { ok: true; medals: number } | { ok: false; reason: string } {
     asFinite(curMedals, 'curMedals');
     const idx = this.yakumonoIndex(id);
@@ -1600,7 +1732,9 @@ export class IdleEconomy implements EconomyPort {
     if (curMedals < cost) {
       return { ok: false, reason: 'insufficient-medals' };
     }
-    this.lvState[idx] = 0;
+    if (this.spec.awaken.resetLv) {
+      this.lvState[idx] = 0;
+    }
     this.awakenedState[idx] = awakened + 1;
     this.awakenTotalState = this.awakenTotalState + 1;
     this.basePerSecCache = -1;
@@ -1652,6 +1786,7 @@ export class IdleEconomy implements EconomyPort {
         break;
       }
       this.lvState[best] = (this.lvState[best] as number) + 1;
+      this.noteRunMax(best);
       budget = budget - bestPrice;
       spent = spent + bestPrice;
     }
@@ -1722,6 +1857,7 @@ export class IdleEconomy implements EconomyPort {
     this.pointsEarnedState = this.pointsEarnedState + points;
     this.restAtState = at;
     this.restPendingBallsState = 0;
+    this.prevMaxLvState = [...this.runMaxLvState];
     return { ok: true, gain, points };
   }
 
@@ -1730,10 +1866,11 @@ export class IdleEconomy implements EconomyPort {
     if (this.restAtState === null) {
       return { ok: false, reason: 'not-resting' };
     }
-    // ツリー: starter の Lv から再出発・keep の強化は段を残す・開店ダッシュを入れる（その時点のツリーで, spec/25。順は TREE_KEEP_TARGETS）。
+    // ツリー: starter・starter_rel の Lv から再出発・keep の強化と覚醒は残す・開店ダッシュを入れる（その時点のツリーで, spec/25。順は TREE_KEEP_TARGETS）。
     const t = this.treeTotalsState;
-    this.lvState = [...t.starter];
-    this.awakenedState = [0, 0, 0, 0, 0, 0, 0, 0];
+    this.lvState = this.openLvs();
+    this.awakenedState = this.openAwakened();
+    this.runMaxLvState = [...this.lvState];
     this.basePerSecCache = -1;
     const keep = t.keep;
     if (keep[0] !== true) {

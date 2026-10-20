@@ -22,7 +22,7 @@ import { loadRunAtlas, loadRunMachine, computeTheory } from './run.ts';
 
 const ECONOMY_URL = new URL('../../../resources/economy/default.json', import.meta.url);
 const ECON_USAGE =
-  'usage: pachisim econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--play-rate <r>] [--play-min <m>] [--tree off|greedy|all] [--start-rank <n>] [--bantou on|off] [--json]';
+  'usage: pachisim econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--play-rate <r>] [--play-min <m>] [--tree off|greedy|all] [--start-rank <n>] [--bantou on|off] [--awaken-pick first|best] [--awaken-log] [--json]';
 
 const MIN_MS = 60000;
 const DAY_MS = 86400000;
@@ -96,17 +96,32 @@ export interface EconArgs {
   readonly startRank: number;
   /** 番頭さんを使う（所持したら ON にする）。 */
   readonly bantou: boolean;
+  readonly awakenPick: AwakenPick;
+  readonly awakenLog: boolean;
   readonly json: boolean;
 }
 
 /** ツリー試算の方式（P10-T5）。 */
 export type EconTreeMode = 'off' | 'greedy' | 'all';
 
+/** 覚醒の選び方。 */
+export type AwakenPick = 'first' | 'best';
+
+/** 覚醒1回の記録（直前・直後の perSec(fg)＝燃料あり・前面）。 */
+export interface EconAwakenEntry {
+  readonly day: number;
+  readonly target: string;
+  readonly before: number;
+  readonly after: number;
+}
+
 /** runEcon の常連ツリー関連の設定（P10-T5）。 */
 export interface EconTreeOptions {
   readonly tree: EconTreeMode;
   readonly startRank: number;
   readonly bantou: boolean;
+  /** 覚醒の選び方（first=添字順で最初に覚醒できる役物 / best=覚醒後の生産が最大のもの。既定 best）。 */
+  readonly awakenPick?: AwakenPick;
 }
 
 export const ECON_TREE_OFF: EconTreeOptions = { tree: 'off', startRank: 0, bantou: false };
@@ -124,12 +139,18 @@ export function parseEconArgs(argv: string[]): EconArgs {
   let tree: EconTreeMode = 'off';
   let startRank = 0;
   let bantou = false;
+  let awakenPick: AwakenPick = 'best';
+  let awakenLog = false;
   let json = false;
   for (let i = 0; i < argv.length; i = i + 1) {
     const a = argv[i] as string;
     const v = argv[i + 1];
     if (a === '--json') {
       json = true;
+      continue;
+    }
+    if (a === '--awaken-log') {
+      awakenLog = true;
       continue;
     }
     if (v === undefined) {
@@ -163,6 +184,11 @@ export function parseEconArgs(argv: string[]): EconArgs {
         throw new Error(ECON_USAGE);
       }
       bantou = v === 'on';
+    } else if (a === '--awaken-pick') {
+      if (v !== 'first' && v !== 'best') {
+        throw new Error(ECON_USAGE);
+      }
+      awakenPick = v;
     } else {
       throw new Error(ECON_USAGE);
     }
@@ -180,7 +206,7 @@ export function parseEconArgs(argv: string[]): EconArgs {
   ) {
     throw new Error(ECON_USAGE);
   }
-  return { profile, days, seed, machine, economy, evHours, playRate, playMin, tree, startRank, bantou, json };
+  return { profile, days, seed, machine, economy, evHours, playRate, playMin, tree, startRank, bantou, awakenPick, awakenLog, json };
 }
 
 /** sim内の換算 Tier（claims と同じ逓減。層違反を避けるため自前実装, D-081）。 */
@@ -430,6 +456,8 @@ export interface EconResult {
   readonly minBalls: number;
   /** 常連ツリーの購入（--tree greedy。日は 1 始まり・購入順。P10-T5）。 */
   readonly treeBuys: readonly { readonly day: number; readonly id: string; readonly cost: number }[];
+  /** 覚醒ごとの記録（--awaken-log で表示）。 */
+  readonly awakenLog: readonly EconAwakenEntry[];
 }
 
 /** 買える候補（安い順に買う単純戦略用）。 */
@@ -581,6 +609,8 @@ export function runEcon(
   let autoOn = false;
   let closes = 0;
   let awakens = 0;
+  const awakenLog: EconAwakenEntry[] = [];
+  const awakenPick: AwakenPick = treeOpts.awakenPick ?? 'best';
   let medalsActivity = 0;
   // 大当たりでメダルは出ない（D-049）。
   const medalsPachinko = 0;
@@ -700,18 +730,54 @@ export function runEcon(
         s = { ...s, lv: [0, 0, 0, 0, 0, 0, 0, 0], awakened: [0, 0, 0, 0, 0, 0, 0, 0], idleStage: 0, tankStage: 0, nailStage: 0, shortenStage: 0, holdStage: 0, autoOwned: false, tomeuchiOwned: false, runTotal: 0 };
       }
     }
-    for (let i = 0; i < ECONOMY_YAKUMONO_IDS.length && !closedNow; i = i + 1) {
+    // 覚醒の前後の perSec(fg) を測る作業用の複製（キュー済みの未適用の入力は含まない）。
+    const fk: IdleEconomy | null = closedNow || !s.lv.some((v) => v >= spec.awaken.minLv) ? null : econ.fork();
+    const canAwaken = (i: number): boolean =>
+      (s.lv[i] as number) >= spec.awaken.minLv &&
+      medals >= awakenMedalCost(spec.awaken.medalBase, spec.awaken.medalGrowth, s.awakened[i] as number);
+    const doAwaken = (i: number): void => {
       const cost = awakenMedalCost(spec.awaken.medalBase, spec.awaken.medalGrowth, s.awakened[i] as number);
-      if ((s.lv[i] as number) >= spec.awaken.minLv && medals >= cost) {
-        eng.appendAction({ t, k: 'awaken', yakumono: ECONOMY_YAKUMONO_IDS[i] as string });
-        medals = medals - cost;
-        const lv = [...s.lv];
-        const aw = [...s.awakened];
+      const id = ECONOMY_YAKUMONO_IDS[i] as string;
+      const before = (fk as IdleEconomy).getPerSec(true, 1);
+      (fk as IdleEconomy).onAwaken(id, medals);
+      const after = (fk as IdleEconomy).getPerSec(true, 1);
+      awakenLog.push({ day: dayOf(t), target: id, before, after });
+      eng.appendAction({ t, k: 'awaken', yakumono: id });
+      medals = medals - cost;
+      const lv = [...s.lv];
+      const aw = [...s.awakened];
+      if (spec.awaken.resetLv) {
         lv[i] = 0;
-        aw[i] = (aw[i] as number) + 1;
-        s = { ...s, lv, awakened: aw };
-        awakens = awakens + 1;
-        firstAwakenDay = firstAwakenDay ?? dayOf(t);
+      }
+      aw[i] = (aw[i] as number) + 1;
+      s = { ...s, lv, awakened: aw };
+      awakens = awakens + 1;
+      firstAwakenDay = firstAwakenDay ?? dayOf(t);
+    };
+    if (fk !== null && awakenPick === 'first') {
+      for (let i = 0; i < ECONOMY_YAKUMONO_IDS.length; i = i + 1) {
+        if (canAwaken(i)) {
+          doAwaken(i);
+        }
+      }
+    } else if (fk !== null) {
+      for (;;) {
+        const gains = fk.getShopView().yakumono;
+        let pick = -1;
+        let pickGain = -1;
+        for (let i = 0; i < ECONOMY_YAKUMONO_IDS.length; i = i + 1) {
+          if (canAwaken(i)) {
+            const g = gains[i]?.awakenGain ?? 0;
+            if (pick < 0 || g > pickGain) {
+              pick = i;
+              pickGain = g;
+            }
+          }
+        }
+        if (pick < 0) {
+          break;
+        }
+        doAwaken(pick);
       }
     }
     while (!closedNow) {
@@ -867,6 +933,7 @@ export function runEcon(
     action: lastAction,
     minBalls,
     treeBuys,
+    awakenLog,
   };
 }
 
@@ -1039,6 +1106,13 @@ export function lastRegular(r: EconResult): number {
 }
 
 /** 日別表とバランス目標の判定を文字列にする。heavy は同じ機種・seed・日数の standard（baseline）と常連Pを比べる。 */
+/** 覚醒ログ（--awaken-log）。1覚醒1行。 */
+export function formatAwakenLog(log: readonly EconAwakenEntry[]): string {
+  return log
+    .map((e) => `awaken day=${e.day} target=${e.target} before=${fmtNum(e.before)} after=${fmtNum(e.after)} x${(e.before > 0 ? e.after / e.before : 0).toFixed(3)}`)
+    .join('\n');
+}
+
 export function formatEcon(r: EconResult, ev: { init: number; full: number } | null, baseline: EconResult | null = null): string {
   const lines: string[] = [];
   lines.push(`econ: profile=${r.profile} days=${r.days} machine=${r.machine} seed=${r.seed}`);

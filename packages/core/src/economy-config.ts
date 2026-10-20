@@ -52,10 +52,12 @@ export interface EconomyMilestones {
   readonly stepFrom: number;
 }
 
-/** 覚醒（Lv≥minLv で Lv→0・mult 倍。コストはメダル）。 */
+/** 覚醒（Lv≥minLv で実行・mult 倍。resetLv なら Lv→0。コストはメダル。resonance は覚醒1回ごとの全役物の加算倍率）。 */
 export interface EconomyAwaken {
   readonly minLv: number;
   readonly mult: number;
+  readonly resetLv: boolean;
+  readonly resonance: number;
   readonly medalBase: number;
   readonly medalGrowth: number;
 }
@@ -299,6 +301,15 @@ export function parseEconomy(json: unknown): EconomySpec {
   if (medalGrowth <= 1 || medalGrowth > 10) {
     fail('awaken.medal_growth out of range');
   }
+  const resetLvRaw = aw['reset_lv'];
+  if (resetLvRaw !== undefined && typeof resetLvRaw !== 'boolean') {
+    fail('awaken.reset_lv must be boolean');
+  }
+  const resetLv = resetLvRaw === undefined ? true : resetLvRaw;
+  const resonance = aw['resonance'] === undefined ? 0 : asNumber(aw['resonance'], 'awaken.resonance');
+  if (resonance < 0 || resonance > 1) {
+    fail('awaken.resonance out of range');
+  }
   const fa = asRecord(o['factors'], 'factors');
   const fg = asNumber(fa['fg'], 'factors.fg');
   if (fg <= 0 || fg > 10) {
@@ -422,7 +433,7 @@ export function parseEconomy(json: unknown): EconomySpec {
     bulkSizes,
     yakumono,
     milestones: { thresholds, step, stepFrom },
-    awaken: { minLv, mult, medalBase, medalGrowth },
+    awaken: { minLv, mult, resetLv, resonance, medalBase, medalGrowth },
     factors: { fg, idleBase, closed, boostMult },
     upgrades: {
       idleValues,

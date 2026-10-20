@@ -11,8 +11,17 @@ import {
   fail,
 } from './config-check.ts';
 
-/** 閉店のリセットで段を保持できる強化（`keep` の targets）。 */
-export type TreeKeepTarget = 'idle' | 'tank' | 'nail' | 'shorten' | 'hold' | 'auto' | 'tomeuchi';
+/** 閉店のリセットで段を保持できる強化（`keep` の targets。awaken_low は風車〜クルーン・awaken_all は全役物の覚醒）。 */
+export type TreeKeepTarget =
+  | 'idle'
+  | 'tank'
+  | 'nail'
+  | 'shorten'
+  | 'hold'
+  | 'auto'
+  | 'tomeuchi'
+  | 'awaken_low'
+  | 'awaken_all';
 
 /** 既知の keep 対象（順序固定）。 */
 export const TREE_KEEP_TARGETS: readonly TreeKeepTarget[] = [
@@ -23,7 +32,12 @@ export const TREE_KEEP_TARGETS: readonly TreeKeepTarget[] = [
   'hold',
   'auto',
   'tomeuchi',
+  'awaken_low',
+  'awaken_all',
 ];
+
+/** awaken_low が保持する役物の数（風車・回転体・クルーン）。 */
+export const TREE_AWAKEN_LOW_COUNT = 3;
 
 /** ノードの効果（k ごとの判別共用体, spec/25「効果の種類」）。 */
 export type TreeEffect =
@@ -35,6 +49,8 @@ export type TreeEffect =
   | { readonly k: 'price_sub'; readonly sub: number }
   | { readonly k: 'keep'; readonly targets: readonly TreeKeepTarget[] }
   | { readonly k: 'starter'; readonly lv: readonly number[] }
+  | { readonly k: 'starter_rel'; readonly ratio: number }
+  | { readonly k: 'resonance_add'; readonly add: number }
   | { readonly k: 'open_boost'; readonly ms: number; readonly mult: number }
   | { readonly k: 'closed_add'; readonly add: number }
   | { readonly k: 'tank_add_h'; readonly add: number }
@@ -96,6 +112,8 @@ export interface TreeParseContext {
 const EPS = 1e-9;
 /** starter の要素数（役物の数）。 */
 const STARTER_LEN = 8;
+/** starter_rel の割合の上限（前の周回の最高 Lv の半分まで）。 */
+const STARTER_REL_MAX = 0.5;
 /** open_boost の Σms の上限（8時間）。 */
 const OPEN_BOOST_MAX_MS = 8 * 3600000;
 
@@ -124,7 +142,15 @@ function parseEffect(value: unknown, what: string, ctx: TreeParseContext): TreeE
     case 'boost_cap_add_h':
     case 'boost_mult_add':
     case 'prod_min_add':
+    case 'resonance_add':
       return { k, add: asAdd(r['add'], what + '.add') };
+    case 'starter_rel': {
+      const ratio = asPositive(r['ratio'], what + '.ratio');
+      if (ratio > STARTER_REL_MAX) {
+        fail(what + '.ratio out of range');
+      }
+      return { k, ratio };
+    }
     case 'streak_max_add':
     case 'fever_ms_add':
     case 'fever_mult_add':
@@ -255,6 +281,7 @@ function checkTotals(nodes: readonly TreeNodeSpec[], ctx: TreeParseContext): voi
     ['notice_bonus_weight_add', 10],
     ['prod_min_add', 0.5],
     ['points_add', 5],
+    ['resonance_add', 0.25],
   ];
   for (let i = 0; i < caps.length; i = i + 1) {
     const [k, cap] = caps[i] as readonly [string, number];

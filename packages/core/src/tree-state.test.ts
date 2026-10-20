@@ -191,7 +191,7 @@ test('v6 から復元: points = pointsEarned = 10 × regular・tree 空・openBo
   const back = make('small');
   back.restore(v6);
   const s = back.snapshot();
-  expect(s.v).toBe(8);
+  expect(s.v).toBe(9);
   expect(s.points).toBe(10 * regular);
   expect(s.pointsEarned).toBe(10 * regular);
   expect(s.tree).toEqual([]);

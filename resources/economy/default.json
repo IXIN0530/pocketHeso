@@ -13,7 +13,7 @@
     { "id": "shima", "name": "島設備", "period_s": 16, "yield": 845000, "base_price": 330000000 }
   ],
   "milestones": { "thresholds": [25, 50, 100], "step": 50, "step_from": 150 },
-  "awaken": { "min_lv": 100, "mult": 10, "medal_base": 20, "medal_growth": 2 },
+  "awaken": { "min_lv": 100, "mult": 10, "reset_lv": true, "resonance": 0, "medal_base": 20, "medal_growth": 2 },
   "factors": { "fg": 1.0, "idle_base": 0.5, "closed": 0.005, "boost_mult": 2.0 },
   "upgrades": {
     "idle_efficiency": { "values": [0.5, 0.6, 0.7, 0.8, 0.9, 1.0], "costs": [1000, 10000, 100000, 1000000, 10000000] },

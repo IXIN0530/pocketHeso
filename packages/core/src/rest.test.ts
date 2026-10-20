@@ -74,6 +74,8 @@ function digest(eng: Engine, events: readonly SimEvent[]): string {
   delete econ['v'];
   delete econ['restAt'];
   delete econ['restPendingBalls'];
+  delete econ['runMaxLv'];
+  delete econ['prevMaxLv'];
   const evs = events.filter((e) => e.k !== 'opened');
   const canonical = JSON.stringify({ evs, econ, balls: snap.balls, medals: snap.medals, fuelMs: snap.fuelMs });
   return createHash('sha256').update(canonical, 'utf8').digest('hex').slice(0, 16);
@@ -218,7 +220,7 @@ test('v7 のセーブは休業でない状態で始まり、休業中の snapsho
   back.restore(v7);
   expect(back.isResting()).toBe(false);
   expect(back.getRestView()).toBeNull();
-  expect(back.snapshot().v).toBe(8);
+  expect(back.snapshot().v).toBe(9);
   expect(back.snapshot().restAt).toBeNull();
 
   const grants: Grant[] = [FUEL, { claimId: 'p', at: T + 10000, fuelMs: 0, medals: 0, prodMin: 1 }];

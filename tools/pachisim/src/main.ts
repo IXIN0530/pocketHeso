@@ -8,7 +8,7 @@ import {
   parseAtlasArgs,
   writeAtlasFile,
 } from './atlas.ts';
-import { ECON_PROFILES, burstStats, formatEcon, hatsuariProdHours, lastRegular, measurePachinkoEv, parseEconArgs, runEcon } from './econ.ts';
+import { ECON_PROFILES, burstStats, formatAwakenLog, formatEcon, hatsuariProdHours, lastRegular, measurePachinkoEv, parseEconArgs, runEcon } from './econ.ts';
 import { formatHolds, parseHoldsArgs, runHolds } from './holds.ts';
 import { formatReports, parseRunArgs, runMachines } from './run.ts';
 
@@ -82,11 +82,11 @@ function run(argv: string[]): void {
   console.log(formatReports(reports));
 }
 
-/** 経済試算（`pnpm sim econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--play-rate <r>] [--play-min <m>] [--tree off|greedy|all] [--start-rank <n>] [--bantou on|off] [--json]`）。 */
+/** 経済試算（`pnpm sim econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--play-rate <r>] [--play-min <m>] [--tree off|greedy|all] [--start-rank <n>] [--bantou on|off] [--awaken-pick first|best] [--awaken-log] [--json]`）。 */
 function econ(argv: string[]): void {
   const args = parseEconArgs(argv);
   const play = { rate: args.playRate, min: args.playMin };
-  const treeOpts = { tree: args.tree, startRank: args.startRank, bantou: args.bantou };
+  const treeOpts = { tree: args.tree, startRank: args.startRank, bantou: args.bantou, awakenPick: args.awakenPick };
   const result = runEcon(args.profile, args.days, args.seed, args.machine, args.economy, play, treeOpts);
   const standard = ECON_PROFILES.find((p) => p.id === 'standard');
   const baseline =
@@ -112,6 +112,9 @@ function econ(argv: string[]): void {
     return;
   }
   console.log(formatEcon(result, ev, baseline));
+  if (args.awakenLog) {
+    console.log(formatAwakenLog(result.awakenLog));
+  }
   // P8-T9 その2・その3（前面の打ち方のバランス。3機種とも確認する）。
   const h1 = hatsuariProdHours(args.machine, 1, args.economy);
   const h100 = hatsuariProdHours(args.machine, 100, args.economy);
@@ -164,6 +167,6 @@ switch (command) {
     break;
   default:
     console.log(
-      'usage: pachisim <version|bench [count]|atlas --board <id> [--jobs <n>]|run --balls <n> --seed <s> [--machine <id>]... [--json]|econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--play-rate <r>] [--play-min <m>] [--tree off|greedy|all] [--start-rank <n>] [--bantou on|off] [--json]|holds [--spins <n>] [--seed <s>] [--machine <id>]... [--json]>',
+      'usage: pachisim <version|bench [count]|atlas --board <id> [--jobs <n>]|run --balls <n> --seed <s> [--machine <id>]... [--json]|econ --profile standard|none|heavy --days <n> [--seed <s>] [--machine <id>] [--economy <path>] [--ev-hours <h>] [--play-rate <r>] [--play-min <m>] [--tree off|greedy|all] [--start-rank <n>] [--bantou on|off] [--awaken-pick first|best] [--awaken-log] [--json]|holds [--spins <n>] [--seed <s>] [--machine <id>]... [--json]>',
     );
 }

@@ -22,21 +22,21 @@ export interface TreeNodeView {
   readonly cost: number;
   readonly req: readonly string[];
   readonly state: TreeNodeState;
-  /** 効き始め（keep・starter・open_boost だけを持つノードは開店から 'open'、他は買った次の tick から 'now', D-107）。 */
+  /** 効き始め（keep・starter・starter_rel・open_boost だけを持つノードは開店から 'open'、他は買った次の tick から 'now', D-107）。 */
   readonly timing: TreeNodeTiming;
 }
 
 /** ノードの効き始め。 */
 export type TreeNodeTiming = 'now' | 'open';
 
-/** ノードの効き始め（効果がすべて keep・starter・open_boost なら 'open'）。 */
+/** ノードの効き始め（効果がすべて keep・starter・starter_rel・open_boost なら 'open'）。 */
 export function treeNodeTiming(node: TreeNodeSpec): TreeNodeTiming {
   if (node.effect.length === 0) {
     return 'now';
   }
   for (let j = 0; j < node.effect.length; j = j + 1) {
     const k = (node.effect[j] as TreeEffect).k;
-    if (k !== 'keep' && k !== 'starter' && k !== 'open_boost') {
+    if (k !== 'keep' && k !== 'starter' && k !== 'starter_rel' && k !== 'open_boost') {
       return 'now';
     }
   }
@@ -75,6 +75,10 @@ export interface TreeTotals {
   readonly keep: readonly boolean[];
   /** 役物8種の閉店後の Lv（各要素の最大）。 */
   readonly starter: readonly number[];
+  /** 開店時の Lv = 前の周回の最高 Lv × この割合（starter_rel の最大。無ければ 0）。 */
+  readonly starterRel: number;
+  /** 共鳴の係数に足す（Σresonance_add）。 */
+  readonly resonanceAdd: number;
   readonly openBoostMs: number;
   /** Σ(mult − 1)。 */
   readonly openBoostMultAdd: number;
@@ -247,6 +251,8 @@ export function treeSumEffects(nodes: readonly TreeNodeSpec[], owned: readonly b
     keep.push(false);
   }
   const starter = [0, 0, 0, 0, 0, 0, 0, 0];
+  let starterRel = 0;
+  let resonanceAdd = 0;
   let openBoostMs = 0;
   let openBoostMultAdd = 0;
   let closedAdd = 0;
@@ -307,6 +313,14 @@ export function treeSumEffects(nodes: readonly TreeNodeSpec[], owned: readonly b
               starter[q] = v;
             }
           }
+          break;
+        case 'starter_rel':
+          if (e.ratio > starterRel) {
+            starterRel = e.ratio;
+          }
+          break;
+        case 'resonance_add':
+          resonanceAdd = resonanceAdd + e.add;
           break;
         case 'open_boost':
           openBoostMs = openBoostMs + e.ms;
@@ -372,6 +386,8 @@ export function treeSumEffects(nodes: readonly TreeNodeSpec[], owned: readonly b
     priceSub,
     keep,
     starter,
+    starterRel,
+    resonanceAdd,
     openBoostMs,
     openBoostMultAdd,
     closedAdd,

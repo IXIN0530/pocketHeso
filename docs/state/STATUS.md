@@ -2,8 +2,8 @@
 <!-- 30行以内を維持。古い Notes は削除してよい（履歴は git log にある） -->
 
 - Current phase: P13（v1.4 抽選カスタム・先バレ・役物の強化 → `docs/plan/P13-feedback-1-3.md`）。P11-T6 の本番確認は Blockers。P8-T7（任意）と P7 再開は人間の指示待ち
-- Last done: P13-T5（色付き保留の変動に最短 6600ms。RUSH の変化保留が通常時と同じ尺で割れる）
-- Next: P13-T6（Core: 覚醒 v2・共鳴・ツリーの新しい効果。Split: Opus Core / Sonnet pachisim）
+- Last done: P13-T6（Core: 覚醒 v2・共鳴・ツリーの新効果を値は今のまま実装。pachisim に覚醒の選び方・ログ）
+- Next: P13-T7（値を決める試算と spec 更新 → 人間の OK。Split: Sonnet 試算と表 / Opus 選定・spec・DECISIONS）
 - Owner hint: Claude Code（Opus）
 - Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T12 → T13 → T2 は人間の指示で再開
 
@@ -17,5 +17,6 @@
 - 既定機種の人間確認待ち（light/rush/ltのどれを既定にするか。P3バランスに影響）
 
 ## Notes（最新3件まで）
+- [P13-T6]: `awaken.reset_lv`/`resonance`（既定 true/0 で従来と完全一致）・keep `awaken_low`/`awaken_all`・`starter_rel`・`resonance_add`・IdleEconomy v9（runMaxLv/prevMaxLv）・Shop の `awakenGain`（D-113, golden f9c91db2a7424498＝保存項目だけの変化）。変更前の覚醒は3機種とも初覚醒4日目・直後の比 x0.999（Lv を 0 に戻すので下がる）・84日で25回（`econ-20261021-p13.md`）。pachisim `--awaken-pick first|best`（既定 best）・`--awaken-log`。pachisim の閉店後の写し（lv/awakened を 0）は T7 で keep/starter_rel を入れる時に要確認。web の SNAPSHOT_VERSION は据え置き（v8 も読める）
 - [P13-T5]: 白以外の保留の変動は `max(短縮後, spin_min_colored_ms 6600)`（D-112, golden 6431733289044344）。EV 初期6桁一致・標準7日の表は3機種とも不変・RUSH 1回 +1%（`econ-20261021-p13.md`）。行動 56〜63% の基準外は変更前から（既存の持ち越し）。`test.sh all` は core の性能テストが負荷で揺れる（HEAD でも再現、単体・他パッケージは全て通る）。実機確認は T9
 - [P13-T4]: `stores/lcd-view.ts`（盤面が変わった時だけ set）。状態行（大当たり中・連・モード・大当たり回数）と持ち玉は液晶基準、プレビュー・倍速・背面は Projection。持ち玉は未表示の大当たり出玉を引く。実績トーストは液晶が大当たりを映すまで保留。モードの残り回数は液晶と Projection のモードが違う間は出さない。実機確認は T9
