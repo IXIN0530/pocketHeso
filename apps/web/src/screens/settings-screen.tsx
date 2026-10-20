@@ -11,6 +11,7 @@ import { act, resetGame, useEngine } from '../stores/engine.ts';
 import { setPrefs, usePrefs } from '../stores/prefs.ts';
 import { LOOK_KEYS, LOOK_TEXT } from '../board/look.ts';
 import { SPIKE_NAMES } from '../spikes/spike-names.ts';
+import { SakibareCustomField } from './sakibare-custom.tsx';
 import { SavePanel } from './save-panel.tsx';
 import { AboutSheet, OnboardingSheet, markOnboarded } from './onboarding-sheet.tsx';
 import styles from './activity.module.css';
@@ -135,6 +136,12 @@ export function SettingsScreen() {
           <input className={styles.input} type="range" min={0} max={100} step={10} value={prefs.volume} onChange={(e) => setPrefs({ volume: Number(e.target.value) })} />
         </label>
         <p className={styles.note}>最初に画面をタップした後から鳴ります。消音スイッチが入っていると鳴らないことがあります。</p>
+      </section>
+      <section className={styles.card}>
+        <h2>抽選カスタム</h2>
+        <p className={styles.note}>先バレ（保留が光って先に知らせる演出）の出方を選べます。当たりやすさは変わりません。</p>
+        <SakibareCustomField value={prefs.sakibareCustom} onChange={(sakibareCustom) => setPrefs({ sakibareCustom })} />
+        <p className={styles.note}>変更は次に入った保留から効きます</p>
       </section>
       <section className={styles.card}>
         <h2>見た目</h2>

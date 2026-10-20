@@ -2,9 +2,9 @@
 <!-- 30行以内を維持。古い Notes は削除してよい（履歴は git log にある） -->
 
 - Current phase: P13（v1.4 抽選カスタム・先バレ・役物の強化 → `docs/plan/P13-feedback-1-3.md`）。P11-T6 の本番確認は Blockers。P8-T7（任意）と P7 再開は人間の指示待ち
-- Last done: P13 の計画を作成（人間のフィードバック 10/20 の 6 項目）。P12 は完了（v1.3.0）
-- Next: P13-T1（抽選カスタム。最優先）
-- Owner hint: Claude Code（Opus。Split で Sonnet）
+- Last done: P13-T1（抽選カスタム: 通常＋先バレ 40%/95%・90%/90%・100%/60%。設定画面・ホールの札）
+- Next: P13-T2（先バレの時刻の確認）
+- Owner hint: Claude Code（Sonnet）
 - Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T12 → T13 → T2 は人間の指示で再開
 
 ## Blockers
@@ -17,6 +17,6 @@
 - 既定機種の人間確認待ち（light/rush/ltのどれを既定にするか。P3バランスに影響）
 
 ## Notes（最新3件まで）
+- [P13-T1]: fx の先バレ抽選（式・統計テスト・spec/43・D-110）は Opus、prefs・設定・lcd-timeline の接続は Sonnet（worker）。取得時のモードは Core の `modeAtDraw`。Core 無変更。人間 10/20: 覚醒の「共鳴」と T5 の変動時間を延ばす案は OK
 - [P13 計画]: 先バレ音.mp3 は ~/Downloads にあったので `apps/web/public/sounds/先バレ音.mp3` へコピー（未コミット・T3 で改名して追加）。T7 は人間の OK で止まる
 - [P12-T5]: v1.3.0 を main へ・本番確認 OK。
-- [P12-T4]: 実機確認 1〜4 全て OK（人間）。

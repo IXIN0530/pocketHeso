@@ -1,4 +1,12 @@
-import { RNGStream, type LotteryHoldColor } from '@ph/core';
+import {
+  BONUS_SERIAL_BASE,
+  RESERVE_SERIAL_BASE,
+  RNGStream,
+  modeOf,
+  type LotteryHoldColor,
+  type LotteryMode,
+  type MachineSpec,
+} from '@ph/core';
 
 /**
  * 保留変化（P7-T4, D-075）。最終色は Core が取得時に決め、ここでは見せ方だけを決める: 変化するか・先バレか。
@@ -64,6 +72,70 @@ export function holdBreakScale(spinMs: number): number {
 export function holdColorAt(plan: HoldChangePlan, spinAt: number | null, now: number, scale = 1): LotteryHoldColor {
   if (!plan.change) return plan.final;
   return spinAt !== null && now >= spinAt + HOLD_BREAK_MS.reveal * scale ? plan.final : 'white';
+}
+
+/**
+ * 抽選カスタム（P13-T1。リゼロ・東京喰種の先バレカスタム）。normal は色で決める従来の先バレ（D-074）。
+ * それ以外は当否を見て、信頼度 rel = P(当たり | 先バレ)・占有率 occ = P(先バレ | 当たり) になる確率で先バレする。
+ */
+export type SakibareCustom = 'normal' | 'sb40' | 'sb90' | 'sb100';
+
+export const SAKIBARE_CUSTOMS: readonly SakibareCustom[] = ['normal', 'sb40', 'sb90', 'sb100'];
+
+/** カスタムの信頼度と占有率（normal は色で決めるので無い）。 */
+export const SAKIBARE_CUSTOM_RATES: Readonly<Record<Exclude<SakibareCustom, 'normal'>, { readonly rel: number; readonly occ: number }>> = {
+  sb40: { rel: 0.4, occ: 0.95 },
+  sb90: { rel: 0.9, occ: 0.9 },
+  sb100: { rel: 1, occ: 0.6 },
+};
+
+export function isSakibareCustom(v: unknown): v is SakibareCustom {
+  return typeof v === 'string' && (SAKIBARE_CUSTOMS as readonly string[]).includes(v);
+}
+
+/** 取得時のモードの当選確率（Core の閾値 / 2^32）。 */
+export function holdHitProb(spec: MachineSpec, mode: LotteryMode): number {
+  return modeOf(spec, mode).thresholdU32 / 4294967296;
+}
+
+/**
+ * カスタムの先バレの確率。当たりは occ、ハズレは p·occ·(1−rel) / (rel·(1−p))（rel=1 なら 0）。
+ * こうすると P(当たり | 先バレ) = rel・P(先バレ | 当たり) = occ になる。
+ */
+export function sakibareProb(custom: Exclude<SakibareCustom, 'normal'>, hit: boolean, p: number): number {
+  const { rel, occ } = SAKIBARE_CUSTOM_RATES[custom];
+  if (hit) return occ;
+  if (rel >= 1 || p <= 0) return 0;
+  if (p >= 1) return 1;
+  return Math.min(1, (p * occ * (1 - rel)) / (rel * (1 - p)));
+}
+
+/** 特別保留・ボーナス保留（通し番号 1e9 以上 2e9 未満）。カスタムでは先バレしない。 */
+function isFreeHold(serial: number): boolean {
+  return serial >= BONUS_SERIAL_BASE && serial < RESERVE_SERIAL_BASE;
+}
+
+/**
+ * 先バレするか。normal は planHoldChange の sakibare のまま（色だけで決まる）。
+ * カスタムは RNGStream(seed, 'holdChange', serial) の **3番目**の値で引く（1〜2番目は planHoldChange が使うので、保留の色・変化の見せ方は変わらない）。
+ * カスタムの先バレは音と光だけで、点滅（変化）を強制しない（白い保留への先バレ＝ガセもある）。
+ */
+export function planSakibare(
+  seed: number,
+  serial: number,
+  final: LotteryHoldColor,
+  hit: boolean,
+  p: number,
+  custom: SakibareCustom,
+): boolean {
+  if (custom === 'normal') return planHoldChange(seed, serial, final).sakibare;
+  if (isFreeHold(serial)) return false;
+  const q = sakibareProb(custom, hit, p);
+  if (q <= 0) return false;
+  const rng = new RNGStream(seed, 'holdChange', serial);
+  rng.nextU32();
+  rng.nextU32();
+  return rng.nextUnit() < q;
 }
 
 /** 取得から先バレまでの間（玉が入ってすぐ鳴らす）。 */

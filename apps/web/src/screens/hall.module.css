@@ -276,3 +276,12 @@
 .shoot:disabled {
   opacity: 0.6;
 }
+
+/* 抽選カスタム（先バレ）が通常以外の時の札。 */
+.custom {
+  padding: 0 6px;
+  border-radius: 6px;
+  background: #3a3f6a;
+  color: #d0d3ea;
+  font-size: 12px;
+}

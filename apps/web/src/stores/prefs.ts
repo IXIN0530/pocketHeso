@@ -1,4 +1,5 @@
 // 端末ごとの表示の好み（セーブに含めない）。localStorage が使えない時は既定値のまま動く。
+import { isSakibareCustom, type SakibareCustom } from '@ph/fx';
 import { create } from 'zustand';
 
 export interface Prefs {
@@ -10,20 +11,28 @@ export interface Prefs {
   readonly haptics: boolean;
   /** 見た目の解放のうち「使わない」ものの key（常連ツリーで開けても選んで外せる, spec/25）。 */
   readonly looksOff: readonly string[];
+  /** 抽選カスタム（先バレの出方。次に取得する保留から効く, P13-T1）。 */
+  readonly sakibareCustom: SakibareCustom;
 }
 
 const KEY = 'pocketheso.prefs';
-const DEFAULTS: Prefs = { bloom: true, volume: 70, haptics: true, looksOff: [] };
+const DEFAULTS: Prefs = { bloom: true, volume: 70, haptics: true, looksOff: [], sakibareCustom: 'normal' };
+
+/** 保存された値を検証して Prefs にする（不正な値・欠けた値は既定に）。 */
+export function parsePrefs(json: unknown): Prefs {
+  const raw = (typeof json === 'object' && json !== null ? json : {}) as Partial<Record<keyof Prefs, unknown>>;
+  return {
+    bloom: typeof raw.bloom === 'boolean' ? raw.bloom : DEFAULTS.bloom,
+    volume: typeof raw.volume === 'number' ? Math.min(100, Math.max(0, raw.volume)) : DEFAULTS.volume,
+    haptics: typeof raw.haptics === 'boolean' ? raw.haptics : DEFAULTS.haptics,
+    looksOff: Array.isArray(raw.looksOff) ? raw.looksOff.filter((k): k is string => typeof k === 'string') : DEFAULTS.looksOff,
+    sakibareCustom: isSakibareCustom(raw.sakibareCustom) ? raw.sakibareCustom : DEFAULTS.sakibareCustom,
+  };
+}
 
 function load(): Prefs {
   try {
-    const raw = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Prefs>;
-    return {
-      bloom: typeof raw.bloom === 'boolean' ? raw.bloom : DEFAULTS.bloom,
-      volume: typeof raw.volume === 'number' ? Math.min(100, Math.max(0, raw.volume)) : DEFAULTS.volume,
-      haptics: typeof raw.haptics === 'boolean' ? raw.haptics : DEFAULTS.haptics,
-      looksOff: Array.isArray(raw.looksOff) ? raw.looksOff.filter((k): k is string => typeof k === 'string') : DEFAULTS.looksOff,
-    };
+    return parsePrefs(JSON.parse(localStorage.getItem(KEY) ?? '{}'));
   } catch {
     return DEFAULTS;
   }

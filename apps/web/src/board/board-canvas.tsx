@@ -3,7 +3,7 @@ import { parseBoard, parseLaunchDirs } from '@ph/core';
 import boardJson from '../../../../resources/boards/default.json';
 import dirsJson from '../../../../resources/boards/launch_dirs.json';
 import patternsJson from '../../../../resources/machines/patterns.json';
-import { machineRound } from '../engine/game-config.ts';
+import { machineHitProb, machineRound } from '../engine/game-config.ts';
 import { installAudioUnlock } from '../fx/fx-host.ts';
 import { clock } from '../stores/clock.ts';
 import { onShots, onView, useEngine } from '../stores/engine.ts';
@@ -62,7 +62,12 @@ export function BoardCanvas({ active = true }: { active?: boolean }) {
     const setRound = (id: string) => {
       const r = machineRound(id);
       if (r) scene.setRound(r);
+      scene.setHitProb((mode) => machineHitProb(id, mode));
     };
+    scene.setSakibareCustom(usePrefs.getState().sakibareCustom);
+    const offSakibare = usePrefs.subscribe((p, prev) => {
+      if (p.sakibareCustom !== prev.sakibareCustom) scene.setSakibareCustom(p.sakibareCustom);
+    });
     setRound(useEngine.getState().machineId);
     const offYaku = useEngine.subscribe((s, prev) => {
       if (s.projection !== prev.projection) {
@@ -94,6 +99,7 @@ export function BoardCanvas({ active = true }: { active?: boolean }) {
       offPreview();
       offPrefs();
       offLookPrefs();
+      offSakibare();
       offAudio();
       sceneRef.current = null;
       scene.destroy();

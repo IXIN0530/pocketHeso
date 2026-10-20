@@ -1,16 +1,29 @@
 import 'fake-indexeddb/auto';
 import { readFileSync } from 'node:fs';
 import type { ClaimRecord } from '@ph/claims';
-import type { HoldEntry, LotteryHoldColor } from '@ph/core';
-import { HOLD_BREAK_MS, HOLD_CRACK_CUE, HOLD_CRACK_STEPS_MS, SAKIBARE_CUE, SAKIBARE_DELAY_MS, holdBreakScale, planHoldChange } from '@ph/fx';
+import { GRANT_HOLD_SERIAL_BASE, type HallProjection, type HoldEntry, type LotteryHoldColor, type LotteryMode } from '@ph/core';
+import {
+  HOLD_BREAK_MS,
+  HOLD_CRACK_CUE,
+  HOLD_CRACK_STEPS_MS,
+  SAKIBARE_CUE,
+  SAKIBARE_CUSTOMS,
+  SAKIBARE_DELAY_MS,
+  holdBreakScale,
+  planHoldChange,
+  planSakibare,
+  type SakibareCustom,
+} from '@ph/fx';
 import { expect, test } from 'vitest';
 import packJson from '../../../../resources/packs/default/pack.json';
 import { EngineHost, type TickResult } from '../engine/engine-host.ts';
 import { openStorage } from '../platform/storage.ts';
+import { machineHitProb } from '../engine/game-config.ts';
 import { DISPLAY_LAG_MS } from './ball-tracks.ts';
 import {
   LcdTimeline,
   applyLcdEvent,
+  applyLcdEventWith,
   isGrantHold,
   matchesProjection,
   sakibareTimes,
@@ -229,4 +242,106 @@ test('特別保留（通し番号 1.5e9 台）だけに「特」の札', () => {
   expect(isGrantHold(2000000000)).toBe(false); // 電サポの自動保留
   expect(isGrantHold(42)).toBe(false);
   expect(isGrantHold(-1)).toBe(false);
+});
+
+// --- 抽選カスタム（P13-T1） ---
+const holdAs = (serial: number, color: LotteryHoldColor, isHit: boolean, modeAtDraw: LotteryMode = 'normal'): HoldEntry =>
+  ({ ...hold(serial, color), isHit, modeAtDraw }) as HoldEntry;
+const EMPTY_STATE: LcdState = { holds: [], spin: null, resolved: null, jackpot: null };
+const P = 0.1;
+const fixedP = () => P;
+
+test('抽選カスタムを変えても、保留の見せる色・点滅は変わらない', () => {
+  const seed = 31;
+  const colors: LotteryHoldColor[] = ['white', 'blue', 'green', 'red', 'gold'];
+  const serials = Array.from({ length: 40 }, (_, i) => i);
+  const shown = (custom: SakibareCustom) => {
+    let s = EMPTY_STATE;
+    serials.forEach((n, i) => {
+      s = applyLcdEventWith(s, { k: 'holdAdded', entry: holdAs(n, colors[i % colors.length]!, i % 3 === 0), at: 1000 + i }, custom);
+    });
+    return shownLcdState(s, seed, 5000).holds.map((h) => [h.color, h.blink ?? false]);
+  };
+  const base = shown('normal');
+  expect(base.some(([, b]) => b === true)).toBe(true);
+  for (const c of SAKIBARE_CUSTOMS) expect(shown(c)).toEqual(base);
+});
+
+test('抽選カスタムは取得時の値が使われる（取得後に設定を変えても、取った保留の先バレは変わらない）', () => {
+  const seed = 7;
+  const hitSerial = (() => {
+    for (let n = 0; n < 10000; n++) if (planSakibare(seed, n, 'white', true, P, 'sb100')) return n;
+    throw new Error('not found');
+  })();
+  const other = (() => {
+    for (let n = hitSerial + 1; n < 10000; n++) if (planSakibare(seed, n, 'white', true, P, 'sb100')) return n;
+    throw new Error('not found');
+  })();
+  const tl = new LcdTimeline();
+  const proj = (holds: LotteryHoldColor[]) => ({ holds, spin: undefined, jackpot: undefined, mode: 'normal', chain: 0, chainBalls: 0 }) as unknown as HallProjection;
+  tl.push(proj([]), []);
+  tl.custom = 'sb100';
+  tl.push(proj(['white']), [{ k: 'holdAdded', entry: holdAs(hitSerial, 'white', true), at: 1000 } as never]);
+  tl.advance(1000);
+  const first = sakibareTimes(tl.state, seed, fixedP);
+  expect(first).toEqual([{ entry: hitSerial, at: 1000 + SAKIBARE_DELAY_MS }]);
+  // 設定を変える: 取った保留はそのまま、次に取る保留から新しい設定。
+  tl.custom = 'sb40';
+  expect(sakibareTimes(tl.state, seed, fixedP)).toEqual(first);
+  tl.push(proj(['white', 'white']), [{ k: 'holdAdded', entry: holdAs(other, 'white', true), at: 2000 } as never]);
+  tl.advance(2000);
+  expect(tl.state.holds.map((h) => h.custom)).toEqual(['sb100', 'sb40']);
+  expect(sakibareTimes(tl.state, seed, fixedP).filter((x) => x.entry === hitSerial)).toEqual(first);
+  // 変動に移っても取得時の値を引き継ぐ。
+  const s = applyLcdEvent(tl.state, { k: 'spinStarted', entry: hitSerial, at: 3000, pattern: 'normal_short', endsAt: 8000 });
+  expect(s.spin).toMatchObject({ custom: 'sb100', mode: 'normal', addedAt: 1000 });
+  expect(sakibareTimes(s, seed, fixedP).find((x) => x.entry === hitSerial)).toEqual(first[0]);
+});
+
+test('sb100: ハズレの保留は先バレしない・当たりの保留は先バレしうる（取得時のモードの確率で決まる）', () => {
+  const seed = 11;
+  let sbHit = 0;
+  for (let n = 0; n < 2000; n++) {
+    const miss = applyLcdEventWith(EMPTY_STATE, { k: 'holdAdded', entry: holdAs(n, 'white', false), at: 100 }, 'sb100');
+    expect(sakibareTimes(miss, seed, fixedP)).toEqual([]);
+    const hit = applyLcdEventWith(EMPTY_STATE, { k: 'holdAdded', entry: holdAs(n, 'white', true), at: 100 }, 'sb100');
+    if (sakibareTimes(hit, seed, fixedP).length > 0) sbHit++;
+  }
+  // 占有率 0.6 ほど（RNG の引きなので ±0.05）。
+  expect(Math.abs(sbHit / 2000 - 0.6)).toBeLessThan(0.05);
+  // 当たりの保留の先バレの時刻は取得 + SAKIBARE_DELAY_MS。
+  const n = Array.from({ length: 100 }, (_, i) => i).find((i) => planSakibare(seed, i, 'white', true, P, 'sb100'))!;
+  const s = applyLcdEventWith(EMPTY_STATE, { k: 'holdAdded', entry: holdAs(n, 'white', true), at: 400 }, 'sb100');
+  expect(sakibareTimes(s, seed, fixedP)).toEqual([{ entry: n, at: 400 + SAKIBARE_DELAY_MS }]);
+  // 当否が分からない（Projection から作った）保留は出さない。
+  const unknown: LcdState = { ...s, holds: s.holds.map((h) => ({ ...h, hit: null })) };
+  expect(sakibareTimes(unknown, seed, fixedP)).toEqual([]);
+});
+
+test('特別保留（1.5e9 台）はカスタムでは先バレしない', () => {
+  for (const c of ['sb40', 'sb90', 'sb100'] as const) {
+    for (let k = 0; k < 200; k++) {
+      const s = applyLcdEventWith(EMPTY_STATE, { k: 'holdAdded', entry: holdAs(GRANT_HOLD_SERIAL_BASE + k, 'gold', true), at: 100 }, c);
+      expect(sakibareTimes(s, 3, fixedP)).toEqual([]);
+    }
+  }
+});
+
+test('取得時のモードの確率で引く（機種の spec から: rush-middle-01 の通常と ST は確率が違う）', () => {
+  const pn = machineHitProb('rush-middle-01', 'normal');
+  const ps = machineHitProb('rush-middle-01', 'st');
+  expect(pn).toBeGreaterThan(0);
+  expect(ps).toBeGreaterThan(pn);
+  expect(machineHitProb('nothing', 'normal')).toBe(0);
+  // ハズレでも ST の確率ならカスタム sb40 で先バレする保留がある（通常の確率より先バレしやすい）。
+  const seed = 2;
+  const count = (mode: LotteryMode) => {
+    let n = 0;
+    for (let i = 0; i < 20000; i++) {
+      const s = applyLcdEventWith(EMPTY_STATE, { k: 'holdAdded', entry: holdAs(i, 'white', false, mode), at: 0 }, 'sb40');
+      if (sakibareTimes(s, seed, (m) => machineHitProb('rush-middle-01', m)).length > 0) n++;
+    }
+    return n;
+  };
+  expect(count('st')).toBeGreaterThan(count('normal'));
 });

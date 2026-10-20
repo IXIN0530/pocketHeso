@@ -311,3 +311,37 @@
     animation-name: away-banner-fade;
   }
 }
+
+/* 抽選カスタムのラジオ（縦並び。名前の下に小さく説明。ラベルは折り返す）。 */
+.radios {
+  display: grid;
+  gap: 4px;
+}
+
+.radioRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 0;
+}
+
+.radioRow input {
+  flex: none;
+  min-width: 22px;
+  min-height: 22px;
+  margin: 0;
+}
+
+.radioText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.radioDesc {
+  color: #a8acc8;
+  font-size: 12px;
+}

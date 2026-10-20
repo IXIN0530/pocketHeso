@@ -1,14 +1,30 @@
 import { readFileSync } from 'node:fs';
-import { LOTTERY_HOLD_COLORS, holdColorWeights, modeOf, parseMachineText, type LotteryHoldColor, type LotteryMode } from '@ph/core';
+import {
+  BONUS_SERIAL_BASE,
+  GRANT_HOLD_SERIAL_BASE,
+  LOTTERY_HOLD_COLORS,
+  RESERVE_SERIAL_BASE,
+  holdColorWeights,
+  modeOf,
+  parseMachineText,
+  type LotteryHoldColor,
+  type LotteryMode,
+} from '@ph/core';
 import { expect, test } from 'vitest';
 import {
   HOLD_BREAK_MS,
   HOLD_CRACK_STEPS_MS,
+  SAKIBARE_CUSTOMS,
+  SAKIBARE_CUSTOM_RATES,
   SAKIBARE_DELAY_MS,
   holdChangeCue,
   holdColorAt,
+  holdHitProb,
+  isSakibareCustom,
   planHoldChange,
+  planSakibare,
   sakibareAt,
+  sakibareProb,
   type HoldChangePlan,
 } from './hold-change.ts';
 
@@ -118,4 +134,76 @@ test('変化する保留は灰色のまま、自分の変動開始から割れ�
   expect(holdColorAt(p, 5000, 5000 + t.reveal * 0.5, 0.5)).toBe('gold');
   const colors: LotteryHoldColor[] = ['blue', 'green', 'red', 'gold'];
   expect(colors.map(holdChangeCue)).toEqual(['hold_blue', 'hold_green', 'hold_red', 'hold_gold']);
+});
+
+function loadSpec(machine: string) {
+  return parseMachineText(readFileSync(new URL(`../../../resources/machines/${machine}.json`, import.meta.url), 'utf8'));
+}
+
+const CUSTOMS = ['sb40', 'sb90', 'sb100'] as const;
+
+test('抽選カスタム normal: 従来の色で決める先バレと全て一致（当否・確率によらない）', () => {
+  for (const color of LOTTERY_HOLD_COLORS) {
+    for (let s = 0; s < 3000; s++) {
+      const want = planHoldChange(5, s, color).sakibare;
+      expect(planSakibare(5, s, color, true, 0.01, 'normal')).toBe(want);
+      expect(planSakibare(5, s, color, false, 0.5, 'normal')).toBe(want);
+    }
+  }
+});
+
+test('抽選カスタム: 式から出る信頼度・占有率が指定どおり（3機種・取得時の各モード）', () => {
+  for (const machine of ['light-middle-01', 'rush-middle-01', 'lt-middle-01']) {
+    const spec = loadSpec(machine);
+    const modes: LotteryMode[] = ['normal', 'st'];
+    if (spec.jitan !== undefined) modes.push('jitan');
+    if (spec.lt !== undefined) modes.push('lt');
+    for (const mode of modes) {
+      const p = holdHitProb(spec, mode);
+      expect(p).toBeGreaterThan(0);
+      for (const c of CUSTOMS) {
+        const { rel, occ } = SAKIBARE_CUSTOM_RATES[c];
+        const hit = p * sakibareProb(c, true, p);
+        const all = hit + (1 - p) * sakibareProb(c, false, p);
+        expect(hit / p).toBeCloseTo(occ, 9);
+        expect(hit / all).toBeCloseTo(rel, 9);
+      }
+    }
+  }
+});
+
+test('抽選カスタム: 乱数で引いた実測の信頼度・占有率が ±0.02（rush の通常時）', () => {
+  const p = holdHitProb(loadSpec('rush-middle-01'), 'normal');
+  const nHit = 100000;
+  const nMiss = 600000;
+  for (const c of CUSTOMS) {
+    let sbHit = 0;
+    let sbMiss = 0;
+    for (let s = 0; s < nHit; s++) if (planSakibare(21, s, 'white', true, p, c)) sbHit++;
+    for (let s = 0; s < nMiss; s++) if (planSakibare(21, nHit + s, 'white', false, p, c)) sbMiss++;
+    const occ = sbHit / nHit;
+    const hit = p * occ;
+    const rel = hit / (hit + (1 - p) * (sbMiss / nMiss));
+    expect(Math.abs(occ - SAKIBARE_CUSTOM_RATES[c].occ)).toBeLessThan(0.02);
+    expect(Math.abs(rel - SAKIBARE_CUSTOM_RATES[c].rel)).toBeLessThan(0.02);
+    if (c === 'sb100') expect(sbMiss).toBe(0);
+  }
+});
+
+test('抽選カスタム: 色・保留変化に影響しない・同じ引数なら同じ・特別保留とボーナス保留は先バレしない', () => {
+  for (let s = 0; s < 2000; s++) {
+    const a = planSakibare(9, s, 'white', true, 0.003, 'sb40');
+    for (const color of LOTTERY_HOLD_COLORS) expect(planSakibare(9, s, color, true, 0.003, 'sb40')).toBe(a);
+    expect(planSakibare(9, s, 'red', true, 0.003, 'sb40')).toBe(planSakibare(9, s, 'red', true, 0.003, 'sb40'));
+  }
+  for (const serial of [BONUS_SERIAL_BASE, GRANT_HOLD_SERIAL_BASE + 3, RESERVE_SERIAL_BASE - 1]) {
+    for (const c of CUSTOMS) expect(planSakibare(1, serial, 'gold', true, 0.1, c)).toBe(false);
+  }
+  // 電サポの自動保留は対象。
+  let any = false;
+  for (let k = 0; k < 50 && !any; k++) any = planSakibare(1, RESERVE_SERIAL_BASE + k, 'white', true, 0.025, 'sb40');
+  expect(any).toBe(true);
+  expect(isSakibareCustom('sb90')).toBe(true);
+  expect(isSakibareCustom('sb50')).toBe(false);
+  expect(SAKIBARE_CUSTOMS).toEqual(['normal', 'sb40', 'sb90', 'sb100']);
 });

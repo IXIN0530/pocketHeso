@@ -38,7 +38,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FlashLayer, HOLD_BREAK_MS, HOLD_CRACK_CUE, SAKIBARE_CUE, holdBreakScale, holdChangeCue, holdRank, type SceneCue } from '@ph/fx';
+import { FlashLayer, HOLD_BREAK_MS, HOLD_CRACK_CUE, SAKIBARE_CUE, holdBreakScale, holdChangeCue, holdRank, type SakibareCustom, type SceneCue } from '@ph/fx';
 import {
   BALL_RADIUS_MM,
   type Board,
@@ -46,6 +46,7 @@ import {
   type EngineSimEvent,
   type HallProjection,
   type LotteryHoldColor,
+  type LotteryMode,
   type Vec2,
 } from '@ph/core';
 import type { Shot } from '../engine/engine-host.ts';
@@ -163,6 +164,8 @@ export class BoardScene {
   /** 今の変動の演出（CueSheet の lcd キュー）。 */
   private show: SpinShow | null = null;
   private seed = 0;
+  /** 取得時のモード → 当選確率（今の機種。先バレのカスタム用, P13-T1）。 */
+  private hitProb: (mode: LotteryMode) => number = () => 0;
   private preview: (PreviewSpin & { start: number }) | null = null;
   private cueShake = { until: 0, amp: 0 };
   private cueCam = { from: 0, ms: 0 };
@@ -360,6 +363,16 @@ export class BoardScene {
   /** 演出の分岐に使う seed（Engine の GameMeta, spec/43）。 */
   setSeed(seed: number): void {
     this.seed = seed;
+  }
+
+  /** 今の機種の取得時のモード → 当選確率（機種を替えたら呼び直す）。 */
+  setHitProb(hitProb: (mode: LotteryMode) => number): void {
+    this.hitProb = hitProb;
+  }
+
+  /** 抽選カスタム（設定）。この後に取得する保留から効く（取った保留は取得時の値のまま）。 */
+  setSakibareCustom(custom: SakibareCustom): void {
+    this.lcdTimeline.custom = custom;
   }
 
   /** 演出プレビュー・留守中リプレイ（次に描くフレームから実時間で流す）。 */
@@ -598,7 +611,7 @@ export class BoardScene {
    */
   private noteSakibare(st: LcdState, now: number, scale: number): void {
     const next = new Set<number>();
-    for (const { entry, at } of sakibareTimes(st, this.seed)) {
+    for (const { entry, at } of sakibareTimes(st, this.seed, this.hitProb)) {
       if (at > now) continue;
       next.add(entry);
       if (this.sakibareDone.has(entry) || now - at > SAKIBARE_LATE_MS) continue;

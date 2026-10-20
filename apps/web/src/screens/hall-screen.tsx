@@ -10,7 +10,9 @@ import { formatFuel } from '../stores/activity.ts';
 import { achievedIds, achievedToast } from '../stores/achievements.ts';
 import { act, onView, useEngine } from '../stores/engine.ts';
 import { formatClock, formatNum, formatTime } from '../stores/format.ts';
+import { usePrefs } from '../stores/prefs.ts';
 import { PREVIEW_TAIL_MS, usePreview } from '../stores/preview.ts';
+import { sakibareCustomBadge } from './sakibare-custom.tsx';
 import styles from './hall.module.css';
 
 // Three.js 一式は盤面と一緒に別チャンクで読む（最初の表示を待たせない）。
@@ -96,6 +98,7 @@ function AchievedToast() {
  */
 export function HallScreen({ active = true }: { active?: boolean }) {
   const projection = useEngine((s) => s.projection);
+  const customBadge = sakibareCustomBadge(usePrefs((s) => s.sakibareCustom));
   const [busy, setBusy] = useState(false);
   const [tapped, setTapped] = useState(-1);
 
@@ -176,6 +179,7 @@ export function HallScreen({ active = true }: { active?: boolean }) {
                 開店 ×{openBoostMult(p.tree.nodes)} 残り {formatClock(p.tree.openBoostMs)}
               </span>
             )}
+            {customBadge !== null && <span className={styles.custom}>{customBadge}</span>}
             {p.bonusStock > 0 && <span className={styles.stock}>特別保留 ×{p.bonusStock}（待機）</span>}
             {p.jackpot && (
               <span className={styles.hot}>

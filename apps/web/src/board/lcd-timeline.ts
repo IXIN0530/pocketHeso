@@ -2,7 +2,7 @@
 // Engine のイベント（保留の取得 → 変動開始 → 停止 → 大当たり）を時刻付きでため、盤面の玉と同じ表示時刻で1つずつ反映する。
 // 前進ごとに「全部反映した結果」を Projection と照らし、合わなければ（背面の間・Debug の倍速で取りこぼした時）Projection に揃える。
 import { GRANT_HOLD_SERIAL_BASE, RESERVE_SERIAL_BASE, type EngineSimEvent, type HallProjection, type JackpotKind, type LotteryHoldColor, type LotteryMode } from '@ph/core';
-import { holdBreakScale, holdColorAt, planHoldChange, sakibareAt } from '@ph/fx';
+import { SAKIBARE_DELAY_MS, holdBreakScale, holdColorAt, planHoldChange, planSakibare, type SakibareCustom } from '@ph/fx';
 
 export interface LcdHold {
   /** 保留の通し番号（Projection から作った時は分からないので -1）。 */
@@ -19,6 +19,10 @@ export interface LcdHold {
   readonly rate?: number;
   /** 玉の単価 unit（出玉の数え上げ用。不明は rate, D-090）。 */
   readonly unit?: number;
+  /** 取得時のモード（先バレの確率 p に使う。Projection から作った時は省略）。 */
+  readonly mode?: LotteryMode;
+  /** 取得時の抽選カスタム（設定を後から変えても、取った保留はこのまま。省略は normal）。 */
+  readonly custom?: SakibareCustom;
 }
 
 export interface LcdSpin {
@@ -36,6 +40,9 @@ export interface LcdSpin {
   readonly breaks?: boolean;
   readonly rate?: number;
   readonly unit?: number;
+  /** 保留だった時の取得時のモードと抽選カスタム（先バレ用）。 */
+  readonly mode?: LotteryMode;
+  readonly custom?: SakibareCustom;
 }
 
 export interface LcdJackpot {
@@ -171,8 +178,13 @@ export function stateFromProjection(p: HallProjection): LcdState {
   };
 }
 
-/** イベント1つを反映する（spec/21 流れ: 取得で末尾に積み、変動開始で先頭を取り出す）。 */
+/** イベント1つを反映する（spec/21 流れ: 取得で末尾に積み、変動開始で先頭を取り出す）。抽選カスタムは normal（reduce にそのまま渡せる 2 引数）。 */
 export function applyLcdEvent(s: LcdState, e: LcdEvent): LcdState {
+  return applyLcdEventWith(s, e, 'normal');
+}
+
+/** applyLcdEvent に、取得した保留へ記録する抽選カスタム（その時点の設定）を渡す版。 */
+export function applyLcdEventWith(s: LcdState, e: LcdEvent, custom: SakibareCustom): LcdState {
   switch (e.k) {
     case 'holdAdded':
       return {
@@ -184,6 +196,8 @@ export function applyLcdEvent(s: LcdState, e: LcdEvent): LcdState {
             color: e.entry.color,
             hit: e.entry.isHit,
             addedAt: e.at,
+            mode: e.entry.modeAtDraw,
+            custom,
             ...(e.entry.rate !== undefined && e.entry.rate !== 1 ? { rate: e.entry.rate } : {}),
             ...(e.entry.unit !== undefined ? { unit: e.entry.unit } : {}),
           },
@@ -203,6 +217,8 @@ export function applyLcdEvent(s: LcdState, e: LcdEvent): LcdState {
           color: h?.color ?? null,
           hit: h?.hit ?? null,
           addedAt: h?.addedAt ?? null,
+          ...(h?.mode !== undefined ? { mode: h.mode } : {}),
+          ...(h?.custom !== undefined ? { custom: h.custom } : {}),
           ...(h?.rate !== undefined ? { rate: h.rate } : {}),
           ...(h?.unit !== undefined ? { unit: h.unit } : {}),
         },
@@ -301,18 +317,27 @@ export function shownLcdState(s: LcdState, seed: number, now: number): LcdState 
 }
 
 /**
- * 先バレ（D-074）する保留・変動の番号と時刻（見せ方と同じ RNGStream(seed, 'holdChange', entry) で決まる）。
- * 取得時刻が分からない保留（Projection から作った・リプレイ・プレビュー）は出さない。
+ * 先バレ（D-074）する保留・変動の番号と時刻。normal は色で、カスタムは当否と取得時のモードの当選確率 p で決まる（planSakibare, P13-T1）。
+ * 取得時刻・当否・色が分からない保留（Projection から作った・リプレイ・プレビュー）は出さない。
+ * hitProb は取得時のモード → 当選確率（今の機種の spec から）。
  */
-export function sakibareTimes(s: LcdState, seed: number): { entry: number; at: number }[] {
+export function sakibareTimes(s: LcdState, seed: number, hitProb: (mode: LotteryMode) => number = () => 0): { entry: number; at: number }[] {
   const out: { entry: number; at: number }[] = [];
-  const see = (entry: number, color: LotteryHoldColor | null, addedAt: number | null) => {
-    if (entry < 0 || color === null || addedAt === null) return;
-    const at = sakibareAt(planHoldChange(seed, entry, color), addedAt);
-    if (at !== null) out.push({ entry, at });
+  const see = (
+    entry: number,
+    color: LotteryHoldColor | null,
+    addedAt: number | null,
+    hit: boolean | null,
+    mode: LotteryMode | undefined,
+    custom: SakibareCustom | undefined,
+  ) => {
+    if (entry < 0 || color === null || addedAt === null || hit === null) return;
+    const c = custom ?? 'normal';
+    const p = c === 'normal' ? 0 : hitProb(mode ?? 'normal');
+    if (planSakibare(seed, entry, color, hit, p, c)) out.push({ entry, at: addedAt + SAKIBARE_DELAY_MS });
   };
-  for (const h of s.holds) see(h.entry, h.color, h.addedAt);
-  if (s.spin) see(s.spin.entry, s.spin.color, s.spin.addedAt);
+  for (const h of s.holds) see(h.entry, h.color, h.addedAt, h.hit, h.mode, h.custom);
+  if (s.spin) see(s.spin.entry, s.spin.color, s.spin.addedAt, s.spin.hit, s.spin.mode, s.spin.custom);
   return out;
 }
 
@@ -323,6 +348,8 @@ export class LcdTimeline {
   private ready = false;
   /** Projection に揃えた回数（テスト・Debug 用）。 */
   resyncs = 0;
+  /** 次に取得する保留に記録する抽選カスタム（設定の今の値。board-scene が渡す）。 */
+  custom: SakibareCustom = 'normal';
 
   get state(): LcdState {
     return this.shown;
@@ -334,7 +361,7 @@ export class LcdTimeline {
       if (isLcdEvent(e)) this.queue.push(e);
     }
     let end = this.shown;
-    for (const e of this.queue) end = applyLcdEvent(end, e);
+    for (const e of this.queue) end = applyLcdEventWith(end, e, this.custom);
     if (this.ready && matchesProjection(end, projection)) return;
     // 初回・取りこぼし: Projection の時点に飛ぶ（表示は少し先へ進む）。
     if (this.ready) this.resyncs++;
@@ -347,7 +374,7 @@ export class LcdTimeline {
   advance(now: number): LcdState {
     let n = 0;
     while (n < this.queue.length && this.queue[n]!.at <= now) {
-      this.shown = applyLcdEvent(this.shown, this.queue[n]!);
+      this.shown = applyLcdEventWith(this.shown, this.queue[n]!, this.custom);
       n++;
     }
     if (n > 0) this.queue.splice(0, n);
