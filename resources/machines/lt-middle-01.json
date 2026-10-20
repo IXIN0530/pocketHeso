@@ -20,6 +20,7 @@
   "round": { "count": 10, "payout_per_ball": 15, "ms_per_round": 5000 },
   "heso_payout": 8,
   "hold_max": 4,
+  "spin_min_colored_ms": 6600,
   "spin_patterns": "patterns.json",
   "hold_colors": [
     { "color": "white", "w_hit": 5, "w_miss": 99290 },

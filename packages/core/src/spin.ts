@@ -327,7 +327,9 @@ export class SpinMachine {
       assertUnit(entry.unit);
     }
     const baseMs = spinDurationMs(this.patterns, entry.patternIndex, holdCount);
-    const durationMs = durationScale === 1 ? baseMs : Math.floor(baseMs * durationScale);
+    const scaledMs = durationScale === 1 ? baseMs : Math.floor(baseMs * durationScale);
+    const minColored = this.spec.spinMinColoredMs === undefined ? 0 : this.spec.spinMinColoredMs;
+    const durationMs = entry.color !== 'white' && scaledMs < minColored ? minColored : scaledMs;
     if (durationMs < 1) {
       throw new Error('invalid spin: durationMs out of range');
     }

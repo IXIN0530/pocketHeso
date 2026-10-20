@@ -85,6 +85,8 @@ export interface MachineSpec {
   readonly holdColors: readonly HoldColorWeight[];
   /** ST・LT の保留色の表（`hold_colors_st`。省略時は `holdColors`）。 */
   readonly holdColorsSt: readonly HoldColorWeight[];
+  /** 保留の最終色が白以外の変動の最短時間（`spin_min_colored_ms`。短縮の後に適用。省略・0 は無し, P13-T5）。 */
+  readonly spinMinColoredMs?: number | undefined;
 }
 
 /** 変動パターンの1行。 */
@@ -462,6 +464,10 @@ export function parseMachine(json: unknown): MachineSpec {
 
   const holdColors = parseHoldColors(o['hold_colors'], 'hold_colors');
   const holdColorsSt = o['hold_colors_st'] === undefined ? holdColors : parseHoldColors(o['hold_colors_st'], 'hold_colors_st');
+  const spinMinColoredMs = o['spin_min_colored_ms'] === undefined ? 0 : asInt(o['spin_min_colored_ms'], 'spin_min_colored_ms');
+  if (spinMinColoredMs < 0 || spinMinColoredMs > 120000) {
+    fail('spin_min_colored_ms out of range');
+  }
 
   if (jitan === undefined && lt === undefined) {
     return {
@@ -479,6 +485,7 @@ export function parseMachine(json: unknown): MachineSpec {
       spinPatterns,
       holdColors,
       holdColorsSt,
+      spinMinColoredMs,
     };
   }
   if (jitan !== undefined && lt === undefined) {
@@ -498,6 +505,7 @@ export function parseMachine(json: unknown): MachineSpec {
       spinPatterns,
       holdColors,
       holdColorsSt,
+      spinMinColoredMs,
     };
   }
   if (jitan === undefined && lt !== undefined) {
@@ -517,6 +525,7 @@ export function parseMachine(json: unknown): MachineSpec {
       spinPatterns,
       holdColors,
       holdColorsSt,
+      spinMinColoredMs,
     };
   }
   return {
@@ -536,6 +545,7 @@ export function parseMachine(json: unknown): MachineSpec {
     spinPatterns,
     holdColors,
     holdColorsSt,
+    spinMinColoredMs,
   };
 }
 

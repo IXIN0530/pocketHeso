@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { readFileSync } from 'node:fs';
 import type { ClaimRecord } from '@ph/claims';
 import type { EngineSimEvent, LotteryMode } from '@ph/core';
-import { SAKIBARE_DELAY_MS, type SakibareCustom } from '@ph/fx';
+import { SAKIBARE_DELAY_MS, holdBreakScale, type SakibareCustom } from '@ph/fx';
 import { expect, test } from 'vitest';
 import { EngineHost, type Shot } from '../engine/engine-host.ts';
 import { openStorage } from '../platform/storage.ts';
@@ -168,6 +168,28 @@ test('RUSH を数分進めても Projection へ揃え直さない（取得時刻
   const run = await shared();
   expect(run.modes.has('st') || run.modes.has('lt')).toBe(true);
   expect(run.resyncs).toBe(0);
+}, 120000);
+
+test('RUSH の色付き保留の変動は割れる演出を縮めない（holdBreakScale が 1, P13-T5）', async () => {
+  const run = await shared();
+  const holds = new Map(holdsOf(run).map((h) => [h.entry.serial, h.entry]));
+  let colored = 0;
+  let white = 0;
+  for (const e of run.events) {
+    if (e.k !== 'spinStarted') continue;
+    const h = holds.get(e.entry);
+    if (h === undefined || (h.modeAtDraw !== 'st' && h.modeAtDraw !== 'lt')) continue;
+    if (h.color !== 'white') {
+      expect(holdBreakScale(e.endsAt - e.at)).toBe(1);
+      colored++;
+    } else if (e.pattern === 'normal_short') {
+      // 白は変化しないので最短時間を足さない（短縮のまま）。
+      expect(e.endsAt - e.at).toBeLessThan(6600);
+      white++;
+    }
+  }
+  expect(colored).toBeGreaterThanOrEqual(3);
+  expect(white).toBeGreaterThanOrEqual(10);
 }, 120000);
 
 test('fireSakibares: 同じ時刻にまとめて足された先バレは光が保留ごと・音は1回、済み・遅れすぎは鳴らさない', () => {

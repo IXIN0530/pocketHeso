@@ -12,12 +12,14 @@ import {
 } from '@ph/core';
 import { expect, test } from 'vitest';
 import {
+  HOLD_BREAK_MIN_REELS_MS,
   HOLD_BREAK_MS,
   HOLD_CRACK_STEPS_MS,
   SAKIBARE_CUSTOMS,
   SAKIBARE_CUSTOM_RATES,
   SAKIBARE_DELAY_MS,
   holdChangeCue,
+  holdBreakScale,
   holdColorAt,
   holdHitProb,
   isSakibareCustom,
@@ -139,6 +141,14 @@ test('変化する保留は灰色のまま、自分の変動開始から割れ�
 function loadSpec(machine: string) {
   return parseMachineText(readFileSync(new URL(`../../../resources/machines/${machine}.json`, import.meta.url), 'utf8'));
 }
+
+test('3機種の spin_min_colored_ms は割れる演出を縮めない長さ（P13-T5）', () => {
+  for (const m of ['light-middle-01', 'rush-middle-01', 'lt-middle-01']) {
+    const min = loadSpec(m).spinMinColoredMs ?? 0;
+    expect(min).toBeGreaterThanOrEqual(HOLD_BREAK_MS.end + HOLD_BREAK_MIN_REELS_MS);
+    expect(holdBreakScale(min)).toBe(1);
+  }
+});
 
 const CUSTOMS = ['sb40', 'sb90', 'sb100'] as const;
 

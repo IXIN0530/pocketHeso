@@ -151,6 +151,13 @@ test('不正な機種・パターンを拒否する', () => {
   badHoldMax['hold_max'] = 0;
   expect(() => parseMachine(badHoldMax)).toThrow();
 
+  const badMinColored = clone(machineFixture());
+  badMinColored['spin_min_colored_ms'] = 120001;
+  expect(() => parseMachine(badMinColored)).toThrow();
+  badMinColored['spin_min_colored_ms'] = 1.5;
+  expect(() => parseMachine(badMinColored)).toThrow();
+  expect(parseMachine(clone(machineFixture())).spinMinColoredMs).toBe(0);
+
   expect(() => parseMachine({})).toThrow();
   expect(() => parseMachineText('not json')).toThrow();
 

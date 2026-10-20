@@ -223,3 +223,23 @@ test('snapshot/restoreで続行が一致し不正遷移を拒否', () => {
   expect(() => badEntry.startSpin(makeEntry(0, 99, false, null), 0, 0)).toThrow();
   expect(() => badEntry.finishJackpot(0, 0)).toThrow();
 });
+
+test('白以外の保留の変動は短縮の後に spin_min_colored_ms 以上（P13-T5）', () => {
+  const { spec, patterns } = loadMachine();
+  expect(spec.spinMinColoredMs).toBe(6600);
+  const shortIdx = patternIndexOf(patterns, 'normal_short');
+  const reachIdx = patternIndexOf(patterns, 'reach_n');
+  const endsOf = (color: HoldEntry['color'], patternIndex: number, holdCount: number, scale: number): number => {
+    const m = new SpinMachine(spec, patterns);
+    const e = m.startSpin({ ...makeEntry(0, patternIndex, false, null), color }, 1000, holdCount, scale)[0];
+    return e !== undefined && e.k === 'spinStarted' ? e.endsAt - 1000 : -1;
+  };
+  expect(endsOf('white', shortIdx, 4, 1)).toBe(2000);
+  expect(endsOf('blue', shortIdx, 4, 1)).toBe(6600);
+  expect(endsOf('gold', shortIdx, 4, 0.5)).toBe(6600);
+  expect(endsOf('red', shortIdx, 0, 1)).toBe(6600);
+  expect(endsOf('green', reachIdx, 4, 0.5)).toBe(10000);
+  const none = new SpinMachine({ ...spec, spinMinColoredMs: 0 }, patterns);
+  const ev = none.startSpin({ ...makeEntry(0, shortIdx, false, null), color: 'blue' }, 0, 4)[0];
+  expect(ev !== undefined && ev.k === 'spinStarted' ? ev.endsAt : -1).toBe(2000);
+});
