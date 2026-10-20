@@ -206,6 +206,16 @@ export default function DebugScreen() {
               {p.label}
             </button>
           ))}
+          <button
+            className={styles.sub}
+            onClick={() => {
+              sound.unlock();
+              playCue('sakibare', 0, 0);
+              setMessage('先バレの音（先バレ音.mp3）');
+            }}
+          >
+            先バレの音
+          </button>
         </div>
       </section>
       <section className={styles.card}>

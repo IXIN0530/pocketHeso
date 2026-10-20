@@ -30,7 +30,7 @@ export default defineConfig({
       filename: 'sw.ts',
       registerType: 'prompt',
       injectRegister: false,
-      injectManifest: { globPatterns: ['**/*.{js,css,html,png,svg,webmanifest,bin,json,m4a}'] },
+      injectManifest: { globPatterns: ['**/*.{js,css,html,png,svg,webmanifest,bin,json,m4a,mp3}'] },
       manifest: {
         name: 'PocketHeso',
         short_name: 'PocketHeso',

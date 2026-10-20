@@ -17,7 +17,7 @@
     "hold_gold": { "synth": { "wave": "sawtooth", "hz": [600, 2600], "ms": 600, "gain": 0.35 } },
     "heso_pi": { "synth": { "wave": "sine", "hz": [1175, 1175], "ms": 70, "gain": 0.14 } },
     "heso_ron": { "synth": { "wave": "sine", "hz": [1568, 1568], "ms": 220, "gain": 0.12 } },
-    "sakibare": { "synth": { "wave": "square", "hz": [2000, 3200], "ms": 110, "gain": 0.3 } },
+    "sakibare": { "file": "../../sounds/sakibare.mp3" },
     "hold_morph": { "synth": { "wave": "triangle", "hz": [220, 660], "ms": 1300, "gain": 0.22 } },
     "crack": { "synth": { "wave": "square", "hz": [2600, 1400], "ms": 35, "gain": 0.16 } },
     "crack_big": { "synth": { "wave": "sawtooth", "hz": [1800, 500], "ms": 120, "gain": 0.22 } },
@@ -241,7 +241,6 @@
       "pattern": "sakibare",
       "cues": [
         { "at": 0, "kind": "sound", "bus": "se", "asset": "sakibare" },
-        { "at": 140, "kind": "sound", "bus": "se", "asset": "sakibare" },
         { "at": 0, "kind": "flash", "style": "white", "ms": 160 },
         { "at": 0, "kind": "haptic", "pattern": [40, 30, 40, 30, 90] },
         { "at": 0, "kind": "shake", "ms": 300, "amp": 0.25, "min_intensity": 2 },
