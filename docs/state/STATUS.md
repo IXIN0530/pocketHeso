@@ -1,11 +1,12 @@
 # STATUS
 <!-- 30行以内を維持。古い Notes は削除してよい（履歴は git log にある） -->
 
-- Current phase: P13（v1.4 抽選カスタム・先バレ・役物の強化 → `docs/plan/P13-feedback-1-3.md`）。P11-T6 の本番確認は Blockers。P8-T7（任意）と P7 再開は人間の指示待ち
+- Current phase: P14（v1.5 店の開放を常連ツリーに・休業中の台選び・台のスペック → `docs/plan/P14-shops-spec.md`）。P11-T6 の本番確認は Blockers。P8-T7（任意）と P7 再開は人間の指示待ち
+- Parallel: P13（`docs/plan/P13-feedback-1-3.md`）→ Next: P13-T9（実機・人間。手順は T8c の報告で渡した）→ T10 は人間の「リリースしてよい」待ち
 - Last done: P13-T8c（ST・LT もカスタムの占有率どおり。白以外を先に使い、足りない分だけ白の保留にも先バレ → 割れて色が出る。見せる色は色の信頼度を変えない重み, D-117）
-- Next: P13-T9（実機確認。手順は T8c の報告で渡した）→ T10 は人間の「リリースしてよい」待ち
-- Owner hint: 人間（T9 の実機）→ Claude Code（Sonnet）（T10 は人間の指示時）
-- Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T12 → T13 → T2 は人間の指示で再開
+- Next: P14-T1（Core: ツリーの `unlock_machine`・休業中の `pickMachine`）→ T2 → T3 → T4（実機）→ T5 は人間の指示時
+- Owner hint: Claude Code（Opus）（T1）。P13-T9 は人間
+- Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T2 は人間の指示で再開（T12 遠征は取り下げ D-118、T13 は P14 に置き換え）
 
 ## Blockers
 - v1.2.1 の本番確認が人間待ち（Debug が無い・バージョン v1.2.1・短い留守でサマリーが出ない・オート打ちの設定が崩れない）

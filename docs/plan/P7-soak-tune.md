@@ -116,7 +116,7 @@ Accept:
 - [ ] `scripts/test.sh all`・`scripts/build.sh` が通る
 - [ ] 実機（人間）: ショートカットに階数の検索を足し、3日分の階数がヘルスケアアプリの表示と一致し、受け取るとメダルが増える。読めなかったら Blockers に書いて止まる
 
-### P7-T12 遠征（距離の累計で店を開ける）
+### P7-T12 遠征（距離の累計で店を開ける）— **取り下げ（D-118）。店の開放は P14-T1 の常連ツリー段1。再開しても飛ばす**
 Owner: Claude Code（Sonnet） | Read: spec/30（遠征）, spec/40（行動）
 Do: JSON `claims.expedition` {`step_m`: 42195, `medals`: 10, `shops`: [{id `ekimae` 駅前店 light-middle-01}, {id `kokudo` 国道店 rush-middle-01}, {id `minato` 港町店 lt-middle-01}]}。
 claims に `expeditionOf` と、`planGrants` での `expedition:<n>` の記録（distance の直後）。行動タブに遠征のカード（累計km・次の店までの km・開けた店と台）、到達時は受け取り確認に出す。
@@ -124,7 +124,7 @@ Accept:
 - [ ] claims のテスト: 1回の受け取りで2回越えると2件、同じ日を受け取り直しても増えない、3回目以降はメダルだけ、店の並び
 - [ ] `scripts/test.sh all`・`scripts/build.sh` が通る。ヘッドレス Chrome（Debug の Grant 注入で距離を入れる）でカードと到達の表示
 
-### P7-T13 新台入替（閉店時の機種選択）
+### P7-T13 新台入替（閉店時の機種選択）— **P14-T1・T2（休業中に選ぶ）に置き換え。再開しても飛ばす**
 Owner: Claude Code（Opus） | Read: spec/22（新台入替）, spec/23（閉店）, spec/40（強化）
 Split: Opus — Core（EngineConfig.machines・close の machineId・snapshot・Projection）と Core のテスト / Sonnet — web（engine-build・閉店のシート・液晶と HUD・記録の閉店履歴）
 Do: Core の `EngineConfig.machines`・close の `machineId`（rejected 'busy'/'machine'）・snapshot の機種 id・Projection の `machineId`。web の engine-build で3機種を渡し、
