@@ -5,9 +5,9 @@
 export const DEBUG_SCALES = [1, 60, 3600] as const;
 export const DEBUG_DB_NAME = 'pocketheso-debug';
 
-/** 時間倍率に対応する DB 名（1 は本番の既定 DB = undefined）。 */
-export function dbNameFor(scale: number): string | undefined {
-  return scale === 1 ? undefined : DEBUG_DB_NAME;
+/** 時間倍率に対応する DB 名（本番 = 倍率 1 かつ sandbox なし → 既定 DB = undefined）。 */
+export function dbNameFor(scale: number, box: boolean = sandbox): string | undefined {
+  return scale === 1 && !box ? undefined : DEBUG_DB_NAME;
 }
 
 export interface Clock {
@@ -49,3 +49,17 @@ export function debugScaleFrom(search: string): number {
 }
 
 export const clock: Clock = makeClock(typeof location === 'undefined' ? 1 : debugScaleFrom(location.search));
+
+/** `?debug=1&sandbox=1` の時だけ、等倍のまま Debug 用の別 DB を使う（Grant 注入を等倍で試す用。正式版は常に false）。 */
+export function sandboxFrom(search: string): boolean {
+  if (!__DEV_TOOLS__) {
+    return false;
+  }
+  const q = new URLSearchParams(search);
+  return q.get('debug') === '1' && q.get('sandbox') === '1';
+}
+
+export const sandbox: boolean = typeof location === 'undefined' ? false : sandboxFrom(location.search);
+
+/** Debug 用の別 DB を使っているか（倍速 or sandbox）。 */
+export const isDebugDb: boolean = clock.scale !== 1 || sandbox;

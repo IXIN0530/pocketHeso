@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { debugScaleFrom, makeClock } from './clock.ts';
+import { dbNameFor, debugScaleFrom, makeClock, sandboxFrom } from './clock.ts';
 
 // Vercel Production（VERCEL_ENV=production）では __DEV_TOOLS__ が false になり、倍率は常に 1（D-087）。
 test('?debug=1&x= の倍率だけを受け付ける（正式版は常に 1）', () => {
@@ -21,4 +21,13 @@ test('倍率で進み、catchUp は先の時刻にだけ揃える', () => {
   expect(c.now()).toBe(100000);
   real += 1000;
   expect(c.now()).toBe(160000);
+});
+
+test('sandbox は ?debug=1&sandbox=1 の時だけ。等倍でも別 DB（正式版は常に本番）', () => {
+  expect(sandboxFrom('?sandbox=1')).toBe(false);
+  expect(sandboxFrom('?debug=1')).toBe(false);
+  expect(sandboxFrom('?debug=1&sandbox=1')).toBe(__DEV_TOOLS__);
+  expect(dbNameFor(1, false)).toBeUndefined();
+  expect(dbNameFor(1, true)).toBe('pocketheso-debug');
+  expect(dbNameFor(60, false)).toBe('pocketheso-debug');
 });

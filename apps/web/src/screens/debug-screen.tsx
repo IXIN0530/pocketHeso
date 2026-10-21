@@ -6,7 +6,7 @@ import { haptics, pack, planFor, playCue, sound } from '../fx/fx-host.ts';
 import { writeClipboard } from '../platform/clipboard.ts';
 import { describeReceived, localDay, type ClaimPlan } from '../stores/activity.ts';
 import { ConfirmModal } from './confirm-modal.tsx';
-import { DEBUG_SCALES, clock } from '../stores/clock.ts';
+import { DEBUG_SCALES, clock, isDebugDb, sandbox } from '../stores/clock.ts';
 import { debugInfo, receiveClaims, showLastAway, stateDump, useEngine, verifyAtlas } from '../stores/engine.ts';
 import { PREVIEWS, PREVIEW_SERIAL_BASE, requestPreview } from '../stores/preview.ts';
 import { DEBUG_CLAIM_PREFIX } from './records-screen.tsx';
@@ -48,6 +48,7 @@ export function debugRecord(at: number, fuelMs: number, medals: number, extra: {
 }
 
 const scaleHref = (x: number) => `/?debug=1${x === 1 ? '' : `&x=${x}`}`;
+const SANDBOX_HREF = '/?debug=1&sandbox=1';
 
 /** プレビューの通し番号（押すたびに進めて分岐を変える。画面を開き直しても続きから）。 */
 let previewCount = 0;
@@ -75,7 +76,7 @@ export default function DebugScreen() {
   const [dump, setDump] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const scaled = clock.scale !== 1;
+  const scaled = isDebugDb;
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -120,13 +121,16 @@ export default function DebugScreen() {
     <div className={styles.screen}>
       <section className={styles.card}>
         <h2>時間倍率 x{clock.scale}</h2>
-        <p className={styles.note}>x60・x3600 は本番と別の DB を使います（本番のセーブには触れません）。</p>
+        <p className={styles.note}>x60・x3600・x1（別セーブ）は本番と別の DB を使います（本番のセーブには触れません）。</p>
         <div className={styles.row}>
           {DEBUG_SCALES.map((x) => (
             <a key={x} className={x === clock.scale ? styles.button : styles.sub} href={scaleHref(x)}>
               x{x}
             </a>
           ))}
+          <a className={sandbox && clock.scale === 1 ? styles.button : styles.sub} href={SANDBOX_HREF}>
+            x1（別セーブ）
+          </a>
         </div>
       </section>
       <section className={styles.card}>
@@ -140,7 +144,7 @@ export default function DebugScreen() {
             ))}
           </div>
         ) : (
-          <p className={styles.note}>本番のセーブを守るため、x60・x3600 の時だけ使えます。</p>
+          <p className={styles.note}>本番のセーブを守るため、x60・x3600・x1（別セーブ）の時だけ使えます。</p>
         )}
       </section>
       <section className={styles.card}>

@@ -17,6 +17,6 @@
 - 既定機種の人間確認待ち（light/rush/ltのどれを既定にするか。P3バランスに影響）
 
 ## Notes（最新3件まで）
+- [P13-T9 補修]: 等倍で Grant 注入できなかったので `?debug=1&sandbox=1`（x1 のまま別 DB `pocketheso-debug`）を追加。Debug 画面に「x1（別セーブ）」リンク。本番ビルドでは無効
 - [P13-T8]: Core は ShopView に `resonance`（rate/count/mult）・`keptAwakened` を足しただけ（golden 不変）。web: 予告は `awakenGainText`（<1.01「+1% 未満」・≥10 整数）。覚醒の音は pack の `awakened`（hold_up+kime+金フラッシュ）。実機は T9 で確認
 - [P13-T7]: 候補 18（min_lv 25/50 × mult 3/5/10 × r 0.1/0.15/0.25）は全て初覚醒 ≥1.5・中央 ≥1.3 → 最も控えめな l25・m3・r0.15（r は風車の2回目 ×1.1 の最小）。閉店日・gain・none・EV は不変、golden 不変、1閉店 P 10〜15・実績 +1。core のテストは仕組みのテストを旧の覚醒値に固定。web の tree-defs に新ノードの系統だけ追加（見せ方は T8）。Sonnet が試算と表、Opus が選定・spec
-- [P13-T6]: `awaken.reset_lv`/`resonance`（既定 true/0 で従来と完全一致）・keep `awaken_low`/`awaken_all`・`starter_rel`・`resonance_add`・IdleEconomy v9（runMaxLv/prevMaxLv）・Shop の `awakenGain`（D-113, golden f9c91db2a7424498＝保存項目だけの変化）。変更前の覚醒は3機種とも初覚醒4日目・直後の比 x0.999（Lv を 0 に戻すので下がる）・84日で25回（`econ-20261021-p13.md`）。pachisim `--awaken-pick first|best`（既定 best）・`--awaken-log`。pachisim の閉店後の写し（lv/awakened を 0）は T7 で keep/starter_rel を入れる時に要確認。web の SNAPSHOT_VERSION は据え置き（v8 も読める）

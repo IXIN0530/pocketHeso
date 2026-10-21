@@ -6,7 +6,7 @@ import { isStandalone } from '../platform/pwa.ts';
 import { loadSettings, openStorage, type Db } from '../platform/storage.ts';
 import { formatFuel } from '../stores/activity.ts';
 import { formatNum } from '../stores/format.ts';
-import { clock, dbNameFor } from '../stores/clock.ts';
+import { clock, dbNameFor, isDebugDb } from '../stores/clock.ts';
 import { act, resetGame, useEngine } from '../stores/engine.ts';
 import { setPrefs, usePrefs } from '../stores/prefs.ts';
 import { LOOK_KEYS, LOOK_TEXT } from '../board/look.ts';
@@ -74,7 +74,7 @@ export function SettingsScreen() {
   const tomeuchi = (p?.shop?.upgrades.find((u) => u.id === 'tomeuchi')?.value ?? 0) > 0;
   const resting = p?.rest !== undefined && p?.rest !== null;
   // 正式版は常に 1（clock.ts）なので Debug の文言は出ない（D-087）。
-  const debugDb = __DEV_TOOLS__ && clock.scale !== 1;
+  const debugDb = __DEV_TOOLS__ && isDebugDb;
 
   return (
     <div className={styles.screen}>
