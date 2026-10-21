@@ -197,3 +197,27 @@
   background: #3a3f6a;
   color: #f2f2f7;
 }
+
+/* 休業中の「次に打つ台」（P14-T2） */
+.machines h3 {
+  margin: 0 0 6px;
+  color: #a8acc8;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.machine {
+  width: 100%;
+  text-align: left;
+}
+
+.locked {
+  opacity: 0.6;
+}
+
+.warnStrong {
+  margin: 6px 0 0;
+  color: #ff9a7a;
+  font-size: 12px;
+  font-weight: 700;
+}

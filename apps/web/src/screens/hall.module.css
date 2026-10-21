@@ -285,3 +285,19 @@
   color: #d0d3ea;
   font-size: 12px;
 }
+
+/* 開店で台が変わった時の店名（P14-T2） */
+.machineToast {
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: #2c2145;
+  color: #ffe08a;
+  font-weight: 700;
+  text-align: center;
+}
+
+.shopName {
+  color: #a8acc8;
+  font-size: 12px;
+}

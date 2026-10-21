@@ -4,6 +4,8 @@ import { HoldButton } from '../components/hold-button.tsx';
 import { Segmented } from '../components/segmented.tsx';
 import { Sheet } from '../components/sheet.tsx';
 import { groupTier, restHeaderText, stateMark, treeNodeNow, timingBadge, TREE_NODE_TEXT, TREE_TIER_NAMES, tierRemaining } from '../engine/tree-defs.ts';
+import { MACHINE_INFO } from '../engine/machine-info.ts';
+import { NextMachine } from './next-machine.tsx';
 import { playToastCue } from '../fx/fx-host.ts';
 import { act, useEngine } from '../stores/engine.ts';
 import { formatNum } from '../stores/format.ts';
@@ -11,6 +13,8 @@ import styles from './tree.module.css';
 
 let cueSerial = 0;
 const report = (e: unknown) => useEngine.setState({ error: e instanceof Error ? e.message : String(e) });
+
+const isShopNode = (id: string) => MACHINE_INFO.some((m) => m.node === id);
 
 /** 行の前提の表示（「← 呼び込み」）。 */
 function reqText(n: TreeNodeView): string {
@@ -39,6 +43,7 @@ export function TreeSheet({ tree, rest, at, shop, onDismiss }: { tree: TreeView;
   const selText = sel === null ? undefined : TREE_NODE_TEXT[sel.id];
   const resting = rest !== undefined && rest !== null;
   const restingAt = at ?? rest?.autoOpenAt ?? 0;
+  const projection = useEngine((s) => s.projection);
 
   return (
     <Sheet onDismiss={onDismiss} labelledBy="tree-title">
@@ -47,6 +52,19 @@ export function TreeSheet({ tree, rest, at, shop, onDismiss }: { tree: TreeView;
         <p className={styles.rest} role="status">
           {restHeaderText(rest, restingAt)}
         </p>
+      )}
+      {resting && projection !== null && projection.machinesOpen.length > 0 && (
+        <NextMachine
+          current={projection.machineId}
+          picked={projection.restMachineId}
+          open={projection.machinesOpen}
+          strong={projection.mode === 'st' || projection.mode === 'lt'}
+          onPick={(id) => void act({ k: 'pickMachine', machineId: id }).catch(report)}
+          onGoNode={(node) => {
+            setTier(tree.nodes.find((n) => n.id === node)?.tier ?? 1);
+            setPicked(node);
+          }}
+        />
       )}
       <p className={styles.summary}>
         <span>{rankText(tree)}</span>
@@ -95,7 +113,7 @@ export function TreeSheet({ tree, rest, at, shop, onDismiss }: { tree: TreeView;
                         <small>{text?.desc ?? ''}</small>
                         {n.req.length > 0 && <small className={styles.req}>{reqText(n)}</small>}
                       </span>
-                      <span className={styles.cost}>{n.state === 'owned' ? m.label : `${n.cost}P`}</span>
+                      <span className={styles.cost}>{n.state === 'owned' ? (isShopNode(n.id) ? '開放済み' : m.label) : `${n.cost}P`}</span>
                     </button>
                   </li>
                 );

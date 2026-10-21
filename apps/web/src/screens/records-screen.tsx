@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { machineLabel } from '../engine/machine-info.ts';
 import type { ClaimRecord } from '@ph/claims';
 import type { AchievementMetric, AchievementsView } from '@ph/core';
 import { ACHIEVEMENTS } from '../engine/achievement-defs.ts';
@@ -140,6 +141,7 @@ export function RecordsScreen() {
       {p && (
         <section className={styles.card}>
           <h2>閉店</h2>
+          <p className={styles.note}>いまの台: {machineLabel(p.machineId)}</p>
           {p.closes.length === 0 ? (
             <p className={styles.note}>まだ閉店していません。</p>
           ) : (

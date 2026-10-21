@@ -3,6 +3,7 @@ import type { HallProjection, NoticeEffect } from '@ph/core';
 import { CountUp } from '../components/count-up.tsx';
 import { Segmented } from '../components/segmented.tsx';
 import { ACHIEVEMENTS } from '../engine/achievement-defs.ts';
+import { machineInfo } from '../engine/machine-info.ts';
 import { openBoostMult } from '../engine/tree-defs.ts';
 import { playToastCue } from '../fx/fx-host.ts';
 import { tick } from '../platform/haptic.ts';
@@ -19,6 +20,28 @@ import styles from './hall.module.css';
 // Three.js 一式は盤面と一緒に別チャンクで読む（最初の表示を待たせない）。
 const BoardCanvas = lazy(() => import('../board/board-canvas.tsx'));
 
+
+/** 台が変わった時（開店で切り替え）に、店名・台名を2秒ほど出す（P14-T2）。 */
+function MachineToast({ machineId }: { machineId: string | undefined }) {
+  const [shown, setShown] = useState<string | null>(null);
+  const [prev, setPrev] = useState(machineId);
+  if (machineId !== prev) {
+    setPrev(machineId);
+    if (prev !== undefined && machineId !== undefined) setShown(machineId);
+  }
+  useEffect(() => {
+    if (shown === null) return;
+    const id = setTimeout(() => setShown(null), 2000);
+    return () => clearTimeout(id);
+  }, [shown]);
+  const m = shown === null ? null : machineInfo(shown);
+  if (m === null) return null;
+  return (
+    <p className={styles.machineToast} role="status">
+      {m.shop} {m.name}
+    </p>
+  );
+}
 
 /** 抽選モードの表示（spec/21 モード拡張）。 */
 export function modeLabel(p: { mode: HallProjection['mode']; stRemaining: number | null }): string {
@@ -190,7 +213,9 @@ export function HallScreen({ active = true }: { active?: boolean }) {
               </dd>
             </div>
           </dl>
+          <MachineToast machineId={p.machineId} />
           <p className={styles.state}>
+            {machineInfo(p.machineId) !== null && <span className={styles.shopName}>{machineInfo(p.machineId)?.shop}</span>}
             <span>{resting ? '本日閉店（休業中）' : modeLabel(shown!)}</span>
             <span>回転 {formatNum(p.totals.spins)}</span>
             <span>大当たり {formatNum(shown!.jackpots)}</span>

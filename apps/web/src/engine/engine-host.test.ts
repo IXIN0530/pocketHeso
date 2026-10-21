@@ -270,3 +270,16 @@ test('P12-T3: 旧版6（v1.2.0・IdleEconomy v7・休業なし）の snapshot �
   expect(back.boot.restoredFrom).toBe('snapshot');
   expect(back.boot.projection.rest).toMatchObject({ since: at, pendingBalls: 12345 });
 });
+
+test('P14-T2: 3台を Engine に渡す。最初は駅前店だけ選べて、保存の機種は最初の台のまま', async () => {
+  const db = await freshDb();
+  const { host, boot } = await EngineHost.open(db, ATLAS, T0, seeds);
+  expect(boot.projection.machineId).toBe('light-middle-01');
+  expect(boot.projection.machinesOpen).toEqual(['light-middle-01']);
+  expect(boot.projection.restMachineId).toBeNull();
+  const v = await host.tick(T0 + 1000);
+  expect(v.machineId).toBe('light-middle-01');
+  // 休業中でない pickMachine は Engine が弾く（保存しない）。
+  const r = await host.act({ k: 'pickMachine', machineId: 'rush-middle-01' }, T0 + 2000);
+  expect(r.projection.restMachineId).toBeNull();
+});

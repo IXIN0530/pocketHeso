@@ -60,3 +60,24 @@ test('買う → 開店の順でも timing の小札が出る（詳細にも）'
   // 行と詳細の両方で timing が分かる
   expect(html.match(/開店から/g)?.length).toBeGreaterThanOrEqual(2);
 });
+
+test('次に打つ台: 3店が並び、未開放は鍵つき・選んだ台に「開店から」', async () => {
+  const { NextMachine } = await import('./next-machine.tsx');
+  const html = renderToStaticMarkup(
+    <NextMachine current="light-middle-01" picked="rush-middle-01" open={['light-middle-01', 'rush-middle-01']} onPick={noop} onGoNode={noop} />,
+  );
+  expect(html).toContain('駅前店');
+  expect(html).toContain('国道店');
+  expect(html).toContain('港町店');
+  expect(html).toContain('いま');
+  expect(html).toContain('開店から');
+  expect(html).toContain('常連ツリー 段1・5P で開放');
+  expect(html.match(/常連ツリー 段1・5P で開放/g)).toHaveLength(1);
+  expect(html).toContain('保留と電サポ');
+});
+
+test('次に打つ台: 選び直して今の台なら注意書きが出ない', async () => {
+  const { NextMachine } = await import('./next-machine.tsx');
+  const html = renderToStaticMarkup(<NextMachine current="light-middle-01" picked={null} open={['light-middle-01']} onPick={noop} onGoNode={noop} />);
+  expect(html).not.toContain('保留と電サポ');
+});

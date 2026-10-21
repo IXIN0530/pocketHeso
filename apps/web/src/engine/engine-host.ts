@@ -211,7 +211,8 @@ export class EngineHost {
   }
 
   private view(clockBack: boolean, events: readonly EngineSimEvent[] = []): EngineView {
-    return { projection: this.engine.project(), clockBack, shots: this.shots(events), seed: this.meta.seed, machineId: this.meta.machineId };
+    const projection = this.engine.project();
+    return { projection, clockBack, shots: this.shots(events), seed: this.meta.seed, machineId: projection.machineId };
   }
 
   /** 今回の前進内で発射して着いた玉（新しい方から SHOT_LIMIT 個。入賞先はセンサーイベント）と、まだ飛んでいる玉。 */
