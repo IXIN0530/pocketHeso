@@ -112,54 +112,107 @@ export function sakibareOdds(spec: MachineSpec, mode: LotteryMode): SakibareOdds
 }
 
 /**
- * カスタムの先バレの確率（最終色ごと, LOTTERY_HOLD_COLORS と同順）と、それで出る信頼度 rel・実効の占有率 occ（P13-T8b, D-116）。
- * 先バレした保留は必ず変化（灰色 → 割れて最終色）で見せるので、変化できない最終色（白）には先バレしない（配列の 0）。
- * rel は必ずカスタムの値。occ はカスタムの値か、先バレできる当たりの割合・ハズレの確率 ≤ 1 で満たせる最大の小さい方。
- * 色ごとの配列にしてあるのは、ST・LT でも占有率を満たす拡張（白の当たりにも先バレする・P13-T8c）でここだけ変えられるように。
+ * カスタムの先バレの確率（最終色ごと, LOTTERY_HOLD_COLORS と同順）と、それで出る信頼度 rel・実効の占有率 occ（P13-T8b, D-116, P13-T8c）。
+ * 先バレした保留は必ず変化（灰色 → 割れて色が出る）で見せる。白以外の保留を先に使い（当たりは a、ハズレは b を色によらず一定）、
+ * それで occ・rel を満たせない時（ST・LT は当たりの約40%が白）だけ、最終色が白の保留にも先バレする（割れて showHit/showMiss の色が出る）。
+ * rel は必ずカスタムの値。occ はカスタムの値（ハズレの確率 ≤ 1 で満たせない時だけ下がる）。
  */
 export interface CustomSakibareRates {
   readonly hit: readonly number[];
   readonly miss: readonly number[];
   readonly rel: number;
   readonly occ: number;
+  /**
+   * 最終色が白の先バレ保留に見せる色の重み（当否別, LOTTERY_HOLD_COLORS と同順。白は 0）。
+   * 見せた色の信頼度 P(当たり | 見せた色) が保留色の表のままになるように引く（showColorWeights）。白に先バレしない時は全て 0。
+   */
+  readonly showHit: readonly number[];
+  readonly showMiss: readonly number[];
 }
 
-/** 先バレできる最終色（変化で見せられる色。i は LOTTERY_HOLD_COLORS の番号）。 */
-function sakibareEligible(i: number): boolean {
-  const color = LOTTERY_HOLD_COLORS[i];
-  return color !== undefined && holdRank(color) > 0;
+const WHITE = LOTTERY_HOLD_COLORS.indexOf('white');
+
+function sum(w: readonly number[]): number {
+  let s = 0;
+  for (const x of w) s += x;
+  return s;
 }
 
-function eligibleShare(w: readonly number[]): number {
-  let all = 0;
-  let ok = 0;
-  for (let i = 0; i < w.length; i++) {
-    all += w[i]!;
-    if (sakibareEligible(i)) ok += w[i]!;
+/**
+ * 白の先バレ保留に見せる色の重み g（色ごと）。見せる色は 当たりなら hitW·g、ハズレなら missW·g の重みで引く。
+ * 白の先バレ保留の当たり wh・ハズレ wm（1保留あたりの確率）が各色に足されても、色 i の信頼度は
+ * k_i = 当たり_i / ハズレ_i が wh/wm と等しい色の組み合わせなら変わらない: wh/wm 以下の色の g を 1、超える色の g を t とし、
+ * 足した後の比が wh/wm になる t を解く（線形）。片側しか無い時は wh/wm に一番近い色だけ（その色の信頼度だけ少し動く）。
+ */
+function showColorWeights(odds: SakibareOdds, wh: number, wm: number): number[] {
+  const { p, hitW, missW } = odds;
+  const g = hitW.map(() => 0);
+  if (wh <= 0 && wm <= 0) return g;
+  const sh = sum(hitW);
+  const sm = sum(missW);
+  const h = hitW.map((w) => (sh > 0 ? (p * w) / sh : 0));
+  const m = missW.map((w) => (sm > 0 ? ((1 - p) * w) / sm : 0));
+  const target = wm > 0 ? wh / wm : Infinity;
+  const low: number[] = [];
+  const up: number[] = [];
+  for (let i = 0; i < h.length; i++) {
+    if (i === WHITE || h[i]! + m[i]! <= 0) continue;
+    const k = m[i]! > 0 ? h[i]! / m[i]! : Infinity;
+    (k <= target ? low : up).push(i);
   }
-  return all > 0 ? ok / all : 0;
+  const ratio = (i: number): number => (m[i]! > 0 ? h[i]! / m[i]! : Infinity);
+  if (up.length === 0 || low.length === 0) {
+    const pool = up.length === 0 ? low : up;
+    let best = pool[0];
+    for (const i of pool) if (up.length === 0 ? ratio(i) > ratio(best!) : ratio(i) < ratio(best!)) best = i;
+    if (best !== undefined) g[best] = 1;
+    return g;
+  }
+  let hl = 0;
+  let ml = 0;
+  let hu = 0;
+  let mu = 0;
+  for (const i of low) {
+    hl += h[i]!;
+    ml += m[i]!;
+  }
+  for (const i of up) {
+    hu += h[i]!;
+    mu += m[i]!;
+  }
+  // (hl + t·hu) / (ml + t·mu) = target。low は h ≤ target·m、up は h > target·m なので t ≥ 0。
+  const t = (hl - target * ml) / (target * mu - hu);
+  for (const i of low) g[i] = 1;
+  for (const i of up) g[i] = t;
+  return g;
 }
 
 export function customSakibareRates(odds: SakibareOdds, custom: Exclude<SakibareCustom, 'normal'>): CustomSakibareRates {
   const { rel, occ: want } = SAKIBARE_CUSTOM_RATES[custom];
   const { p } = odds;
-  const fh = eligibleShare(odds.hitW);
-  const fm = eligibleShare(odds.missW);
   const zero = odds.hitW.map(() => 0);
-  if (p <= 0 || fh <= 0) return { hit: zero, miss: zero, rel, occ: 0 };
-  // 先バレ = 当たり p·occ・ハズレ (1−p)·fm·b。rel = p·occ / (p·occ + (1−p)·fm·b) を b について解く。
-  let occ = Math.min(want, fh);
-  if (rel < 1 && p < 1) {
-    const missMax = (rel * (1 - p) * fm) / (p * (1 - rel));
-    occ = Math.min(occ, missMax);
-  }
-  const a = occ / fh;
-  const b = rel >= 1 || p >= 1 || fm <= 0 ? 0 : Math.min(1, (p * occ * (1 - rel)) / (rel * (1 - p) * fm));
+  if (p <= 0 || sum(odds.hitW) <= 0) return { hit: zero, miss: zero, rel, occ: 0, showHit: zero, showMiss: zero };
+  const sh = sum(odds.hitW);
+  const sm = sum(odds.missW);
+  const fh = (sh - (odds.hitW[WHITE] ?? 0)) / sh;
+  const fm = sm > 0 ? (sm - (odds.missW[WHITE] ?? 0)) / sm : 0;
+  // 先バレ = 当たり p·occ・ハズレ (1−p)·q。rel = p·occ / (p·occ + (1−p)·q) より q = p·occ·(1−rel) / (rel·(1−p)) ≤ 1。
+  let occ = Math.min(want, 1);
+  if (rel < 1 && p < 1) occ = Math.min(occ, (rel * (1 - p)) / (p * (1 - rel)));
+  const q = rel >= 1 || p >= 1 || sm <= 0 ? 0 : (p * occ * (1 - rel)) / (rel * (1 - p));
+  // 白以外を先に使い、足りない分を白で。
+  const a = fh > 0 ? Math.min(1, occ / fh) : 0;
+  const aw = occ > fh && fh < 1 ? (occ - fh) / (1 - fh) : 0;
+  const b = fm > 0 ? Math.min(1, q / fm) : 0;
+  const bw = q > fm && fm < 1 ? Math.min(1, (q - fm) / (1 - fm)) : 0;
+  const g = showColorWeights(odds, p * aw * (1 - fh), (1 - p) * bw * (1 - fm));
   return {
-    hit: odds.hitW.map((_, i) => (sakibareEligible(i) ? a : 0)),
-    miss: odds.missW.map((_, i) => (sakibareEligible(i) ? b : 0)),
+    hit: odds.hitW.map((_, i) => (i === WHITE ? aw : a)),
+    miss: odds.missW.map((_, i) => (i === WHITE ? bw : b)),
     rel,
     occ,
+    showHit: odds.hitW.map((w, i) => w * g[i]!),
+    showMiss: odds.missW.map((w, i) => w * g[i]!),
   };
 }
 
@@ -173,7 +226,7 @@ function isFreeHold(serial: number): boolean {
  * カスタムは planHoldChange の変化はそのままに、先バレだけを当否と取得時のモードで引き直す:
  * RNGStream(seed, 'holdChange', serial) の **3番目**の値 < 最終色の確率（customSakibareRates）なら先バレで、必ず変化で見せる。
  * 先バレしない保留の final・change は planHoldChange と同じ（乱数の1〜2番目を使うのは planHoldChange だけ）。
- * 見せる最終色は plan.final（今は Core の最終色のまま）。
+ * 見せる最終色は plan.final: 白以外は Core の最終色のまま、白の先バレ（ST・LT, P13-T8c）は4番目の値で引いた色（Core の色・熱さは白のまま）。
  */
 export function planHoldChangeCustom(
   seed: number,
@@ -193,7 +246,11 @@ export function planHoldChangeCustom(
   const rng = new RNGStream(seed, 'holdChange', serial);
   rng.nextU32();
   rng.nextU32();
-  return rng.nextUnit() < q ? { final, change: true, sakibare: true } : plain;
+  if (rng.nextUnit() >= q) return plain;
+  if (final !== 'white') return { final, change: true, sakibare: true };
+  // 白の先バレ（ST・LT）: 4番目の値で見せる色を引く（色の信頼度を変えない重み）。
+  const show = hit ? rates.showHit : rates.showMiss;
+  return sum(show) > 0 ? { final: LOTTERY_HOLD_COLORS[rng.pick(show)]!, change: true, sakibare: true } : plain;
 }
 
 /** 先バレするか（planHoldChangeCustom の sakibare）。 */

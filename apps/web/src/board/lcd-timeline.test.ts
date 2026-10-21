@@ -10,6 +10,7 @@ import {
   SAKIBARE_CUSTOMS,
   SAKIBARE_DELAY_MS,
   holdBreakScale,
+  holdChangeCue,
   planHoldChange,
   planHoldChangeCustom,
   type SakibareCustom,
@@ -383,4 +384,30 @@ test('カスタムの先バレ: 取得時は灰色（白・点滅）で出て、
     expect(planHoldChangeCustom(seed, n, 'white', true, ODDS, 'sb100').sakibare).toBe(false);
     expect(planHoldChangeCustom(seed, GRANT_HOLD_SERIAL_BASE + n, 'gold', true, ODDS, 'sb100').sakibare).toBe(false);
   }
+});
+
+test('ST の sb40: 最終色が白の保留も先バレして、取得時は灰色、変動開始から 4500ms で白以外の色（plan.final）が見える。Core の色は白のまま', () => {
+  const seed = 5;
+  const oddsOf = (m: LotteryMode) => machineSakibareOdds('rush-middle-01', m);
+  const odds = oddsOf('st');
+  const serial = (() => {
+    for (let n = 0; n < 100000; n++) {
+      const p = planHoldChangeCustom(seed, n, 'white', true, odds, 'sb40');
+      if (p.sakibare) return n;
+    }
+    throw new Error('not found');
+  })();
+  const plan = planHoldChangeCustom(seed, serial, 'white', true, odds, 'sb40');
+  expect(plan.change).toBe(true);
+  expect(plan.final).not.toBe('white');
+  let s = applyLcdEventWith(EMPTY_STATE, { k: 'holdAdded', entry: holdAs(serial, 'white', true, 'st'), at: 1000 }, 'sb40');
+  expect(s.holds[0]!.color).toBe('white'); // Core の色
+  expect(shownLcdState(s, seed, 1000, oddsOf).holds[0]).toMatchObject({ color: 'white', blink: true });
+  expect(sakibareTimes(s, seed, oddsOf)).toEqual([{ entry: serial, at: 1000 + SAKIBARE_DELAY_MS }]);
+  s = applyLcdEvent(s, { k: 'spinStarted', entry: serial, at: 20000, pattern: 'sp_reach', endsAt: 60000 });
+  expect(shownLcdState(s, seed, 20000 + HOLD_BREAK_MS.reveal - 1, oddsOf).spin!.color).toBe('white');
+  const shown = shownLcdState(s, seed, 20000 + HOLD_BREAK_MS.reveal, oddsOf).spin!.color;
+  expect(shown).toBe(plan.final);
+  expect(holdChangeCue(shown!)).toBe(`hold_${plan.final}`);
+  expect(s.spin!.color).toBe('white');
 });
