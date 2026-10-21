@@ -4,8 +4,8 @@
 - Current phase: P14（v1.5 店の開放を常連ツリーに・休業中の台選び・台のスペック → `docs/plan/P14-shops-spec.md`）。P11-T6 の本番確認は Blockers。P8-T7（任意）と P7 再開は人間の指示待ち
 - Parallel: P13（`docs/plan/P13-feedback-1-3.md`）→ Next: P13-T9（実機・人間。手順は T8c の報告で渡した）→ T10 は人間の「リリースしてよい」待ち
 - Last done: P14-T3（設定 →「台のスペック」: 3台タブ・円グラフ・ゲームフロー・基本性能。表示データは web の純関数 machineSpecView）
-- Next: P14-T4（実機・人間。手順は Sonnet が push して渡す）→ T5 は人間の指示時
-- Owner hint: 人間（手順は Claude Code（Sonnet））。P13-T9 は人間
+- Next: P14-T4（実機・人間待ち。dev 9f8b34d を push 済み・手順は渡した）→ T5 は人間の指示時
+- Owner hint: 人間（結果を受けて STATUS Notes に記録は Claude Code（Sonnet））。P13-T9 は人間
 - Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T2 は人間の指示で再開（T12 遠征は取り下げ D-118、T13 は P14 に置き換え）
 
 ## Blockers
