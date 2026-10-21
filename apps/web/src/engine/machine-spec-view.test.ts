@@ -62,14 +62,29 @@ test('国道店 rush-middle-01', () => {
   const v = view('rush-middle-01');
   expect(pieLines(v)).toEqual([
     'ヘソ（通常時）',
-    '  3R 450個 → RUSH 75回 35%',
+    '  3R 450個 → RUSH 66回 35%',
     '  3R 450個 → 通常 65%',
     '電チュー（RUSH 中）',
-    '  10R 1,500個 → RUSH 75回 100%',
+    '  10R 1,500個 → RUSH 66回 75%',
+    '  20R＋上乗せ 約3,000〜9,000個 → RUSH 66回 25%',
   ]);
   expect(edgeLines(v)).toEqual(['normal→normal 65%', 'normal→st 35%', 'st→st 100%', 'st→normal 回数切れ']);
+  expect(v.nodes.map((n) => n.notes)).toEqual([[], ['RUSH 当たり → 上位RUSH 25%']]);
   expect(v.rushEntry).toBeCloseTo(0.35, 10);
-  expect(v.rows.find((r) => r.label === 'RUSH 継続率')?.value).toBe('85.1%');
+  // 上位の平均 = 3,000 + 1,500 × E[K]（E[K] = 1/4 + 1/16 + 1/64 + 1/256）、最大 60R = 9,000個（D-120）。
+  const up = v.pies[1]!.slices[1]!.upper!;
+  expect(up.maxBalls).toBe(9000);
+  expect(up.avgBalls).toBeCloseTo(3000 + 1500 * (85 / 256), 10);
+  expect(v.rows.slice(3)).toEqual([
+    { label: 'RUSH 突入率', value: '35.0%' },
+    { label: 'RUSH 継続率', value: '81.3%' },
+    { label: '上位RUSH', value: 'RUSH 中の当たりの 25%' },
+    { label: '上乗せ', value: '1/4 でループ（最大 +40R）' },
+    { label: 'RUSH 中の当たりの平均', value: '約2,000個' },
+    { label: '1R', value: '10カウント × 15個' },
+    { label: 'ヘソ賞球', value: '8個' },
+    { label: '保留', value: '4個' },
+  ]);
 });
 
 test('港町店 lt-middle-01（時短経由の突入・ST→LT・上乗せ）', () => {

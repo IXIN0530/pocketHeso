@@ -218,6 +218,29 @@ function hitRateForTheoryMode(spec: MachineSpec, mode: LotteryMode): number {
   return spec.lt === undefined ? 0 : 1 / spec.lt.jackpot1In;
 }
 
+/** 上位の枝の上乗せ回数の期待値 E[K] = Σ_{k=1..max} (1/loop_1_in)^k（upper でない枝は 0, D-120）。 */
+export function expectedUpperLoops(spec: MachineSpec, branchIndex: number): number {
+  const b = spec.jackpotSplit[branchIndex];
+  if (b === undefined) {
+    throw new Error('invalid run: branch out of range');
+  }
+  if (b.upper === undefined) {
+    return 0;
+  }
+  let e = 0;
+  for (let k = 1; k <= b.upper.loopMax; k = k + 1) {
+    e = e + Math.pow(1 / b.upper.loop1In, k);
+  }
+  return e;
+}
+
+/** 枝の平均出玉（unit 1。上位は rounds + bonus_rounds + add_rounds × E[K] ラウンド分）。 */
+export function expectedPayoutBalls(spec: MachineSpec, branchIndex: number): number {
+  const b = spec.jackpotSplit[branchIndex];
+  const add = b === undefined || b.upper === undefined ? 0 : b.upper.addRounds;
+  return jackpotPayoutBalls(spec, branchIndex, 1) + add * expectedUpperLoops(spec, branchIndex) * spec.roundCount * spec.payoutPerBall;
+}
+
 /** 3x3 連立（(I - H Q) x = b）をガウス消去で解く。特異時は 0 ベクトル。 */
 function solve3(a: readonly (readonly number[])[], b: readonly number[]): number[] {
   const m: number[][] = [
@@ -293,7 +316,7 @@ export function computeTheory(spec: MachineSpec, hesoRate: number): RunTheory {
     const toNext: number[] = [0, 0, 0, 0];
     for (let i = 0; i < spec.jackpotSplit.length; i = i + 1) {
       const w = weightForMode(spec, i, mode);
-      const pay = jackpotPayoutBalls(spec, i, 1);
+      const pay = expectedPayoutBalls(spec, i);
       s = s + w;
       sp = sp + w * pay;
       const next = nextForBranch(spec, i);
@@ -487,6 +510,14 @@ export interface RunObserved {
   readonly perNormalSpin: number;
   readonly payoutPerBall: number;
   readonly maxHama: number;
+  /** 大当たり1回の最大出玉（unit 1）。 */
+  readonly maxJackpot: number;
+  /** 上位の枝が付いた機種で、上位になり得たモードの当たり数（upper の枝の重みが正のモードの当たり）。 */
+  readonly upperEligibleHits: number;
+  /** 上位の当たり数（D-120）。 */
+  readonly upperHits: number;
+  /** 上位の当たりの上乗せ回数 K の度数（index = K）。 */
+  readonly upperLoopCounts: readonly number[];
   /** RUSH に届いた初当たり連チャンの数。 */
   readonly chainsReachedRush: number;
   /** LT に届いた初当たり連チャンの数。 */
@@ -522,6 +553,17 @@ function spinsForObservedMode(spec: MachineSpec, mode: LotteryMode): number {
 
 function isRushMode(mode: LotteryMode): boolean {
   return mode === 'st' || mode === 'lt';
+}
+
+/** そのモードの当たりで上位の枝が選ばれ得るか（upper の枝の重みが正）。 */
+function upperEligibleMode(spec: MachineSpec, mode: LotteryMode): boolean {
+  for (let i = 0; i < spec.jackpotSplit.length; i = i + 1) {
+    const b = spec.jackpotSplit[i] as (typeof spec.jackpotSplit)[number];
+    if (b.upper !== undefined && weightForMode(spec, i, mode) > 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function simulateBalls(
@@ -560,6 +602,23 @@ export function simulateBalls(
   let jackpotPayout = 0;
   let curHama = 0;
   let maxHama = 0;
+  let maxJackpot = 0;
+  let upperEligibleHits = 0;
+  let upperHits = 0;
+  const upperLoopCounts: number[] = [];
+  let upperLoopMax = 0;
+  for (let i = 0; i < spec.jackpotSplit.length; i = i + 1) {
+    const u = (spec.jackpotSplit[i] as (typeof spec.jackpotSplit)[number]).upper;
+    if (u !== undefined && u.loopMax > upperLoopMax) {
+      upperLoopMax = u.loopMax;
+    }
+  }
+  const hasUpper = spec.jackpotSplit.some((b) => b.upper !== undefined);
+  if (hasUpper) {
+    for (let k = 0; k <= upperLoopMax; k = k + 1) {
+      upperLoopCounts.push(0);
+    }
+  }
   let jackpotPaySumSq = 0;
   // 初当たり連チャン（通常当たり〜通常復帰まで）の追跡
   let inChain = false;
@@ -615,7 +674,18 @@ export function simulateBalls(
       if (entry.branchIndex === null) {
         throw new Error('invalid run: hit without branch');
       }
-      const pay = jackpotPayoutBalls(spec, entry.branchIndex, 1);
+      const loops = entry.loops === undefined ? 0 : entry.loops;
+      const pay = jackpotPayoutBalls(spec, entry.branchIndex, 1, loops);
+      if (pay > maxJackpot) {
+        maxJackpot = pay;
+      }
+      if (hasUpper && upperEligibleMode(spec, spinMode)) {
+        upperEligibleHits = upperEligibleHits + 1;
+      }
+      if (entry.upper === true) {
+        upperHits = upperHits + 1;
+        upperLoopCounts[loops] = (upperLoopCounts[loops] as number) + 1;
+      }
       jackpots = jackpots + 1;
       jackpotPayout = jackpotPayout + pay;
       jackpotPaySumSq = jackpotPaySumSq + pay * pay;
@@ -747,6 +817,10 @@ export function simulateBalls(
     perNormalSpin: normalSpins > 0 ? jackpotPayout / normalSpins : 0,
     payoutPerBall: balls > 0 ? (jackpotPayout + hesoPayout) / balls : 0,
     maxHama,
+    maxJackpot,
+    upperEligibleHits,
+    upperHits,
+    upperLoopCounts,
     chainsReachedRush,
     chainsReachedLt,
     chainGe50k,
@@ -884,6 +958,14 @@ export function formatReports(reports: readonly MachineReport[]): string {
       `chain >=100k/hatsuari | - | ${o.normalHits > 0 ? fmt(o.chainGe100kRate * 100, 3) + '%' : '-'} (n=${o.chainGe100k}/${o.normalHits}) | -`,
     );
     lines.push(`max hama | - | ${o.maxHama} | -`);
+    lines.push(`max jackpot | - | ${o.maxJackpot} | -`);
+    if (o.upperLoopCounts.length > 0) {
+      lines.push(
+        `upper/eligible hits | - | ${o.upperEligibleHits > 0 ? fmt(o.upperHits / o.upperEligibleHits * 100, 2) + '%' : '-'} (n=${o.upperHits}/${o.upperEligibleHits}) | -`,
+      );
+      const dist = o.upperLoopCounts.map((c, k) => `K${k}=${c}(${o.upperHits > 0 ? fmt(c / o.upperHits * 100, 2) : '-'}%)`).join(' ');
+      lines.push(`upper loops | - | ${dist} | -`);
+    }
   }
   return lines.join('\n');
 }

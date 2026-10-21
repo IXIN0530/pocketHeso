@@ -1,6 +1,8 @@
 import { expect, test } from 'vitest';
 import {
   computeTheory,
+  expectedPayoutBalls,
+  expectedUpperLoops,
   formatReports,
   loadRunAtlas,
   loadRunMachine,
@@ -29,7 +31,7 @@ test('parseRunArgs は --balls/--seed を読み省略時は light/rush/lt の3�
   expect(() => parseRunArgs(['--balls', '10', '--seed', '1', '--unknown'])).toThrow();
 });
 
-test('理論値は STATUS の目安と一致する（light 10.52・rush 10.51・lt 10.39 付近）', () => {
+test('理論値は STATUS の目安と一致する（light 10.52・rush 10.63・lt 10.39 付近）', () => {
   const { hesoRate } = loadRunAtlas();
   const light = loadRunMachine('light-middle-01');
   const rush = loadRunMachine('rush-middle-01');
@@ -49,7 +51,14 @@ test('理論値は STATUS の目安と一致する（light 10.52・rush 10.51・
   expect(rt.perNormalSpin).toBeGreaterThan(9.5);
   expect(rt.perNormalSpin).toBeLessThan(11);
   expect(Math.abs(lt.perNormalSpin - 10.52) / 10.52).toBeLessThan(0.05);
-  expect(Math.abs(rt.perNormalSpin - 10.51) / 10.51).toBeLessThan(0.05);
+  expect(Math.abs(rt.perNormalSpin - 10.63) / 10.63).toBeLessThan(0.05);
+  // rush-middle-01 の上位（D-120）: E[K] = 1/4 + 1/16 + 1/64 + 1/256、上位の平均 = 3,000 + 1,500 × E[K]、66 回で 10.63
+  expect(expectedUpperLoops(rush.spec, 0)).toBe(0);
+  expect(expectedUpperLoops(rush.spec, 1)).toBeCloseTo(85 / 256, 12);
+  expect(expectedPayoutBalls(rush.spec, 0)).toBe(1500);
+  expect(expectedPayoutBalls(rush.spec, 1)).toBeCloseTo(3000 + 1500 * (85 / 256), 9);
+  expect(rt.stContinuation).toBeCloseTo(1 - Math.pow(1 - 1 / 39.9, 66), 9);
+  expect(rt.perNormalSpin).toBeCloseTo(10.63, 2);
   // lt-middle-01 は spec/21 の例どおり（P2-T9）
   expect(ltm.spec.jitan?.stSpins).toBe(100);
   expect(ltm.spec.st.stSpins).toBe(56);

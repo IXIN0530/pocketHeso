@@ -3,7 +3,7 @@ import type { LotteryModeId } from '@ph/core';
 import { Segmented } from '../components/segmented.tsx';
 import { machineSpec } from '../engine/game-config.ts';
 import { MACHINE_INFO, machineInfo } from '../engine/machine-info.ts';
-import { machineSpecView, type FlowEdge, type SpecPie } from '../engine/machine-spec-view.ts';
+import { machineSpecView, type FlowEdge, type SpecPie, type SpecSlice } from '../engine/machine-spec-view.ts';
 import { useEngine } from '../stores/engine.ts';
 import styles from './machine-spec-screen.module.css';
 
@@ -14,6 +14,13 @@ const MODE_COLOR: Readonly<Record<LotteryModeId, string>> = {
   st: '#e8b840',
   lt: '#e87aa8',
 };
+
+/** 上位RUSH の扇（RUSH の扇と見分ける, D-120）。 */
+const UPPER_COLOR = '#f07848';
+
+function sliceColor(s: SpecSlice): string {
+  return s.upper !== null ? UPPER_COLOR : MODE_COLOR[s.next];
+}
 
 const MODE_LABEL: Readonly<Record<LotteryModeId, string>> = { normal: '通常', jitan: '時短', st: 'RUSH', lt: 'LT' };
 
@@ -44,7 +51,7 @@ function Pie({ pie }: { pie: SpecPie }) {
           const labelR = pie.slices.length === 1 ? 0 : r * 0.62;
           return (
             <g key={i}>
-              <path d={slicePath(from, acc, r)} fill={MODE_COLOR[s.next]} stroke="#1c2145" strokeWidth="1.5" />
+              <path d={slicePath(from, acc, r)} fill={sliceColor(s)} stroke="#1c2145" strokeWidth="1.5" />
               {s.percent >= 6 && (
                 <text className={styles.pct} x={(labelR * Math.sin(mid * 2 * Math.PI)).toFixed(1)} y={(-labelR * Math.cos(mid * 2 * Math.PI)).toFixed(1)}>
                   {s.percent}%
@@ -57,7 +64,7 @@ function Pie({ pie }: { pie: SpecPie }) {
       <ul className={styles.legend}>
         {pie.slices.map((s, i) => (
           <li key={i}>
-            <span className={styles.dot} style={{ background: MODE_COLOR[s.next] }} aria-hidden="true" />
+            <span className={styles.dot} style={{ background: sliceColor(s) }} aria-hidden="true" />
             <b>{s.roundsLabel}</b>
             <span>{s.ballsLabel}</span>
             <span className={styles.band} style={{ background: MODE_COLOR[s.next] }}>
@@ -113,6 +120,9 @@ export function MachineSpecBody({ id }: { id: string }) {
                       {edgeText(e, label)}
                     </li>
                   ))}
+                {n.notes.map((t) => (
+                  <li key={t}>※ {t}</li>
+                ))}
               </ul>
             </li>
           ))}

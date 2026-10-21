@@ -8,11 +8,13 @@ export interface SpecSlice {
   readonly branch: number;
   readonly rounds: number;
   readonly bonusRounds: number;
-  /** 「10R」「10R＋上乗せ 20R」。 */
+  /** 「10R」「10R＋上乗せ 20R」。上位は「20R＋上乗せ」。 */
   readonly roundsLabel: string;
-  /** 出玉（1発 1玉のとき）= (rounds + bonusRounds) × count × payout_per_ball。 */
+  /** 出玉（1発 1玉のとき）= (rounds + bonusRounds) × count × payout_per_ball。上位は上乗せ 0 回のとき。 */
   readonly balls: number;
-  /** 「1,500個」。 */
+  /** 上位の枝（D-120）: 上乗せが最大まで乗った時の出玉と、平均（rounds + bonus + add × E[K]）。上位でなければ null。 */
+  readonly upper: { readonly maxBalls: number; readonly avgBalls: number } | null;
+  /** 「1,500個」。上位は「約3,000〜9,000個」。 */
   readonly ballsLabel: string;
   readonly next: LotteryModeId;
   /** 次の状態の帯: 「RUSH 100回」「時短 100回」「LT 91回」「通常」。 */
@@ -41,6 +43,8 @@ export interface FlowNode {
   readonly odds: string;
   /** 回転数（通常は 0 = 無制限）。 */
   readonly spins: number;
+  /** 矢印の下に添える注記（例「RUSH 当たり → 上位RUSH 25%」）。 */
+  readonly notes: readonly string[];
 }
 
 /** ゲームフローの矢印。jackpot = そのモードの大当たり後の行き先（% は行き先ごとに合算・最大剰余）、end = 回数切れで通常へ。 */
@@ -138,6 +142,13 @@ export function hitWithin(jackpot1In: number, spins: number): number {
   return 1 - Math.pow(1 - 1 / jackpot1In, spins);
 }
 
+/** 上乗せ回数の期待値 E[K] = Σ_{k=1..max} (1/loop_1_in)^k。 */
+export function expectedLoops(loop1In: number, loopMax: number): number {
+  let e = 0;
+  for (let k = 1; k <= loopMax; k++) e += Math.pow(1 / loop1In, k);
+  return e;
+}
+
 /** 振り分けの next（省略時は kakuhen→st・tsujo→normal, spec/21）。 */
 function nextOf(spec: MachineSpec, branch: number): LotteryModeId {
   const b = spec.jackpotSplit[branch];
@@ -162,15 +173,22 @@ function slicesOf(spec: MachineSpec, mode: LotteryModeId): SpecSlice[] {
   return idx.map((i, k) => {
     const b = spec.jackpotSplit[i]!;
     const bonus = b.bonusRounds ?? 0;
-    const balls = (b.rounds + bonus) * spec.roundCount * spec.payoutPerBall;
+    const perRound = spec.roundCount * spec.payoutPerBall;
+    const balls = (b.rounds + bonus) * perRound;
     const next = nextOf(spec, i);
+    const u = b.upper;
+    const upper =
+      u === undefined
+        ? null
+        : { maxBalls: balls + u.addRounds * u.loopMax * perRound, avgBalls: balls + u.addRounds * expectedLoops(u.loop1In, u.loopMax) * perRound };
     return {
       branch: i,
       rounds: b.rounds,
       bonusRounds: bonus,
-      roundsLabel: bonus > 0 ? `${b.rounds}R＋上乗せ ${bonus}R` : `${b.rounds}R`,
+      roundsLabel: upper !== null ? `${b.rounds + bonus}R＋上乗せ` : bonus > 0 ? `${b.rounds}R＋上乗せ ${bonus}R` : `${b.rounds}R`,
       balls,
-      ballsLabel: `${groupDigits(balls)}個`,
+      upper,
+      ballsLabel: upper !== null ? `約${groupDigits(balls)}〜${groupDigits(upper.maxBalls)}個` : `${groupDigits(balls)}個`,
       next,
       nextLabel: nextLabel(spec, next),
       weight: ws[k] as number,
@@ -191,6 +209,20 @@ function pct1(x: number): string {
   return `${(x * 100).toFixed(1)}%`;
 }
 
+/** そのモードの当たりで上位になる割合（0〜1）。 */
+function upperShare(pie: SpecPie): number {
+  let s = 0;
+  for (const sl of pie.slices) if (sl.upper !== null) s += sl.share;
+  return s;
+}
+
+/** そのモードの当たり1回の平均出玉（上位は上乗せの期待値込み）。 */
+function avgBallsOf(pie: SpecPie): number {
+  let s = 0;
+  for (const sl of pie.slices) s += sl.share * (sl.upper === null ? sl.balls : sl.upper.avgBalls);
+  return s;
+}
+
 export function machineSpecView(spec: MachineSpec): MachineSpecView {
   const modes = modesOf(spec);
   const pies: SpecPie[] = modes.map((mode) => ({ mode, title: PIE_TITLE[mode], slices: slicesOf(spec, mode) }));
@@ -198,7 +230,10 @@ export function machineSpecView(spec: MachineSpec): MachineSpecView {
 
   const nodes: FlowNode[] = modes.map((mode) => {
     const m = modeSpec(spec, mode)!;
-    return { mode, label: NODE_LABEL[mode], odds: `1/${m.jackpot1In.toFixed(1)}`, spins: mode === 'normal' ? 0 : m.stSpins };
+    const pie = pies.find((p) => p.mode === mode)!;
+    const up = upperShare(pie);
+    const notes = up > 0 ? [`${NODE_LABEL[mode]} 当たり → 上位RUSH ${Math.round(up * 100)}%`] : [];
+    return { mode, label: NODE_LABEL[mode], odds: `1/${m.jackpot1In.toFixed(1)}`, spins: mode === 'normal' ? 0 : m.stSpins, notes };
   });
 
   const edges: FlowEdge[] = [];
@@ -234,6 +269,16 @@ export function machineSpecView(spec: MachineSpec): MachineSpecView {
   if (continuation.jitan !== undefined) rows.push({ label: '時短 引き戻し率', value: pct1(continuation.jitan) });
   if (continuation.st !== undefined) rows.push({ label: 'RUSH 継続率', value: pct1(continuation.st) });
   if (continuation.lt !== undefined) rows.push({ label: 'LT 継続率', value: pct1(continuation.lt) });
+  // 上位RUSH（D-120）: 上位の枝があるモードだけ。割合・上乗せのループ・そのモードの当たりの平均出玉（100個単位）。
+  for (const pie of pies) {
+    const up = upperShare(pie);
+    if (up <= 0) continue;
+    const sl = pie.slices.find((x) => x.upper !== null)!;
+    const u = spec.jackpotSplit[sl.branch]!.upper!;
+    rows.push({ label: '上位RUSH', value: `${ODDS_LABEL[pie.mode]}の当たりの ${Math.round(up * 100)}%` });
+    rows.push({ label: '上乗せ', value: `1/${u.loop1In} でループ（最大 +${u.addRounds * u.loopMax}R）` });
+    rows.push({ label: `${ODDS_LABEL[pie.mode]}の当たりの平均`, value: `約${groupDigits(Math.round(avgBallsOf(pie) / 100) * 100)}個` });
+  }
   rows.push({ label: '1R', value: `${spec.roundCount}カウント × ${spec.payoutPerBall}個` });
   rows.push({ label: 'ヘソ賞球', value: `${spec.hesoPayout}個` });
   rows.push({ label: '保留', value: `${spec.holdMax}個` });
