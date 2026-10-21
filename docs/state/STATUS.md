@@ -3,9 +3,9 @@
 
 - Current phase: P14（v1.5 店の開放を常連ツリーに・休業中の台選び・台のスペック → `docs/plan/P14-shops-spec.md`）。P11-T6 の本番確認は Blockers。P8-T7（任意）と P7 再開は人間の指示待ち
 - Parallel: P13（`docs/plan/P13-feedback-1-3.md`）→ Next: P13-T9（実機・人間。手順は T8c の報告で渡した）→ T10 は人間の「リリースしてよい」待ち
-- Last done: P14-T2（web: 3台を Engine に渡す・休業のシートに「次に打つ台」・ホールに店名と開店の店名表示。表示は Projection.machineId）
-- Next: P14-T3（台のスペック画面。Split: Opus=machineSpecView と円グラフ用データ・テスト / Sonnet=画面・導線）→ T4（実機）→ T5 は人間の指示時
-- Owner hint: Claude Code（T3 は Split: Opus → Sonnet）。P13-T9 は人間
+- Last done: P14-T3（設定 →「台のスペック」: 3台タブ・円グラフ・ゲームフロー・基本性能。表示データは web の純関数 machineSpecView）
+- Next: P14-T4（実機・人間。手順は Sonnet が push して渡す）→ T5 は人間の指示時
+- Owner hint: 人間（手順は Claude Code（Sonnet））。P13-T9 は人間
 - Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T2 は人間の指示で再開（T12 遠征は取り下げ D-118、T13 は P14 に置き換え）
 
 ## Blockers
@@ -18,6 +18,6 @@
 - 既定機種の人間確認待ち（light/rush/ltのどれを既定にするか。P3バランスに影響）
 
 ## Notes（最新3件まで）
+- [P14-T3]: `engine/machine-spec-view.ts`（Opus）: 割合は最大剰余で合計100、継続率 = 1−(1−1/n)^回転数 × RUSH に戻る枝の割合（light は ST 中も 50% が通常行きなので RUSH 継続率 46.0%・rush 85.1%・lt 突入44.3%/引き戻し25.7%/RUSH 75.9%/LT 90.1%）。出玉は「1発 1玉のとき」と注記（ボーナスは D-080 で廃止済み）。画面（Sonnet）: 扇には % だけ、R数・出玉・次の状態は凡例（375px で文字が入らないため）。アプリは暗い配色のみなのでライト/ダーク切替はなし。core の p3t3 の時間計測（150ms）が全体実行で1回落ち再実行で通過
 - [P14-T2]: 閉店履歴の「周回ごとの台」は CloseRecord に machineId が無く出せないため、記録には「いまの台」だけ（周回ごとにするなら Core に machineId を足す＝golden/snapshot に影響。要判断）。自動開店でもホールの店名表示は台が変わった時に出る。pickMachine の押下は実機（T4）で確認。全部 Sonnet
-- [P14-T1]: Engine に `machines`・`pickMachine`、Projection に `machineId`・`restMachineId`・`machinesOpen`、`opened.machineId`。切り替えは保留・変動中・電サポ／大当たりを捨て normal から（RUSH 中なら `modeChanged` normal を `opened` の直後）。`--tree greedy`（standard 84日・3機種）は閉店日・判定が不変、新ノードを3〜4週目に買うぶん4週目の最高到達役物が light 837→818 等わずかに下がる（D-119）。web は `tree-defs.ts` の系統に2行足しただけ（表示は T2）。全部 Opus
 - [P13-T8c]: 通常・時短は T8b と同値。ST・LT の sb40 は白の当たり 87%・白のハズレ 0.6%、sb90 は白の当たり 75% に先バレ（表 `docs/state/sakibare-occ-20261021.md`）。sb90 の白の先バレは全部金で見せる（金の信頼度 95→98%、RUSH で金が約3倍出る）。見た目の熱さと Core の熱さ（白）が合わない保留あり。`tree-engine.test.ts` の時間比較が全体実行で1回不安定（今回は無関係・再実行で通過）。Opus が fx、Sonnet が web テスト・spec・DECISIONS

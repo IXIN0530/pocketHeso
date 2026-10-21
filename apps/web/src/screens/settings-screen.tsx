@@ -12,6 +12,7 @@ import { setPrefs, usePrefs } from '../stores/prefs.ts';
 import { LOOK_KEYS, LOOK_TEXT } from '../board/look.ts';
 import { SPIKE_NAMES } from '../spikes/spike-names.ts';
 import { SakibareCustomField } from './sakibare-custom.tsx';
+import { ConnectedMachineSpecScreen } from './machine-spec-screen.tsx';
 import { SavePanel } from './save-panel.tsx';
 import { AboutSheet, OnboardingSheet, markOnboarded } from './onboarding-sheet.tsx';
 import styles from './activity.module.css';
@@ -39,6 +40,7 @@ export function SettingsScreen() {
   const [resetStep, setResetStep] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
   const [guide, setGuide] = useState<'guide' | 'about' | null>(null);
+  const [specOpen, setSpecOpen] = useState(false);
 
   const reload = useCallback(async (d: Db) => {
     setLastExportAt((await loadSettings(d)).lastExportAt);
@@ -75,6 +77,8 @@ export function SettingsScreen() {
   const resting = p?.rest !== undefined && p?.rest !== null;
   // 正式版は常に 1（clock.ts）なので Debug の文言は出ない（D-087）。
   const debugDb = __DEV_TOOLS__ && isDebugDb;
+
+  if (specOpen) return <ConnectedMachineSpecScreen onBack={() => setSpecOpen(false)} />;
 
   return (
     <div className={styles.screen}>
@@ -162,6 +166,15 @@ export function SettingsScreen() {
             </p>
           );
         })}
+      </section>
+      <section className={styles.card}>
+        <h2>台のスペック</h2>
+        <p className={styles.note}>3台の大当たりの振り分け・ゲームフロー・基本性能を見られます（未開放の台も）。</p>
+        <div className={styles.row}>
+          <button className={styles.sub} onClick={() => setSpecOpen(true)}>
+            台のスペックを見る
+          </button>
+        </div>
       </section>
       <section className={styles.card}>
         <h2>連携と登録地点</h2>
