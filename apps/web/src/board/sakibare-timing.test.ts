@@ -19,9 +19,10 @@ const T0 = Date.UTC(2026, 8, 26, 6, 0, 0);
 const MIN = 60000;
 const FRAME_MS = 17;
 const LATE_MS = 1000;
-/** 先バレが多く出る設定（信頼度40%・占有率95%）。時刻の確認なので当選確率は固定の 0.3。 */
+/** 先バレが多く出る設定（信頼度40%・占有率95%）。時刻の確認なので当選確率・保留色の重みは固定。 */
 const CUSTOM: SakibareCustom = 'sb40';
-const hitProb = (): number => 0.3;
+const ODDS = { p: 0.3, hitW: [20, 30, 30, 20, 0], missW: [40, 30, 20, 10, 0] };
+const hitProb = () => ODDS;
 
 const fuel = (at: number): ClaimRecord => ({
   claimId: `health:steps:2026-09-26:${at}`,
@@ -108,7 +109,8 @@ test('通常時: 先バレはヘソ入賞（玉がヘソに入る表示の時刻
     }
     checked++;
   }
-  expect(checked).toBeGreaterThanOrEqual(20);
+  // 白の保留には先バレしない（P13-T8b）ので、以前より件数は少ない。
+  expect(checked).toBeGreaterThanOrEqual(10);
   // 通常時の保留は全てヘソ入賞と同じ時刻に取得されている。
   for (const h of holdsOf(run)) {
     if (h.entry.modeAtDraw === 'normal') expect(heso.has(h.at)).toBe(true);

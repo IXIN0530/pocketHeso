@@ -3,7 +3,7 @@ import { parseBoard, parseLaunchDirs } from '@ph/core';
 import boardJson from '../../../../resources/boards/default.json';
 import dirsJson from '../../../../resources/boards/launch_dirs.json';
 import patternsJson from '../../../../resources/machines/patterns.json';
-import { machineHitProb, machineRound } from '../engine/game-config.ts';
+import { machineRound, machineSakibareOdds } from '../engine/game-config.ts';
 import { installAudioUnlock } from '../fx/fx-host.ts';
 import { clock } from '../stores/clock.ts';
 import { onShots, onView, useEngine } from '../stores/engine.ts';
@@ -62,7 +62,7 @@ export function BoardCanvas({ active = true }: { active?: boolean }) {
     const setRound = (id: string) => {
       const r = machineRound(id);
       if (r) scene.setRound(r);
-      scene.setHitProb((mode) => machineHitProb(id, mode));
+      scene.setOdds((mode) => machineSakibareOdds(id, mode));
     };
     scene.setSakibareCustom(usePrefs.getState().sakibareCustom);
     const offSakibare = usePrefs.subscribe((p, prev) => {

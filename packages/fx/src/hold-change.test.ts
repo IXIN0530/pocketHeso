@@ -23,10 +23,12 @@ import {
   holdColorAt,
   holdHitProb,
   isSakibareCustom,
+  customSakibareRates,
   planHoldChange,
+  planHoldChangeCustom,
   planSakibare,
   sakibareAt,
-  sakibareProb,
+  sakibareOdds,
   type HoldChangePlan,
 } from './hold-change.ts';
 
@@ -151,67 +153,118 @@ test('3機種の spin_min_colored_ms は割れる演出を縮めない長さ（P
 });
 
 const CUSTOMS = ['sb40', 'sb90', 'sb100'] as const;
+const MACHINES = ['light-middle-01', 'rush-middle-01', 'lt-middle-01'] as const;
 
-test('抽選カスタム normal: 従来の色で決める先バレと全て一致（当否・確率によらない）', () => {
+function oddsFor(machine: string, mode: LotteryMode) {
+  return sakibareOdds(loadSpec(machine), mode);
+}
+
+test('抽選カスタム normal: planHoldChange と全て一致（当否・モードによらない）', () => {
+  const odds = oddsFor('rush-middle-01', 'st');
   for (const color of LOTTERY_HOLD_COLORS) {
     for (let s = 0; s < 3000; s++) {
-      const want = planHoldChange(5, s, color).sakibare;
-      expect(planSakibare(5, s, color, true, 0.01, 'normal')).toBe(want);
-      expect(planSakibare(5, s, color, false, 0.5, 'normal')).toBe(want);
+      const want = planHoldChange(5, s, color);
+      expect(planHoldChangeCustom(5, s, color, true, odds, 'normal')).toEqual(want);
+      expect(planHoldChangeCustom(5, s, color, false, odds, 'normal')).toEqual(want);
+      expect(planSakibare(5, s, color, true, odds, 'normal')).toBe(want.sakibare);
     }
   }
 });
 
-test('抽選カスタム: 式から出る信頼度・占有率が指定どおり（3機種・取得時の各モード）', () => {
-  for (const machine of ['light-middle-01', 'rush-middle-01', 'lt-middle-01']) {
+test('抽選カスタム: 式の信頼度はカスタムの値のまま・占有率は上限つき（3機種・取得時の各モード）', () => {
+  for (const machine of MACHINES) {
     const spec = loadSpec(machine);
     const modes: LotteryMode[] = ['normal', 'st'];
     if (spec.jitan !== undefined) modes.push('jitan');
     if (spec.lt !== undefined) modes.push('lt');
     for (const mode of modes) {
-      const p = holdHitProb(spec, mode);
-      expect(p).toBeGreaterThan(0);
+      const odds = sakibareOdds(spec, mode);
+      expect(odds.p).toBe(holdHitProb(spec, mode));
+      const sh = odds.hitW.reduce((a, b) => a + b, 0);
+      const sm = odds.missW.reduce((a, b) => a + b, 0);
       for (const c of CUSTOMS) {
-        const { rel, occ } = SAKIBARE_CUSTOM_RATES[c];
-        const hit = p * sakibareProb(c, true, p);
-        const all = hit + (1 - p) * sakibareProb(c, false, p);
-        expect(hit / p).toBeCloseTo(occ, 9);
-        expect(hit / all).toBeCloseTo(rel, 9);
+        const r = customSakibareRates(odds, c);
+        const white = LOTTERY_HOLD_COLORS.indexOf('white');
+        expect(r.hit[white]).toBe(0);
+        expect(r.miss[white]).toBe(0);
+        let occ = 0;
+        let miss = 0;
+        for (let i = 0; i < odds.hitW.length; i++) {
+          expect(r.hit[i]).toBeLessThanOrEqual(1);
+          expect(r.miss[i]).toBeLessThanOrEqual(1);
+          occ += (r.hit[i]! * odds.hitW[i]!) / sh;
+          miss += (r.miss[i]! * odds.missW[i]!) / sm;
+        }
+        expect(occ).toBeCloseTo(r.occ, 9);
+        expect(r.occ).toBeLessThanOrEqual(SAKIBARE_CUSTOM_RATES[c].occ + 1e-12);
+        expect((odds.p * occ) / (odds.p * occ + (1 - odds.p) * miss)).toBeCloseTo(SAKIBARE_CUSTOM_RATES[c].rel, 9);
+        // 通常時の表（当たりの約95%が白以外）ではカスタムの占有率をほぼ満たす。
+        if (mode === 'normal') expect(r.occ).toBeGreaterThan(SAKIBARE_CUSTOM_RATES[c].occ - 0.06);
       }
     }
   }
 });
 
-test('抽選カスタム: 乱数で引いた実測の信頼度・占有率が ±0.02（rush の通常時）', () => {
-  const p = holdHitProb(loadSpec('rush-middle-01'), 'normal');
-  const nHit = 100000;
-  const nMiss = 600000;
-  for (const c of CUSTOMS) {
-    let sbHit = 0;
-    let sbMiss = 0;
-    for (let s = 0; s < nHit; s++) if (planSakibare(21, s, 'white', true, p, c)) sbHit++;
-    for (let s = 0; s < nMiss; s++) if (planSakibare(21, nHit + s, 'white', false, p, c)) sbMiss++;
-    const occ = sbHit / nHit;
-    const hit = p * occ;
-    const rel = hit / (hit + (1 - p) * (sbMiss / nMiss));
-    expect(Math.abs(occ - SAKIBARE_CUSTOM_RATES[c].occ)).toBeLessThan(0.02);
-    expect(Math.abs(rel - SAKIBARE_CUSTOM_RATES[c].rel)).toBeLessThan(0.02);
-    if (c === 'sb100') expect(sbMiss).toBe(0);
+test('抽選カスタム: 乱数で引いた実測の信頼度・占有率が ±0.02（3機種 × 通常/ST）', () => {
+  const n = 8000;
+  for (const machine of MACHINES) {
+    for (const mode of ['normal', 'st'] as const) {
+      const odds = oddsFor(machine, mode);
+      const sh = odds.hitW.reduce((a, b) => a + b, 0);
+      const sm = odds.missW.reduce((a, b) => a + b, 0);
+      for (const c of CUSTOMS) {
+        let occ = 0;
+        let miss = 0;
+        let serial = 0;
+        let bad = 0;
+        LOTTERY_HOLD_COLORS.forEach((color, i) => {
+          let kh = 0;
+          let km = 0;
+          for (let s = 0; s < n; s++) {
+            const h = planHoldChangeCustom(21, serial++, color, true, odds, c);
+            const m = planHoldChangeCustom(21, serial++, color, false, odds, c);
+            for (const x of [h, m]) if (x.final !== color || (x.sakibare && (!x.change || color === 'white'))) bad++;
+            if (h.sakibare) kh++;
+            if (m.sakibare) km++;
+          }
+          occ += ((kh / n) * odds.hitW[i]!) / sh;
+          miss += ((km / n) * odds.missW[i]!) / sm;
+        });
+        const rel = (odds.p * occ) / (odds.p * occ + (1 - odds.p) * miss);
+        const want = customSakibareRates(odds, c);
+        expect(bad).toBe(0);
+        expect(Math.abs(occ - want.occ)).toBeLessThan(0.02);
+        expect(Math.abs(rel - SAKIBARE_CUSTOM_RATES[c].rel)).toBeLessThan(0.02);
+        if (c === 'sb100') expect(miss).toBe(0);
+      }
+    }
   }
 });
 
-test('抽選カスタム: 色・保留変化に影響しない・同じ引数なら同じ・特別保留とボーナス保留は先バレしない', () => {
-  for (let s = 0; s < 2000; s++) {
-    const a = planSakibare(9, s, 'white', true, 0.003, 'sb40');
-    for (const color of LOTTERY_HOLD_COLORS) expect(planSakibare(9, s, color, true, 0.003, 'sb40')).toBe(a);
-    expect(planSakibare(9, s, 'red', true, 0.003, 'sb40')).toBe(planSakibare(9, s, 'red', true, 0.003, 'sb40'));
+test('抽選カスタム: 先バレしない保留は planHoldChange のまま・同じ引数なら同じ・特別保留とボーナス保留は先バレしない', () => {
+  const odds = oddsFor('rush-middle-01', 'normal');
+  for (const c of CUSTOMS) {
+    for (const color of LOTTERY_HOLD_COLORS) {
+      for (let s = 0; s < 1500; s++) {
+        for (const hit of [true, false]) {
+          const x = planHoldChangeCustom(9, s, color, hit, odds, c);
+          const base = planHoldChange(9, s, color);
+          expect(x).toEqual(planHoldChangeCustom(9, s, color, hit, odds, c));
+          expect(x.final).toBe(base.final);
+          if (!x.sakibare) expect(x.change).toBe(base.change);
+        }
+      }
+    }
   }
   for (const serial of [BONUS_SERIAL_BASE, GRANT_HOLD_SERIAL_BASE + 3, RESERVE_SERIAL_BASE - 1]) {
-    for (const c of CUSTOMS) expect(planSakibare(1, serial, 'gold', true, 0.1, c)).toBe(false);
+    for (const c of CUSTOMS) {
+      expect(planSakibare(1, serial, 'gold', true, odds, c)).toBe(false);
+      expect(planHoldChangeCustom(1, serial, 'gold', true, odds, c).change).toBe(planHoldChange(1, serial, 'gold').change);
+    }
   }
   // 電サポの自動保留は対象。
   let any = false;
-  for (let k = 0; k < 50 && !any; k++) any = planSakibare(1, RESERVE_SERIAL_BASE + k, 'white', true, 0.025, 'sb40');
+  for (let k = 0; k < 50 && !any; k++) any = planSakibare(1, RESERVE_SERIAL_BASE + k, 'red', true, oddsFor('rush-middle-01', 'st'), 'sb40');
   expect(any).toBe(true);
   expect(isSakibareCustom('sb90')).toBe(true);
   expect(isSakibareCustom('sb50')).toBe(false);

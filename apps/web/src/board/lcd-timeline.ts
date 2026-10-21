@@ -2,7 +2,16 @@
 // Engine のイベント（保留の取得 → 変動開始 → 停止 → 大当たり）を時刻付きでため、盤面の玉と同じ表示時刻で1つずつ反映する。
 // 前進ごとに「全部反映した結果」を Projection と照らし、合わなければ（背面の間・Debug の倍速で取りこぼした時）Projection に揃える。
 import { GRANT_HOLD_SERIAL_BASE, RESERVE_SERIAL_BASE, type EngineSimEvent, type HallProjection, type JackpotKind, type LotteryHoldColor, type LotteryMode } from '@ph/core';
-import { SAKIBARE_DELAY_MS, holdBreakScale, holdColorAt, planHoldChange, planSakibare, type SakibareCustom } from '@ph/fx';
+import {
+  SAKIBARE_DELAY_MS,
+  holdBreakScale,
+  holdColorAt,
+  planHoldChange,
+  planHoldChangeCustom,
+  type HoldChangePlan,
+  type SakibareCustom,
+  type SakibareOdds,
+} from '@ph/fx';
 
 export interface LcdHold {
   /** 保留の通し番号（Projection から作った時は分からないので -1）。 */
@@ -294,34 +303,63 @@ export function matchesProjection(s: LcdState, p: HallProjection): boolean {
   );
 }
 
+/** 取得時のモード → 先バレの材料（今の機種の spec から。知らない機種は p = 0 で先バレしない）。 */
+export type OddsOf = (mode: LotteryMode) => SakibareOdds;
+
+const NO_ODDS: SakibareOdds = { p: 0, hitW: [], missW: [] };
+const noOdds: OddsOf = () => NO_ODDS;
+
 /**
- * 見せる色に置き換えた状態（保留変化, D-075）。見せ方は RNGStream(seed, 'holdChange', entry) で決まり、最終色は Core のまま。
- * 変化する保留は灰色（白）で点滅（blink）し、変動が始まると割れて（breaks）HOLD_BREAK_MS.reveal（短い変動は縮めた時刻）に最終色になる。
+ * 見せ方。当否が分かる保留・変動は取得時のカスタム・モードで planHoldChangeCustom（先バレなら必ず変化, P13-T8b）、
+ * 分からないもの（Projection から作った・リプレイ）は planHoldChange（先バレしない）。
+ */
+function planOf(
+  seed: number,
+  entry: number,
+  final: LotteryHoldColor,
+  hit: boolean | null,
+  mode: LotteryMode | undefined,
+  custom: SakibareCustom | undefined,
+  oddsOf: OddsOf,
+): HoldChangePlan {
+  const c = custom ?? 'normal';
+  if (c === 'normal' || hit === null) return planHoldChange(seed, entry, final);
+  return planHoldChangeCustom(seed, entry, final, hit, oddsOf(mode ?? 'normal'), c);
+}
+
+/**
+ * 見せる色に置き換えた状態（保留変化, D-075）。見せ方は RNGStream(seed, 'holdChange', entry) で決まる。
+ * 変化する保留は灰色（白）で点滅（blink）し、変動が始まると割れて（breaks）HOLD_BREAK_MS.reveal（短い変動は縮めた時刻）に最終色（plan.final）になる。
  * Projection から作った保留・変動（番号・開始時刻が不明）は最終色のまま見せる。
  */
-export function shownLcdState(s: LcdState, seed: number, now: number): LcdState {
+export function shownLcdState(s: LcdState, seed: number, now: number, oddsOf: OddsOf = noOdds): LcdState {
   const holds = s.holds.map((h) => {
-    if (h.entry < 0 || !planHoldChange(seed, h.entry, h.color).change) return h;
-    return { ...h, color: 'white' as const, blink: true };
+    if (h.entry < 0) return h;
+    const plan = planOf(seed, h.entry, h.color, h.hit, h.mode, h.custom, oddsOf);
+    if (!plan.change) return h;
+    return { ...h, color: holdColorAt(plan, null, now), blink: true };
   });
   let spin = s.spin;
   if (spin && spin.color !== null && spin.startAt !== null) {
     // プレビューは breaks を指定して割れる演出を見せられる。
-    const change = spin.breaks === true || (spin.entry >= 0 && planHoldChange(seed, spin.entry, spin.color).change);
+    const plan: HoldChangePlan =
+      spin.entry >= 0
+        ? planOf(seed, spin.entry, spin.color, spin.hit, spin.mode, spin.custom, oddsOf)
+        : { final: spin.color, change: false, sakibare: false };
+    const change = spin.breaks === true || plan.change;
     if (change) {
       const scale = holdBreakScale(spin.endsAt - spin.startAt);
-      spin = { ...spin, color: holdColorAt({ final: spin.color, change, sakibare: false }, spin.startAt, now, scale), breaks: true };
+      spin = { ...spin, color: holdColorAt({ ...plan, change }, spin.startAt, now, scale), breaks: true };
     }
   }
   return holds.every((h, i) => h === s.holds[i]) && spin === s.spin ? s : { ...s, holds, spin };
 }
 
 /**
- * 先バレ（D-074）する保留・変動の番号と時刻。normal は色で、カスタムは当否と取得時のモードの当選確率 p で決まる（planSakibare, P13-T1）。
+ * 先バレ（D-074）する保留・変動の番号と時刻。normal は色で、カスタムは当否と取得時のモードの材料 odds で決まる（planHoldChangeCustom, P13-T8b）。
  * 取得時刻・当否・色が分からない保留（Projection から作った・リプレイ・プレビュー）は出さない。
- * hitProb は取得時のモード → 当選確率（今の機種の spec から）。
  */
-export function sakibareTimes(s: LcdState, seed: number, hitProb: (mode: LotteryMode) => number = () => 0): { entry: number; at: number }[] {
+export function sakibareTimes(s: LcdState, seed: number, oddsOf: OddsOf = noOdds): { entry: number; at: number }[] {
   const out: { entry: number; at: number }[] = [];
   const see = (
     entry: number,
@@ -332,9 +370,7 @@ export function sakibareTimes(s: LcdState, seed: number, hitProb: (mode: Lottery
     custom: SakibareCustom | undefined,
   ) => {
     if (entry < 0 || color === null || addedAt === null || hit === null) return;
-    const c = custom ?? 'normal';
-    const p = c === 'normal' ? 0 : hitProb(mode ?? 'normal');
-    if (planSakibare(seed, entry, color, hit, p, c)) out.push({ entry, at: addedAt + SAKIBARE_DELAY_MS });
+    if (planOf(seed, entry, color, hit, mode, custom, oddsOf).sakibare) out.push({ entry, at: addedAt + SAKIBARE_DELAY_MS });
   };
   for (const h of s.holds) see(h.entry, h.color, h.addedAt, h.hit, h.mode, h.custom);
   if (s.spin) see(s.spin.entry, s.spin.color, s.spin.addedAt, s.spin.hit, s.spin.mode, s.spin.custom);

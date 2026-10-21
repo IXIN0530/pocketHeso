@@ -46,7 +46,6 @@ import {
   type EngineSimEvent,
   type HallProjection,
   type LotteryHoldColor,
-  type LotteryMode,
   type Vec2,
 } from '@ph/core';
 import type { Shot } from '../engine/engine-host.ts';
@@ -71,7 +70,7 @@ import { DEFAULT_LOOK, sameLook, type Look } from './look.ts';
 import { summarize, type FrameStats } from './frame-stats.ts';
 import { LcdReels, type SpinShow } from './lcd.ts';
 import { setLcdView } from '../stores/lcd-view.ts';
-import { LcdTimeline, fireSakibares, sakibareTimes, shownLcdState, type LcdState } from './lcd-timeline.ts';
+import { LcdTimeline, fireSakibares, sakibareTimes, shownLcdState, type LcdState, type OddsOf } from './lcd-timeline.ts';
 
 export interface DrawInfo {
   calls: number;
@@ -165,8 +164,8 @@ export class BoardScene {
   /** 今の変動の演出（CueSheet の lcd キュー）。 */
   private show: SpinShow | null = null;
   private seed = 0;
-  /** 取得時のモード → 当選確率（今の機種。先バレのカスタム用, P13-T1）。 */
-  private hitProb: (mode: LotteryMode) => number = () => 0;
+  /** 取得時のモード → 先バレの材料（今の機種。カスタム用, P13-T8b）。 */
+  private oddsOf: OddsOf = () => ({ p: 0, hitW: [], missW: [] });
   private preview: (PreviewSpin & { start: number }) | null = null;
   private cueShake = { until: 0, amp: 0 };
   private cueCam = { from: 0, ms: 0 };
@@ -366,9 +365,9 @@ export class BoardScene {
     this.seed = seed;
   }
 
-  /** 今の機種の取得時のモード → 当選確率（機種を替えたら呼び直す）。 */
-  setHitProb(hitProb: (mode: LotteryMode) => number): void {
-    this.hitProb = hitProb;
+  /** 今の機種の取得時のモード → 先バレの材料（機種を替えたら呼び直す）。 */
+  setOdds(oddsOf: OddsOf): void {
+    this.oddsOf = oddsOf;
   }
 
   /** 抽選カスタム（設定）。この後に取得する保留から効く（取った保留は取得時の値のまま）。 */
@@ -507,7 +506,7 @@ export class BoardScene {
       });
     }
     // 見せる色（保留変化）。割れる変動は図柄と演出の起点を割れた後へずらす（D-075）。
-    const shown = shownLcdState(lcdState, this.seed, lcdNow);
+    const shown = shownLcdState(lcdState, this.seed, lcdNow, this.oddsOf);
     this.startShow(shown, lcdNow, lcdScale);
     const jackpot = lcdState.jackpot?.entry ?? -1;
     if (jackpot !== this.lastJackpot) {
@@ -626,7 +625,7 @@ export class BoardScene {
    * 時刻を大きく過ぎてから気付いた先バレ（背面から戻った時など）は鳴らさない。Debug の倍速では液晶だけ。
    */
   private noteSakibare(st: LcdState, now: number, scale: number): void {
-    const { fire, next } = fireSakibares(sakibareTimes(st, this.seed, this.hitProb), this.sakibareDone, now, SAKIBARE_LATE_MS);
+    const { fire, next } = fireSakibares(sakibareTimes(st, this.seed, this.oddsOf), this.sakibareDone, now, SAKIBARE_LATE_MS);
     for (const { entry, sound } of fire) {
       this.lcd.pulse();
       if (sound && scale === 1) playSideCue(SAKIBARE_CUE, this.seed, entry);

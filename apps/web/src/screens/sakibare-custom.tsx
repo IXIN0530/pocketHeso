@@ -12,7 +12,7 @@ export function sakibareCustomText(c: SakibareCustom): { name: string; desc: str
   const { rel, occ } = SAKIBARE_CUSTOM_RATES[c];
   return {
     name: `先バレ 信頼度${pct(rel)}・占有率 ${occLabel(occ)}`,
-    desc: `先バレした時に当たる割合 ${pct(rel)}・当たりのうち先バレする割合 ${pct(occ)}`,
+    desc: `先バレした時に当たる割合 ${pct(rel)}・当たりのうち先バレする割合 ${pct(occ)}。先バレが鳴った保留は必ず変化する（色が上がっても外れることがある）`,
   };
 }
 

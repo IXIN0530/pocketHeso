@@ -11,14 +11,14 @@ import {
   SAKIBARE_DELAY_MS,
   holdBreakScale,
   planHoldChange,
-  planSakibare,
+  planHoldChangeCustom,
   type SakibareCustom,
 } from '@ph/fx';
 import { expect, test } from 'vitest';
 import packJson from '../../../../resources/packs/default/pack.json';
 import { EngineHost, type TickResult } from '../engine/engine-host.ts';
 import { openStorage } from '../platform/storage.ts';
-import { machineHitProb } from '../engine/game-config.ts';
+import { machineSakibareOdds } from '../engine/game-config.ts';
 import { DISPLAY_LAG_MS } from './ball-tracks.ts';
 import {
   LcdTimeline,
@@ -248,47 +248,56 @@ test('特別保留（通し番号 1.5e9 台）だけに「特」の札', () => {
 const holdAs = (serial: number, color: LotteryHoldColor, isHit: boolean, modeAtDraw: LotteryMode = 'normal'): HoldEntry =>
   ({ ...hold(serial, color), isHit, modeAtDraw }) as HoldEntry;
 const EMPTY_STATE: LcdState = { holds: [], spin: null, resolved: null, jackpot: null };
-const P = 0.1;
-const fixedP = () => P;
+const ODDS = { p: 0.1, hitW: [20, 20, 20, 10, 30], missW: [10, 5, 4, 1, 80] };
+const fixedP = () => ODDS;
+const sb = (seed: number, n: number, color: LotteryHoldColor, hit: boolean) => planHoldChangeCustom(seed, n, color, hit, ODDS, 'sb100').sakibare;
 
-test('抽選カスタムを変えても、保留の見せる色・点滅は変わらない', () => {
+test('抽選カスタムを変えても、先バレしない保留の見せる色・点滅は変わらない。先バレした保留は必ず点滅する', () => {
   const seed = 31;
   const colors: LotteryHoldColor[] = ['white', 'blue', 'green', 'red', 'gold'];
-  const serials = Array.from({ length: 40 }, (_, i) => i);
+  const serials = Array.from({ length: 60 }, (_, i) => i);
   const shown = (custom: SakibareCustom) => {
     let s = EMPTY_STATE;
     serials.forEach((n, i) => {
       s = applyLcdEventWith(s, { k: 'holdAdded', entry: holdAs(n, colors[i % colors.length]!, i % 3 === 0), at: 1000 + i }, custom);
     });
-    return shownLcdState(s, seed, 5000).holds.map((h) => [h.color, h.blink ?? false]);
+    return shownLcdState(s, seed, 5000, fixedP).holds.map((h) => [h.color, h.blink ?? false]);
   };
   const base = shown('normal');
   expect(base.some(([, b]) => b === true)).toBe(true);
-  for (const c of SAKIBARE_CUSTOMS) expect(shown(c)).toEqual(base);
+  for (const c of SAKIBARE_CUSTOMS) {
+    const got = shown(c);
+    got.forEach((g, i) => {
+      // 変化は増えるだけ（先バレで変化に変わる）。変化しない保留は normal と同じ。
+      if (g[1] === false) expect(g).toEqual(base[i]);
+      if (base[i]![1] === true) expect(g).toEqual(base[i]);
+    });
+  }
+  expect(shown('sb100').filter(([, b]) => b).length).toBeGreaterThan(base.filter(([, b]) => b).length);
 });
 
 test('抽選カスタムは取得時の値が使われる（取得後に設定を変えても、取った保留の先バレは変わらない）', () => {
   const seed = 7;
   const hitSerial = (() => {
-    for (let n = 0; n < 10000; n++) if (planSakibare(seed, n, 'white', true, P, 'sb100')) return n;
+    for (let n = 0; n < 10000; n++) if (sb(seed, n, 'blue', true)) return n;
     throw new Error('not found');
   })();
   const other = (() => {
-    for (let n = hitSerial + 1; n < 10000; n++) if (planSakibare(seed, n, 'white', true, P, 'sb100')) return n;
+    for (let n = hitSerial + 1; n < 10000; n++) if (sb(seed, n, 'blue', true)) return n;
     throw new Error('not found');
   })();
   const tl = new LcdTimeline();
   const proj = (holds: LotteryHoldColor[]) => ({ holds, spin: undefined, jackpot: undefined, mode: 'normal', chain: 0, chainBalls: 0 }) as unknown as HallProjection;
   tl.push(proj([]), []);
   tl.custom = 'sb100';
-  tl.push(proj(['white']), [{ k: 'holdAdded', entry: holdAs(hitSerial, 'white', true), at: 1000 } as never]);
+  tl.push(proj(['blue']), [{ k: 'holdAdded', entry: holdAs(hitSerial, 'blue', true), at: 1000 } as never]);
   tl.advance(1000);
   const first = sakibareTimes(tl.state, seed, fixedP);
   expect(first).toEqual([{ entry: hitSerial, at: 1000 + SAKIBARE_DELAY_MS }]);
   // 設定を変える: 取った保留はそのまま、次に取る保留から新しい設定。
   tl.custom = 'sb40';
   expect(sakibareTimes(tl.state, seed, fixedP)).toEqual(first);
-  tl.push(proj(['white', 'white']), [{ k: 'holdAdded', entry: holdAs(other, 'white', true), at: 2000 } as never]);
+  tl.push(proj(['blue', 'blue']), [{ k: 'holdAdded', entry: holdAs(other, 'blue', true), at: 2000 } as never]);
   tl.advance(2000);
   expect(tl.state.holds.map((h) => h.custom)).toEqual(['sb100', 'sb40']);
   expect(sakibareTimes(tl.state, seed, fixedP).filter((x) => x.entry === hitSerial)).toEqual(first);
@@ -300,18 +309,24 @@ test('抽選カスタムは取得時の値が使われる（取得後に設定�
 
 test('sb100: ハズレの保留は先バレしない・当たりの保留は先バレしうる（取得時のモードの確率で決まる）', () => {
   const seed = 11;
+  // 当たりの保留色は ODDS.hitW（blue, green, red, gold, white の順）の重みどおりに並べる（白は先バレしない）。
+  const colors: LotteryHoldColor[] = ['blue', 'green', 'red', 'gold', 'white'];
+  const mix = colors.flatMap((c, i) => Array.from({ length: ODDS.hitW[i]! }, () => c));
   let sbHit = 0;
   for (let n = 0; n < 2000; n++) {
-    const miss = applyLcdEventWith(EMPTY_STATE, { k: 'holdAdded', entry: holdAs(n, 'white', false), at: 100 }, 'sb100');
+    const color = mix[(n * 37) % mix.length]!;
+    const miss = applyLcdEventWith(EMPTY_STATE, { k: 'holdAdded', entry: holdAs(n, color, false), at: 100 }, 'sb100');
     expect(sakibareTimes(miss, seed, fixedP)).toEqual([]);
-    const hit = applyLcdEventWith(EMPTY_STATE, { k: 'holdAdded', entry: holdAs(n, 'white', true), at: 100 }, 'sb100');
-    if (sakibareTimes(hit, seed, fixedP).length > 0) sbHit++;
+    const hit = applyLcdEventWith(EMPTY_STATE, { k: 'holdAdded', entry: holdAs(n, color, true), at: 100 }, 'sb100');
+    const got = sakibareTimes(hit, seed, fixedP).length > 0;
+    if (color === 'white') expect(got).toBe(false);
+    if (got) sbHit++;
   }
   // 占有率 0.6 ほど（RNG の引きなので ±0.05）。
   expect(Math.abs(sbHit / 2000 - 0.6)).toBeLessThan(0.05);
   // 当たりの保留の先バレの時刻は取得 + SAKIBARE_DELAY_MS。
-  const n = Array.from({ length: 100 }, (_, i) => i).find((i) => planSakibare(seed, i, 'white', true, P, 'sb100'))!;
-  const s = applyLcdEventWith(EMPTY_STATE, { k: 'holdAdded', entry: holdAs(n, 'white', true), at: 400 }, 'sb100');
+  const n = Array.from({ length: 100 }, (_, i) => i).find((i) => sb(seed, i, 'blue', true))!;
+  const s = applyLcdEventWith(EMPTY_STATE, { k: 'holdAdded', entry: holdAs(n, 'blue', true), at: 400 }, 'sb100');
   expect(sakibareTimes(s, seed, fixedP)).toEqual([{ entry: n, at: 400 + SAKIBARE_DELAY_MS }]);
   // 当否が分からない（Projection から作った）保留は出さない。
   const unknown: LcdState = { ...s, holds: s.holds.map((h) => ({ ...h, hit: null })) };
@@ -327,21 +342,45 @@ test('特別保留（1.5e9 台）はカスタムでは先バレしない', () =>
   }
 });
 
-test('取得時のモードの確率で引く（機種の spec から: rush-middle-01 の通常と ST は確率が違う）', () => {
-  const pn = machineHitProb('rush-middle-01', 'normal');
-  const ps = machineHitProb('rush-middle-01', 'st');
+test('取得時のモードの材料で引く（機種の spec から: rush-middle-01 の通常と ST は確率が違う）', () => {
+  const pn = machineSakibareOdds('rush-middle-01', 'normal').p;
+  const ps = machineSakibareOdds('rush-middle-01', 'st').p;
   expect(pn).toBeGreaterThan(0);
   expect(ps).toBeGreaterThan(pn);
-  expect(machineHitProb('nothing', 'normal')).toBe(0);
-  // ハズレでも ST の確率ならカスタム sb40 で先バレする保留がある（通常の確率より先バレしやすい）。
+  expect(machineSakibareOdds('nothing', 'normal').p).toBe(0);
+  // ST は当選確率が高く、ハズレの赤保留でも sb40 で先バレしやすい。
   const seed = 2;
   const count = (mode: LotteryMode) => {
     let n = 0;
     for (let i = 0; i < 20000; i++) {
-      const s = applyLcdEventWith(EMPTY_STATE, { k: 'holdAdded', entry: holdAs(i, 'white', false, mode), at: 0 }, 'sb40');
-      if (sakibareTimes(s, seed, (m) => machineHitProb('rush-middle-01', m)).length > 0) n++;
+      const s = applyLcdEventWith(EMPTY_STATE, { k: 'holdAdded', entry: holdAs(i, 'red', false, mode), at: 0 }, 'sb40');
+      if (sakibareTimes(s, seed, (m) => machineSakibareOdds('rush-middle-01', m)).length > 0) n++;
     }
     return n;
   };
   expect(count('st')).toBeGreaterThan(count('normal'));
+});
+
+test('カスタムの先バレ: 取得時は灰色（白・点滅）で出て、自分の変動開始から 4500ms で最終色になる。白と特別保留は先バレしない', () => {
+  const seed = 21;
+  const serial = (() => {
+    for (let n = 0; n < 10000; n++) if (planHoldChangeCustom(seed, n, 'green', true, ODDS, 'sb100').sakibare && !planHoldChange(seed, n, 'green').change) return n;
+    throw new Error('not found');
+  })();
+  let s = applyLcdEventWith(EMPTY_STATE, { k: 'holdAdded', entry: holdAs(serial, 'green', true), at: 1000 }, 'sb100');
+  // normal の見せ方なら変化しない保留が、カスタムの先バレで変化する。
+  expect(shownLcdState(s, seed, 1000, fixedP).holds[0]).toMatchObject({ color: 'white', blink: true });
+  expect(shownLcdState(s, seed, 1000).holds[0]).toMatchObject({ color: 'green' });
+  expect(sakibareTimes(s, seed, fixedP)).toEqual([{ entry: serial, at: 1000 + SAKIBARE_DELAY_MS }]);
+  s = applyLcdEvent(s, { k: 'spinStarted', entry: serial, at: 20000, pattern: 'sp_reach', endsAt: 60000 });
+  expect(shownLcdState(s, seed, 20000, fixedP).spin).toMatchObject({ color: 'white', breaks: true });
+  expect(shownLcdState(s, seed, 20000 + HOLD_BREAK_MS.reveal - 1, fixedP).spin!.color).toBe('white');
+  expect(shownLcdState(s, seed, 20000 + HOLD_BREAK_MS.reveal, fixedP).spin!.color).toBe('green');
+  // 取得後に設定が変わっても、取った保留の見え方は取得時の値のまま（custom は保留が持つ）。
+  expect(s.spin!.custom).toBe('sb100');
+  // 白の保留と特別保留は先バレしない。
+  for (let n = 0; n < 500; n++) {
+    expect(planHoldChangeCustom(seed, n, 'white', true, ODDS, 'sb100').sakibare).toBe(false);
+    expect(planHoldChangeCustom(seed, GRANT_HOLD_SERIAL_BASE + n, 'gold', true, ODDS, 'sb100').sakibare).toBe(false);
+  }
 });
