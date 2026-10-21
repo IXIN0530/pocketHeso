@@ -36,7 +36,9 @@ type SimEvent =
   | { k: 'holdAdded'; entry: HoldEntry; at: SimTime } | { k: 'holdOverflow'; ball: number; at: SimTime }
   | { k: 'spinStarted'; entry: number; at: SimTime; pattern: PatternId; endsAt: SimTime }
   | { k: 'spinResolved'; entry: number; at: SimTime; hit: boolean }
-  | { k: 'jackpotStarted'; entry: number; at: SimTime; kind: JackpotKind; rounds: number }
+  | { k: 'jackpotStarted'; entry: number; at: SimTime; kind: JackpotKind; rounds: number; bonusRounds?: number; upper?: true; loops?: number }
+      // rounds は基本ラウンド。bonusRounds は上乗せの合計（上位は bonus_rounds + add_rounds × K）。upper・loops は上位の時だけ（D-120）
+  | { k: 'uwanose'; entry: number; at: SimTime; addRounds: number; totalRounds: number }  // LT の上乗せの告知（上位では出ない）
   | { k: 'jackpotEnded'; entry: number; at: SimTime; payout: number }  // payout=出玉（取得時の unit 込み, D-090）
   | { k: 'modeChanged'; to: Mode; at: SimTime; stRemaining: number }
   | { k: 'noticeSpawned' | 'noticeExpired'; id: number; at: SimTime; effect: NoticeEffect }
@@ -46,7 +48,7 @@ type SimEvent =
   | { k: 'opened'; at: SimTime; auto: boolean; machineId?: string }   // 開店（auto は restAt + rest_max_ms の自動開店, D-107。machineId は台を切り替えた時だけ）
   | { k: 'rejected'; at: SimTime; action: Action['k']; reason: string }
   | { k: 'achieved'; id: string; at: SimTime }   // 実績の達成（spec/24, D-095）
-type HoldEntry = { serial: number; hit: boolean; kind?: JackpotKind; pattern: PatternId; color: HoldColor; hot: number; unit?: number } // unit は取得時の単価（無い旧セーブは rate, D-090）
+type HoldEntry = { serial: number; hit: boolean; kind?: JackpotKind; pattern: PatternId; color: HoldColor; hot: number; unit?: number; upper?: true; loops?: number } // unit は取得時の単価（無い旧セーブは rate, D-090）。upper・loops は上位の当たりだけ（snapshot にも入る, D-120）
 type Mode = 'normal' | 'jitan' | 'st' | 'lt'  // spec/21 モード拡張節。stRemaining は jitan/st/lt の残り回転数（normal は 0）
 ```
 経済の毎秒の増減はイベントにしない（量が多い）。状態（`economy`）とスナップショットにだけ残す。
@@ -87,7 +89,8 @@ export class Engine {
 ```ts
 export interface HallProjection {
   at: SimTime; mode: Mode; stRemaining: number
-  holds: HoldColor[]; spin?: SpinView; jackpot?: JackpotView
+  holds: HoldColor[]; spin?: SpinView; jackpot?: JackpotView   // JackpotView.rounds は見せてよい合計。上位は upper・loops を足す
+  rushUpper: boolean   // 上位の当たりが終わってから、次の jackpotStarted か ST を抜けるまで true（snapshot の spin.rushUpper、false は省略, D-120）
   balls: number; medals: number; fuelMs: number; boostMs: number; perSec: number   // 現在の生産/秒（燃料・放置効率込み）
   refPerSec: number; bonusStock: number; machineId: string   // 基準生産（spec/23）・特別保留のストック・今の機種
   restMachineId: string | null; machinesOpen: string[]        // 休業中に選んだ次の台・選べる台（machines の並び順, D-119）

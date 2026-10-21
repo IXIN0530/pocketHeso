@@ -78,6 +78,7 @@ export type {
   MachineTier,
   PatternTable,
   SpinPattern,
+  UpperSpec,
 } from './machine.ts';
 export type { HoldEntry, LotteryHoldColor, LotteryMode } from './lottery.ts';
 export {
@@ -86,6 +87,7 @@ export {
   drawBonusHold,
   drawGrantHold,
   drawHold,
+  drawUpperLoops,
   hesoPayoutBalls,
   holdColorTable,
   holdColorWeights,

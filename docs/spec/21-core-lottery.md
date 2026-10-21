@@ -64,7 +64,7 @@
 
 ## 乱数（D-016）
 - 生成器: `xoshiro128**`（32bit、`Math.imul` と `>>> 0` のみ）。ストリーム初期化: `splitmix32(hash(seed, streamId, index))`。
-- `RNGStreamID`: `launch` `launchJitter` `jackpot` `split` `pattern` `holdColor` `presentation` `holdChange` `notice` `economy`（`holdChange` は保留変化の見せ方, spec/43）
+- `RNGStreamID`: `launch` `launchJitter` `jackpot` `split` `pattern` `holdColor` `presentation` `holdChange` `notice` `grantHold` `economy` `uwanose`（`holdChange` は保留変化の見せ方, spec/43。`uwanose` は上位の上乗せ回数 K, D-120）
 - 各抽選は `RNGStream(seed, id, entrySerial)` から取る。**演出側の乱数変更が当否に影響しない**。
 - `nextU32()`、`nextUnit()`（[0,1)、`u32 / 2^32`）、`pick(weights)`（整数重み）。
 
@@ -92,13 +92,24 @@
 - `next`: 終了後のモード。省略時は `kakuhen`→`st`、`tsujo`→`normal`（今の機種と同じ動き）。
 - 重みの省略時: `weight_jitan` = `weight`、`weight_st` = `weight`、`weight_lt` = `weight_st`。
 - `bonus_rounds`: **上乗せ**（省略時は 0）。出玉 = `(rounds + bonus_rounds) × count × payout_per_ball × rate`。大当たり時間も合計ラウンド分。
-- 同じ `(kind, rounds, bonus_rounds, next)` の枝は重複不可。合計ラウンドは 60 以内。
+- 同じ `(kind, rounds, bonus_rounds, next, upper の有無)` の枝は重複不可。合計ラウンドは 60 以内。
+- `upper`（任意, D-120）: 上位の枝。`{"add_rounds": 10, "loop_1_in": 4, "loop_max": 4}`。`next` が `st` の枝だけ。
+  取得時に上乗せの回数 K を引く: `RNGStream(seed, 'uwanose', serial)` から最大 `loop_max` 回 `nextU32()`、`floor(2^32 / loop_1_in)` 未満なら K+1 して続け、以上なら止める（外れ・upper でない枝では引かない）。
+  合計ラウンド = `rounds + bonus_rounds + add_rounds × K`（出玉・大当たり時間とも）。検証: `add_rounds` ≥ 1・`loop_1_in` > 1・`loop_max` ≥ 1・`rounds + bonus_rounds + add_rounds × loop_max` ≤ 60。
+  保留（`HoldEntry`）に `upper: true`・`loops: K`。上位の当たりは `uwanose` イベントを出さない（見せる時刻は演出側, spec/43）。
 
 ### 上乗せイベント・投影
 - `jackpotStarted` に `bonusRounds` を足す（演出が上乗せの大きさを先に知るため。見せるのは後）。
 - `uwanose { entry, at, addRounds, totalRounds }` を基本ラウンドの消化が終わる時刻（開始 + `rounds × ms_per_round`）に出す。
 - 投影に `chain`（RUSH 入りからの連チャン数）と `chainBalls`（その累計出玉）を足す。LT 中の「累計◯◯発」表示に使う。
 - 上乗せの見せ方（段階表示・音・光）は spec/43 で扱う。
+
+### 例: `rush-middle-01`（上位RUSH, D-120。理論値。P15-T2 で実測に書き直す）
+- 通常 1/328.0。初当たりは 3R（450玉）で 35% が RUSH、65% は通常。
+- RUSH: 1/39.9 × 66回（継続率 81.3%）。当たりは 10R（1,500玉）75% / 上位 20R（3,000玉）＋上乗せ 25%。
+- 上乗せ: 1回 +10R（+1,500玉）、1/4 で次へ・最大4回（P(K ≥ k) = 0.25^k、E[K] = 0.332）。上位の当たりの平均 約3,498玉・最大 60R（9,000玉）。
+- RUSH 中の当たり1回の平均 約2,000玉。RUSH に入ってからの当たりの平均回数 4.34。通常1回転あたりの期待出玉 10.63玉。
+- 旧セーブで ST の残りが 66 を超えていてもそのまま数え下ろす。
 
 ### 例: `lt-middle-01`（理論値。P2-T9 で pachisim の実測と照合）
 - 通常 1/337.0（時短中も同じ, D-099）。初当たりは 3R（450玉）で、25% は RUSH へ直行、75% は時短 100 回（引き戻し約26%。時短中の当たりはすべて RUSH 行き）。実質の RUSH 突入率は約44%。

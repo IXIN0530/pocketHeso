@@ -35,6 +35,10 @@ export interface HoldEntry {
   readonly rate?: number | undefined;
   /** 発射時の単価 unit＝floor(rate×ref×shotS)（取得時の ref で固定。旧セーブには無い, D-090）。 */
   readonly unit?: number | undefined;
+  /** 上位の枝の当たり（上位の時だけ, D-120）。 */
+  readonly upper?: true | undefined;
+  /** 上乗せの回数 K（0〜loop_max。上位の時だけ・取得時に確定, D-120）。 */
+  readonly loops?: number | undefined;
 }
 
 /** 抽選モードに対応する確率表を返す。 */
@@ -158,6 +162,34 @@ function patternWeights(patterns: PatternTable, isHit: boolean): number[] {
   return w;
 }
 
+/** 上乗せの回数 K（`uwanose` ストリームから最大 loop_max 回、閾値未満なら次へ。upper でない枝・外れは null, D-120）。 */
+export function drawUpperLoops(spec: MachineSpec, seed: number, serial: number, branchIndex: number | null): number | null {
+  if (branchIndex === null) {
+    return null;
+  }
+  const b = spec.jackpotSplit[branchIndex];
+  if (b === undefined || b.upper === undefined) {
+    return null;
+  }
+  const rng = new RNGStream(seed, 'uwanose', serial);
+  let k = 0;
+  while (k < b.upper.loopMax) {
+    if (rng.nextU32() >= b.upper.loopThresholdU32) {
+      break;
+    }
+    k = k + 1;
+  }
+  return k;
+}
+
+/** 上位の当たりなら `upper`・`loops` を足す（それ以外はそのまま返す）。 */
+function withUpper<T extends HoldEntry>(entry: T, loops: number | null): T {
+  if (loops === null) {
+    return entry;
+  }
+  return { ...entry, upper: true, loops };
+}
+
 /** 予告ボーナス抽選の当否しきい値（`floor(2^32 / bonus1In)`）。 */
 function bonusThresholdU32(bonus1In: number): number {
   if (typeof bonus1In !== 'number' || !Number.isFinite(bonus1In) || Math.floor(bonus1In) !== bonus1In) {
@@ -210,11 +242,12 @@ export function drawBonusHold(
     throw new Error('invalid lottery: color index out of range');
   }
   const hot = holdHot(patternRow.hot, color);
+  const loops = drawUpperLoops(spec, seed, bonusSerial, branchIndex);
   if (unit !== undefined) {
     assertUnit(unit);
-    return { serial: bonusSerial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0, unit };
+    return withUpper({ serial: bonusSerial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0, unit }, loops);
   }
-  return { serial: bonusSerial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0 };
+  return withUpper({ serial: bonusSerial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0 }, loops);
 }
 
 /** 行動の特別保留1件（当たり1/10は `grantHold` ストリーム、枝・パターン・色は serial の各ストリーム。賞球なし・無料は1パチ単価, D-081・D-090）。 */
@@ -251,11 +284,12 @@ export function drawGrantHold(
     throw new Error('invalid lottery: color index out of range');
   }
   const hot = holdHot(patternRow.hot, color);
+  const loops = drawUpperLoops(spec, seed, serial, branchIndex);
   if (unit !== undefined) {
     assertUnit(unit);
-    return { serial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0, unit };
+    return withUpper({ serial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0, unit }, loops);
   }
-  return { serial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0 };
+  return withUpper({ serial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0 }, loops);
 }
 
 /** ヘソ入賞時の取得時判定（当否・振分け・パターン・色を全部確定。賞球と出玉は取得時の unit, D-090）。 */
@@ -291,10 +325,11 @@ export function drawHold(
     throw new Error('invalid lottery: color index out of range');
   }
   const hot = holdHot(patternRow.hot, color);
+  const loops = drawUpperLoops(spec, seed, serial, branchIndex);
   const useUnit = unit === undefined ? rate : assertUnit(unit);
   const entry: HoldEntry = { serial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: spec.hesoPayout * useUnit, unit: useUnit };
   // rate1 は省略（旧 toEqual 互換）。unit は常に持つ（旧セーブには無い）。
-  const withRate = rate === 1 ? entry : { ...entry, rate };
+  const withRate = withUpper(rate === 1 ? entry : { ...entry, rate }, loops);
   // unit が rate と同じ（Stub・旧挙動）の時は省略して旧形に寄せる。
   if (useUnit === rate) {
     const { unit: _drop, ...rest } = withRate;
@@ -333,23 +368,34 @@ function branchAt(spec: MachineSpec, branchIndex: number): JackpotBranch {
   return b;
 }
 
-/** 上乗せラウンド数（`bonus_rounds` 省略時は 0）。 */
-export function jackpotBonusRounds(spec: MachineSpec, branchIndex: number): number {
-  const b = branchAt(spec, branchIndex);
-  return b.bonusRounds === undefined ? 0 : b.bonusRounds;
+/** 上位の上乗せ回数を検証する（upper でない枝は 0 だけ, D-120）。 */
+function assertLoops(b: JackpotBranch, loops: number): number {
+  if (typeof loops !== 'number' || !Number.isFinite(loops) || Math.floor(loops) !== loops || loops < 0) {
+    throw new Error('invalid lottery: loops must be a non-negative int');
+  }
+  const max = b.upper === undefined ? 0 : b.upper.loopMax;
+  if (loops > max) {
+    throw new Error('invalid lottery: loops out of range');
+  }
+  return loops;
 }
 
-/** 合計ラウンド数（`rounds + bonus_rounds`）。 */
-export function jackpotTotalRounds(spec: MachineSpec, branchIndex: number): number {
+/** 上乗せラウンド数（`bonus_rounds + add_rounds × loops`。`bonus_rounds` 省略時は 0、loops は上位の K で省略時 0）。 */
+export function jackpotBonusRounds(spec: MachineSpec, branchIndex: number, loops = 0): number {
   const b = branchAt(spec, branchIndex);
   const bonus = b.bonusRounds === undefined ? 0 : b.bonusRounds;
-  return b.rounds + bonus;
+  const k = assertLoops(b, loops);
+  return b.upper === undefined ? bonus : bonus + b.upper.addRounds * k;
 }
 
-/** 大当たり出玉（`(rounds + bonus_rounds) × count × payout_per_ball × unit`。取得時の unit, D-090）。 */
-export function jackpotPayoutBalls(spec: MachineSpec, branchIndex: number, unit: number): number {
+/** 合計ラウンド数（`rounds + bonus_rounds (+ add_rounds × loops)`）。 */
+export function jackpotTotalRounds(spec: MachineSpec, branchIndex: number, loops = 0): number {
+  const b = branchAt(spec, branchIndex);
+  return b.rounds + jackpotBonusRounds(spec, branchIndex, loops);
+}
+
+/** 大当たり出玉（合計ラウンド × count × payout_per_ball × unit。取得時の unit, D-090・D-120）。 */
+export function jackpotPayoutBalls(spec: MachineSpec, branchIndex: number, unit: number, loops = 0): number {
   assertUnit(unit);
-  const b = branchAt(spec, branchIndex);
-  const bonus = b.bonusRounds === undefined ? 0 : b.bonusRounds;
-  return (b.rounds + bonus) * spec.roundCount * spec.payoutPerBall * unit;
+  return jackpotTotalRounds(spec, branchIndex, loops) * spec.roundCount * spec.payoutPerBall * unit;
 }

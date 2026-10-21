@@ -10,7 +10,8 @@ export type RNGStreamID =
   | 'holdChange'
   | 'notice'
   | 'grantHold'
-  | 'economy';
+  | 'economy'
+  | 'uwanose';
 
 /** 全ストリームID（順序固定。反復順に依存する処理はこの配列を使う）。 */
 export const RNG_STREAM_IDS: readonly RNGStreamID[] = [
@@ -25,6 +26,7 @@ export const RNG_STREAM_IDS: readonly RNGStreamID[] = [
   'notice',
   'grantHold',
   'economy',
+  'uwanose',
 ];
 
 /** 2^32（nextUnit の除数。`**`禁止のため数値リテラル）。 */

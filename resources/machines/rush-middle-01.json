@@ -1,13 +1,15 @@
 {
   "id": "rush-middle-01",
-  "version": 1,
+  "version": 2,
   "tier": "middle",
   "modes": {
     "normal": { "jackpot_1_in": 328.0, "st_spins": 0 },
-    "st": { "jackpot_1_in": 39.9, "st_spins": 75 }
+    "st": { "jackpot_1_in": 39.9, "st_spins": 66 }
   },
   "jackpot_split": [
-    { "kind": "kakuhen", "weight": 0, "weight_st": 100, "rounds": 10 },
+    { "kind": "kakuhen", "weight": 0, "weight_st": 75, "rounds": 10 },
+    { "kind": "kakuhen", "weight": 0, "weight_st": 25, "rounds": 10, "bonus_rounds": 10,
+      "upper": { "add_rounds": 10, "loop_1_in": 4, "loop_max": 4 } },
     { "kind": "kakuhen", "weight": 35, "weight_st": 0, "rounds": 3 },
     { "kind": "tsujo", "weight": 65, "weight_st": 0, "rounds": 3 }
   ],

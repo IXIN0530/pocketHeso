@@ -182,10 +182,15 @@ test('weight_st はST中の振分け重み（省略時はweight）・同種別�
   expect(light.jackpotSplit.map((b) => b.weightSt)).toEqual([50, 50]);
   const rush = parseMachineText(readFileSync('../../resources/machines/rush-middle-01.json', 'utf8'));
   expect(rush.jackpotSplit).toEqual([
-    { kind: 'kakuhen', weight: 0, weightSt: 100, rounds: 10 },
+    { kind: 'kakuhen', weight: 0, weightSt: 75, rounds: 10 },
+    {
+      kind: 'kakuhen', weight: 0, weightSt: 25, rounds: 10, bonusRounds: 10,
+      upper: { addRounds: 10, loop1In: 4, loopMax: 4, loopThresholdU32: 1073741824 },
+    },
     { kind: 'kakuhen', weight: 35, weightSt: 0, rounds: 3 },
     { kind: 'tsujo', weight: 65, weightSt: 0, rounds: 3 },
   ]);
+  expect(rush.version).toBe(2);
   expect(rush.normal.jackpot1In).toBe(328);
-  expect(rush.st.stSpins).toBe(75);
+  expect(rush.st.stSpins).toBe(66);
 });

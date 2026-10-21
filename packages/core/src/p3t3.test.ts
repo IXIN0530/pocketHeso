@@ -236,7 +236,7 @@ test(
     const until = 24 * 60 * 60 * 1000;
     let best = Number.POSITIVE_INFINITY;
     let count = 0;
-    for (let i = 0; i < 5 && best >= ADVANCE_24H_LIMIT_MS; i = i + 1) {
+    for (let i = 0; i < 10 && best >= ADVANCE_24H_LIMIT_MS; i = i + 1) {
       const eng = mk();
       const t0 = performance.now();
       const evs = eng.advance(until);

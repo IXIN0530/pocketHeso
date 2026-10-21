@@ -109,7 +109,7 @@ export type SimEvent =
   | { readonly k: 'holdOverflow'; readonly ball: number; readonly at: SimTime }
   | { readonly k: 'spinStarted'; readonly entry: number; readonly at: SimTime; readonly pattern: string; readonly endsAt: SimTime }
   | { readonly k: 'spinResolved'; readonly entry: number; readonly at: SimTime; readonly hit: boolean }
-  | { readonly k: 'jackpotStarted'; readonly entry: number; readonly at: SimTime; readonly kind: JackpotKind; readonly rounds: number; readonly bonusRounds?: number | undefined }
+  | { readonly k: 'jackpotStarted'; readonly entry: number; readonly at: SimTime; readonly kind: JackpotKind; readonly rounds: number; readonly bonusRounds?: number | undefined; readonly upper?: true | undefined; readonly loops?: number | undefined }
   | { readonly k: 'uwanose'; readonly entry: number; readonly at: SimTime; readonly addRounds: number; readonly totalRounds: number }
   | { readonly k: 'jackpotEnded'; readonly entry: number; readonly at: SimTime; readonly payout: number }
   | { readonly k: 'modeChanged'; readonly to: LotteryMode; readonly at: SimTime; readonly stRemaining: number }
@@ -250,6 +250,10 @@ export interface JackpotView {
   readonly hiddenRounds?: number | undefined;
   /** 当たった保留の単価 unit（出玉の数え上げ用。不明・旧は rate, D-090）。 */
   readonly unit?: number | undefined;
+  /** 上位の当たり（上位の時だけ。rounds は上乗せ込みの合計, D-120）。 */
+  readonly upper?: true | undefined;
+  /** 上乗せの回数 K（上位の時だけ, D-120）。 */
+  readonly loops?: number | undefined;
 }
 
 /** 役物表示（Lv・覚醒・次の価格・回転位相0..1・実効周期秒。位相と周期は描画用で at 基準。Lv0 は周期なし）。 */
@@ -290,6 +294,8 @@ export interface HallProjection {
   readonly closes: readonly CloseRecord[];
   readonly chain: number;
   readonly chainBalls: number;
+  /** 上位の当たりが終わってから、次の当たりか RUSH を抜けるまで true（D-120）。 */
+  readonly rushUpper: boolean;
   /** 前面の「打つ」（on と選択中のレート。UI のトグル表示用）。 */
   readonly shoot: { readonly on: boolean; readonly rate: number };
   /** オート打ち（生産の share を rate で打つ。share 0 は止めている）。 */
@@ -427,8 +433,11 @@ export function projectSnapshot(
     if (ju !== undefined) {
       jackpot = { ...jackpot, unit: ju };
     }
+    if (j.upper === true) {
+      jackpot = { ...jackpot, upper: true, loops: j.loops === undefined ? 0 : j.loops };
+    }
   }
-  const spinSnap = snap.spin as { chain?: number; chainBalls?: number };
+  const spinSnap = snap.spin as { chain?: number; chainBalls?: number; rushUpper?: true };
   let notice: NoticeView | undefined;
   if (snap.activeNotice !== null && snap.activeNotice !== undefined) {
     const n = snap.activeNotice as ActiveNotice;
@@ -481,6 +490,7 @@ export function projectSnapshot(
     machinesOpen: [spec.id],
     chain: spinSnap.chain === undefined ? 0 : spinSnap.chain,
     chainBalls: spinSnap.chainBalls === undefined ? 0 : spinSnap.chainBalls,
+    rushUpper: spinSnap.rushUpper === true,
     shoot: { on: snap.shootOn, rate: snap.shootRate },
     auto: { share: snap.autoShare, rate: snap.autoRate },
     rates: [1],

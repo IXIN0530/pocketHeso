@@ -46,6 +46,15 @@ export interface MachineMode {
   readonly stSpins: number;
 }
 
+/** 上位の枝の上乗せループ（取得時に回数 K を引く。1回 `addRounds`、`loop1In` 分の1で次へ、最大 `loopMax` 回, D-120）。 */
+export interface UpperSpec {
+  readonly addRounds: number;
+  readonly loop1In: number;
+  readonly loopMax: number;
+  /** 次へ進む閾値（`floor(2^32 / loop_1_in)`）。 */
+  readonly loopThresholdU32: number;
+}
+
 /** 大当たり振分けの1枝（weightは通常時・各モード重み。省略時は既定値。0なら当該モードで出ない。next省略時はkakuhen→st・tsujo→normal。bonusRounds省略時は0）。 */
 export interface JackpotBranch {
   readonly kind: JackpotKind;
@@ -56,6 +65,8 @@ export interface JackpotBranch {
   readonly rounds: number;
   readonly bonusRounds?: number | undefined;
   readonly next?: JackpotNext | undefined;
+  /** 上位の枝（RUSH に戻る枝だけ。出玉は rounds + bonusRounds + addRounds × K, D-120）。 */
+  readonly upper?: UpperSpec | undefined;
 }
 
 /** 保留色の重み（当否別）。 */
@@ -266,6 +277,30 @@ function parseMode(value: unknown, what: string): MachineMode {
   return { jackpot1In, thresholdU32: jackpotThresholdU32(jackpot1In), stSpins };
 }
 
+/** 上位の枝の `upper` を読む（RUSH に戻る枝だけ・最大の合計ラウンドは 60 以内, D-120）。 */
+function parseUpper(value: unknown, what: string, totalRounds: number, normNext: JackpotNext): UpperSpec {
+  const o = asRecord(value, what);
+  const addRounds = asInt(o['add_rounds'], what + '.add_rounds');
+  if (addRounds < 1) {
+    fail(what + '.add_rounds must be >= 1');
+  }
+  const loop1In = asNumber(o['loop_1_in'], what + '.loop_1_in');
+  if (loop1In <= 1 || loop1In > 100000) {
+    fail(what + '.loop_1_in out of range (must be > 1)');
+  }
+  const loopMax = asInt(o['loop_max'], what + '.loop_max');
+  if (loopMax < 1) {
+    fail(what + '.loop_max must be >= 1');
+  }
+  if (totalRounds + addRounds * loopMax > 60) {
+    fail(what + ' rounds + bonus_rounds + add_rounds x loop_max out of range (must be <= 60)');
+  }
+  if (normNext !== 'st') {
+    fail(what + ' needs next st');
+  }
+  return { addRounds, loop1In, loopMax, loopThresholdU32: jackpotThresholdU32(loop1In) };
+}
+
 /** 機種 JSON を検証して `MachineSpec` にする。入力のキー順には依存しない。 */
 export function parseMachine(json: unknown): MachineSpec {
   const o = asRecord(json, 'machine');
@@ -348,12 +383,17 @@ export function parseMachine(json: unknown): MachineSpec {
       next = nextRaw;
     }
     const normNext: JackpotNext = next === undefined ? defaultNextForKind(kindRaw) : next;
+    let upper: UpperSpec | undefined;
+    if (bo['upper'] !== undefined) {
+      upper = parseUpper(bo['upper'], what + '.upper', totalRounds, normNext);
+    }
     for (let j = 0; j < jackpotSplit.length; j = j + 1) {
       const prev = jackpotSplit[j] as JackpotBranch;
       const prevNext: JackpotNext = prev.next === undefined ? defaultNextForKind(prev.kind) : prev.next;
       const prevBonus = prev.bonusRounds === undefined ? 0 : prev.bonusRounds;
-      if (prev.kind === kindRaw && prev.rounds === rounds && prevBonus === bonusRounds && prevNext === normNext) {
-        fail(what + ' duplicates jackpot_split[' + j + '] (same kind, rounds, bonus_rounds and next)');
+      const prevUpper = prev.upper !== undefined;
+      if (prev.kind === kindRaw && prev.rounds === rounds && prevBonus === bonusRounds && prevNext === normNext && prevUpper === (upper !== undefined)) {
+        fail(what + ' duplicates jackpot_split[' + j + '] (same kind, rounds, bonus_rounds, next and upper)');
       }
     }
     if (weightStRaw === undefined && weightJitan === undefined && weightLt === undefined && next === undefined) {
@@ -399,6 +439,10 @@ export function parseMachine(json: unknown): MachineSpec {
     if (bonusRounds > 0) {
       const last = jackpotSplit[jackpotSplit.length - 1] as JackpotBranch;
       jackpotSplit[jackpotSplit.length - 1] = { ...last, bonusRounds };
+    }
+    if (upper !== undefined) {
+      const last = jackpotSplit[jackpotSplit.length - 1] as JackpotBranch;
+      jackpotSplit[jackpotSplit.length - 1] = { ...last, upper };
     }
   }
   let sumNormal = 0;

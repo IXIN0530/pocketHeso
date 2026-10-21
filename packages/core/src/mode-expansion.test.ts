@@ -74,8 +74,8 @@ test('既存機種は省略時の既定値で今と同じ動き（jitan/ltなし
   ]);
   expect(splitWeights(light, 'jitan')).toEqual(splitWeights(light, 'normal'));
   expect(splitWeights(light, 'lt')).toEqual(splitWeights(light, 'st'));
-  expect(splitWeights(rush, 'jitan')).toEqual([0, 35, 65]);
-  expect(splitWeights(rush, 'lt')).toEqual([100, 0, 0]);
+  expect(splitWeights(rush, 'jitan')).toEqual([0, 0, 35, 65]);
+  expect(splitWeights(rush, 'lt')).toEqual([75, 25, 0, 0]);
   expect(() => modeOf(light, 'jitan')).toThrow();
   expect(() => modeOf(light, 'lt')).toThrow();
   expect(modeOf(light, 'normal').thresholdU32).toBe(light.normal.thresholdU32);
