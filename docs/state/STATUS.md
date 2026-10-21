@@ -3,8 +3,8 @@
 
 - Current phase: P13（v1.4 抽選カスタム・先バレ・役物の強化 → `docs/plan/P13-feedback-1-3.md`）。P11-T6 の本番確認は Blockers。P8-T7（任意）と P7 再開は人間の指示待ち
 - Last done: P13-T8（強化タブの覚醒ボタンに「生産 ×a（+b%）」・共鳴の1行・閉店カードに保持される覚醒・ツリー詳細に「今の周回なら」・覚醒の演出 `awakened`・SNAPSHOT_VERSION 8）。T7 は人間が A で承認（D-115）
-- Next: P13-T9（実機確認。dev を push 済み。手順は人間に渡す）→ T10 は人間の「リリースしてよい」待ち
-- Owner hint: 人間（T9 の実機）
+- Next: P13-T8b（カスタムの先バレは必ず変化保留。Opus）→ T9（実機確認。手順は T8b 後に渡し直す）→ T10 は人間の「リリースしてよい」待ち
+- Owner hint: Claude Code（Opus）（T8b）→ 人間（T9 の実機）
 - Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T12 → T13 → T2 は人間の指示で再開
 
 ## Blockers
