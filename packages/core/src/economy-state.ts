@@ -646,6 +646,11 @@ export class IdleEconomy implements EconomyPort {
     return this.treeTotalsState;
   }
 
+  /** unlock_machine で選べるようにした台の id（JSON の順。Engine が pickMachine の判定に使う, spec/22）。 */
+  getUnlockedMachines(): readonly string[] {
+    return this.treeTotalsState.unlockMachines;
+  }
+
   /** 今持っている常連P。 */
   getPoints(): number {
     return this.pointsState;

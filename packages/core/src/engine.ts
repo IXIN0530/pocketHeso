@@ -97,7 +97,9 @@ export type Action =
   /** 常連ツリーのノードを買う（rejected: unknown-node・owned・tier-locked・locked・insufficient-points, spec/25）。 */
   | { readonly t: SimTime; readonly k: 'treeBuy'; readonly node: string }
   /** 番頭さんの ON/OFF（未所持は rejected 'not-owned', spec/25）。 */
-  | { readonly t: SimTime; readonly k: 'bantou'; readonly on: boolean };
+  | { readonly t: SimTime; readonly k: 'bantou'; readonly on: boolean }
+  /** 次の開店で打つ台を選ぶ（休業中だけ。rejected: not-resting・machine。今の台の id は未選択に戻す, spec/22）。 */
+  | { readonly t: SimTime; readonly k: 'pickMachine'; readonly machineId: string };
 
 /** Engineが出すイベント（P3-T3で予告を追加。経済の毎秒増減はイベントにしない）。 */
 export type SimEvent =
@@ -117,7 +119,7 @@ export type SimEvent =
   | { readonly k: 'fuelEmpty'; readonly at: SimTime }
   | { readonly k: 'fuelRefilled'; readonly at: SimTime }
   | { readonly k: 'closed'; readonly at: SimTime; readonly regularPoints: number; readonly points?: number | undefined } // points は今回得た常連P（0 は省略, spec/25）
-  | { readonly k: 'opened'; readonly at: SimTime; readonly auto: boolean } // 開店（auto は rest_max_ms で自動に開いた時, D-107）
+  | { readonly k: 'opened'; readonly at: SimTime; readonly auto: boolean; readonly machineId?: string | undefined } // 開店（auto は rest_max_ms で自動に開いた時, D-107。machineId は台を切り替えた時だけ）
   | { readonly k: 'rejected'; readonly at: SimTime; readonly action: Action['k']; readonly reason: string }
   | { readonly k: 'achieved'; readonly id: string; readonly at: SimTime };
 
@@ -133,6 +135,8 @@ export interface EngineConfig {
   readonly economy?: EconomyPort | undefined;
   /** 開始時刻（UNIX ms。未指定は0。grant/actionはこれ以降のみ）。 */
   readonly startMs?: SimTime | undefined;
+  /** 休業中に選べる台の候補（id で引く。spec は常に選べる。他は unlock_machine を買った台だけ, spec/22）。 */
+  readonly machines?: readonly MachineSpec[] | undefined;
 }
 
 /** 飛行中の玉（発射済み・センサー待ち。unit は発射時の単価。旧セーブには無い, D-090）。 */
@@ -199,6 +203,10 @@ export interface EngineSnapshot {
   readonly grantHoldSeq?: number | undefined;
   /** オート打ちの投入額の蓄積（生産×share を unit で割る余り。無い旧複写は0, D-090）。 */
   readonly autoAcc?: number | undefined;
+  /** 今の台の id（最初の台 cfg.spec のままなら省略。旧複写も最初の台, spec/22）。 */
+  readonly machineId?: string | undefined;
+  /** 休業中に選んだ次の台の id（未選択は省略）。 */
+  readonly restMachineId?: string | undefined;
 }
 
 /** 留守集計の複写（awayFromがnullなら留守中でない）。 */
@@ -298,6 +306,12 @@ export interface HallProjection {
   readonly tree?: TreeView | undefined;
   /** 休業（閉店から開店まで。休業中でなければ null, D-107）。 */
   readonly rest: RestView | null;
+  /** 今の台の id。 */
+  readonly machineId: string;
+  /** 休業中に選んだ次の台（未選択は null。開店でこの台に切り替わる, spec/22）。 */
+  readonly restMachineId: string | null;
+  /** 選べる台の id（最初の台＋unlock_machine を買った台。machines の並び順）。 */
+  readonly machinesOpen: readonly string[];
 }
 
 /** 発射グリッドms（絶対時刻の倍数に揃える）。 */
@@ -462,6 +476,9 @@ export function projectSnapshot(
     },
     closes: snap.closes === undefined ? [] : snap.closes.slice(),
     rest: null,
+    machineId: spec.id,
+    restMachineId: snap.restMachineId === undefined ? null : snap.restMachineId,
+    machinesOpen: [spec.id],
     chain: spinSnap.chain === undefined ? 0 : spinSnap.chain,
     chainBalls: spinSnap.chainBalls === undefined ? 0 : spinSnap.chainBalls,
     shoot: { on: snap.shootOn, rate: snap.shootRate },
@@ -537,7 +554,14 @@ const BANTOU_INTERVAL_MS = 60000;
 /** Engine（パチンコ部。決定論・スナップショット・lookahead・project）。 */
 export class Engine {
   private readonly seed: number;
-  private readonly spec: MachineSpec;
+  /** 今の台（休業中に選んだ台へ開店で切り替わる, spec/22）。 */
+  private spec: MachineSpec;
+  /** 最初の台（cfg.spec。いつでも選べる）。 */
+  private readonly baseSpec: MachineSpec;
+  /** 台の候補（cfg.machines。無ければ空）。 */
+  private readonly machines: readonly MachineSpec[];
+  /** 休業中に選んだ次の台の id（未選択は null）。 */
+  private restMachineIdState: string | null;
   private readonly patterns: PatternTable;
   private readonly atlasBuffer: ArrayBuffer;
   private readonly atlasView: DataView;
@@ -606,6 +630,9 @@ export class Engine {
     const startMs = assertTime(cfg.startMs === undefined ? 0 : cfg.startMs, 'startMs');
     this.seed = cfg.seed >>> 0;
     this.spec = cfg.spec;
+    this.baseSpec = cfg.spec;
+    this.machines = cfg.machines === undefined ? [] : cfg.machines.slice();
+    this.restMachineIdState = null;
     this.patterns = cfg.patterns;
     this.atlasBuffer = cfg.atlas;
     this.atlasView = new DataView(cfg.atlas);
@@ -804,7 +831,75 @@ export class Engine {
       this.actionsState.push({ t: a.t, k: 'open' });
       return;
     }
+    if (a.k === 'pickMachine') {
+      if (typeof a.machineId !== 'string' || a.machineId.length === 0) {
+        throw new Error('invalid engine: pickMachine.machineId must be non-empty');
+      }
+      this.actionsState.push({ t: a.t, k: 'pickMachine', machineId: a.machineId });
+      return;
+    }
     this.actionsState.push({ t: a.t, k: 'close' });
+  }
+
+  /** id の台（最初の台か machines から。無ければ null。配列を添字順に引く）。 */
+  private findMachine(id: string): MachineSpec | null {
+    if (id === this.baseSpec.id) {
+      return this.baseSpec;
+    }
+    for (let i = 0; i < this.machines.length; i = i + 1) {
+      const m = this.machines[i] as MachineSpec;
+      if (m.id === id) {
+        return m;
+      }
+    }
+    return null;
+  }
+
+  /** 選べる台の id（最初の台＋unlock_machine を買った台 ∩ machines。machines の並び順、最初の台が machines に無ければ先頭）。 */
+  private machinesOpen(): string[] {
+    const hook = this.econHook('getUnlockedMachines') as (() => readonly string[]) | undefined;
+    const unlocked = hook !== undefined && typeof hook === 'function' ? (hook.bind(this.economy))() : [];
+    const out: string[] = [];
+    let hasBase = false;
+    for (let i = 0; i < this.machines.length; i = i + 1) {
+      const id = (this.machines[i] as MachineSpec).id;
+      if (id === this.baseSpec.id) {
+        hasBase = true;
+        out.push(id);
+      } else if (unlocked.indexOf(id) >= 0) {
+        out.push(id);
+      }
+    }
+    if (!hasBase) {
+      out.unshift(this.baseSpec.id);
+    }
+    return out;
+  }
+
+  /** 休業中に次の台を選ぶ（今の台の id は未選択に戻す。最後の1つが開店で効く, spec/22）。 */
+  private applyPickMachineAt(at: SimTime, machineId: string, out: SimEvent[]): void {
+    if (!this.isResting()) {
+      out.push({ k: 'rejected', at, action: 'pickMachine', reason: 'not-resting' });
+      return;
+    }
+    if (this.machinesOpen().indexOf(machineId) < 0 || this.findMachine(machineId) === null) {
+      out.push({ k: 'rejected', at, action: 'pickMachine', reason: 'machine' });
+      return;
+    }
+    this.restMachineIdState = machineId === this.spec.id ? null : machineId;
+  }
+
+  /** 台を切り替える（開店時。保留・変動中の結果・電サポ／大当たりの残りを捨て normal から。特別保留のストックは残す, spec/22）。 */
+  private switchMachine(at: SimTime, next: MachineSpec, out: SimEvent[]): void {
+    const prevMode = this.spins.snapshot().mode;
+    this.spec = next;
+    this.queue = new HoldQueue(next.holdMax);
+    this.spins = new SpinMachine(next, this.patterns, { mode: 'normal', stRemaining: 0, nowMs: at });
+    this.awaySpinCandState = null;
+    this.syncMachineId();
+    if (prevMode !== 'normal') {
+      out.push({ k: 'modeChanged', to: 'normal', at, stRemaining: 0 });
+    }
   }
 
   /** 今の機種 id を経済に渡す（prod_add_machine の照合。保存されないので構築・復元のたびに, spec/25）。 */
@@ -1198,6 +1293,7 @@ export class Engine {
           const r = (hook.bind(this.economy))(at);
           if (r.ok) {
             this.closesState.push({ at, runTotal, gain: r.gain });
+            this.restMachineIdState = null;
             if (r.points > 0) {
               out.push({ k: 'closed', at, regularPoints: r.gain, points: r.points });
             } else {
@@ -1209,6 +1305,8 @@ export class Engine {
         }
       } else if (a.k === 'open') {
         this.applyOpenAt(at, false, out);
+      } else if (a.k === 'pickMachine') {
+        this.applyPickMachineAt(at, a.machineId, out);
       } else if (a.k === 'treeBuy') {
         const hook = this.econHook('buyTreeNode') as
           | ((id: string, at: number) => { ok: true } | { ok: false; reason: string })
@@ -1273,10 +1371,21 @@ export class Engine {
       return;
     }
     this.ballsState = r.balls;
+    const pick = this.restMachineIdState;
+    this.restMachineIdState = null;
+    const next = pick === null ? null : this.findMachine(pick);
+    const switched = next !== null && next.id !== this.spec.id;
+    const modeOut: SimEvent[] = [];
+    if (switched) {
+      this.switchMachine(at, next, modeOut);
+    }
     this.syncHoldMax();
     this.clearNailQCache();
     this.autoAccState = 0;
-    out.push({ k: 'opened', at, auto });
+    out.push(switched ? { k: 'opened', at, auto, machineId: (next as MachineSpec).id } : { k: 'opened', at, auto });
+    for (let i = 0; i < modeOut.length; i = i + 1) {
+      out.push(modeOut[i] as SimEvent);
+    }
   }
 
   /** 留守を開始する（presence false時。集計の起点を記録）。 */
@@ -2014,7 +2123,16 @@ export class Engine {
     }
     const activeCopy = this.activeNoticeState === null ? null : { ...this.activeNoticeState };
     const lastCopy = copySummary(this.lastSummaryState);
+    // 台の項目は既定（最初の台・未選択）なら省略する（旧複写・golden と同じ形, spec/22）。
+    const machineExtra: { machineId?: string; restMachineId?: string } = {};
+    if (this.spec.id !== this.baseSpec.id) {
+      machineExtra.machineId = this.spec.id;
+    }
+    if (this.restMachineIdState !== null) {
+      machineExtra.restMachineId = this.restMachineIdState;
+    }
     return {
+      ...machineExtra,
       nowMs: this.nowMsState,
       nextBall: this.nextBallState,
       balls: this.ballsState,
@@ -2071,10 +2189,24 @@ export class Engine {
         atlas: cfg.atlas,
         initialBalls: 0,
         economy: cfg.economy,
+        machines: cfg.machines,
       },
       [],
       [],
     );
+    if (snap.machineId !== undefined) {
+      const m = typeof snap.machineId === 'string' ? eng.findMachine(snap.machineId) : null;
+      if (m === null) {
+        throw new Error('invalid engine: snap.machineId unknown');
+      }
+      eng.spec = m;
+    }
+    if (snap.restMachineId !== undefined) {
+      if (typeof snap.restMachineId !== 'string' || eng.findMachine(snap.restMachineId) === null) {
+        throw new Error('invalid engine: snap.restMachineId unknown');
+      }
+      eng.restMachineIdState = snap.restMachineId;
+    }
     assertTime(snap.nowMs, 'snap.nowMs');
     if (Math.floor(snap.nextBall) !== snap.nextBall || snap.nextBall < 0) {
       throw new Error('invalid engine: snap.nextBall must be a non-negative int');
@@ -2258,10 +2390,11 @@ export class Engine {
     }
     const clone = Engine.restore(this.snapshot(), {
       seed: this.seed,
-      spec: this.spec,
+      spec: this.baseSpec,
       patterns: this.patterns,
       atlas: this.atlasBuffer,
       economy: this.economy.fork(),
+      machines: this.machines,
     });
     clone.fgState = false;
     clone.grantIdxState = clone.grantsState.length;
@@ -2286,7 +2419,7 @@ export class Engine {
     const achievements = achHook !== undefined && typeof achHook === 'function'
       ? (achHook.bind(this.economy))(this.engineAchievementMetrics())
       : snapBase.achievements;
-    const base = { ...snapBase, rates, rateCosts, achievements };
+    const base = { ...snapBase, rates, rateCosts, achievements, machinesOpen: this.machinesOpen() };
     const refPerSec = this.readRefPerSec();
     const shotS = this.readShotS();
     const baseWithRef = { ...base, refPerSec, shotS };

@@ -101,6 +101,8 @@ export interface TreeTotals {
   readonly pointsAdd: number;
   readonly bantou: boolean;
   readonly unlocks: readonly string[];
+  /** unlock_machine で選べる台の id（JSON の順）。 */
+  readonly unlockMachines: readonly string[];
 }
 
 /** 一覧の添字ごとに所持しているか（反復は配列の添字順のみ）。 */
@@ -271,6 +273,7 @@ export function treeSumEffects(nodes: readonly TreeNodeSpec[], owned: readonly b
   let pointsAdd = 0;
   let bantou = false;
   const unlocks: string[] = [];
+  const unlockMachines: string[] = [];
   for (let i = 0; i < nodes.length; i = i + 1) {
     if (owned[i] !== true) {
       continue;
@@ -374,6 +377,9 @@ export function treeSumEffects(nodes: readonly TreeNodeSpec[], owned: readonly b
         case 'unlock':
           unlocks.push(e.key);
           break;
+        case 'unlock_machine':
+          unlockMachines.push(e.machine);
+          break;
       }
     }
   }
@@ -406,6 +412,7 @@ export function treeSumEffects(nodes: readonly TreeNodeSpec[], owned: readonly b
     pointsAdd,
     bantou,
     unlocks,
+    unlockMachines,
   };
 }
 

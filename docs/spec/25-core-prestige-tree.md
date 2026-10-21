@@ -56,18 +56,18 @@ runBonus の実測（P10-T5, standard greedy 182日・3機種）: 初回閉店 0
 - さらに個々の前提 `req`（AND）。`req` は同じか下の段で、一覧の**自分より前の添字**だけ（閉路が作れない）。
 | 段 | 時期の目安（標準） | ノード | コスト | 合計 |
 |---|---|---|---|---|
-| 1 短期 | 1〜4週 | 9 | 3〜8 | 44 |
+| 1 短期 | 1〜4週 | 11 | 3〜8 | 54 |
 | 2 中期 | 開くのは2週・買うのは4〜14週 | 15 | 8〜20 | 187 |
 | 3 長期 | 開くのは5週・買うのは10〜34週 | 15 | 12〜30 | 273 |
 | 4 超長期 | 開くのは13週・買うのは24〜40週 | 12 | 20〜38 | 320 |
 | 5 遠い目標 | 開くのは24週・買うのは41〜52週 | 4 | 50〜120 | 350 |
-| 計 | | **55** | | **1,174** |
+| 計 | | **57** | | **1,184** |
 
-## ノード一覧（55 個。P13-T7 で 覚醒の保持・共鳴 2 を追加, D-114）
+## ノード一覧（57 個。P13-T7 で 覚醒の保持・共鳴 2 を追加, D-114。P14-T1 で 店の開店 2 を追加, D-119）
 `{ "id", "name", "desc", "tier", "cost", "req": [id...], "effect": [{ "k", ... }] }`（effect は配列。1ノードに複数の効果を持てる）。`name`・`desc` は画面用で Core は使わない。
 系統: 生産・放置・燃料・予告・台（大当たり/保留）・行動・開店・実績・機種・常連P・便利・見た目。
 
-### 段1 短期（9 個・3〜8 P）
+### 段1 短期（11 個・3〜8 P）
 | id | 名前 | 系統 | コスト | 前提 | 効果 |
 |---|---|---|---|---|---|
 | `kanban` | 常連の看板 | 生産 | 3 | — | 生産 +10%（`prod_add` 0.10） |
@@ -79,6 +79,8 @@ runBonus の実測（P10-T5, standard greedy 182日・3機種）: 初回閉店 0
 | `notice_call1` | 呼び込み | 予告 | 6 | auto_keep | 予告の間隔 −10%（`notice_interval_sub` 0.10） |
 | `idle_keep` | 指定席 | 放置 | 6 | tank_keep | 放置効率の段を保持（`keep` idle） |
 | `sashiire1` | 差し入れ | 行動 | 8 | kanban | 行動の即時の玉 +10%（`prod_min_add` 0.10） |
+| `shop_kokudo_open` | 国道店 開店 | 機種 | 5 | — | 国道店の台（rush-middle-01）を休業中に選べる（`unlock_machine` rush-middle-01） |
+| `shop_minato_open` | 港町店 開店 | 機種 | 5 | — | 港町店の台（lt-middle-01）を休業中に選べる（`unlock_machine` lt-middle-01） |
 
 ### 段2 中期（15 個・8〜20 P。段1を4つで開く）
 | id | 名前 | 系統 | コスト | 前提 | 効果 |
@@ -173,6 +175,7 @@ runBonus の実測（P10-T5, standard greedy 182日・3機種）: 初回閉店 0
 | `points_add` | add | 閉店の常連P に足す（gain ≥ 1 の時だけ） | Σ ≤ 5 |
 | `bantou` | — | 役物の自動購入を解放（下記） | 1 個まで |
 | `unlock` | key | 見た目の解放（Core は所持だけ。描画・演出が key を見る） | — |
+| `unlock_machine` | machine | 休業中に選べる台を増やす（Engine の `pickMachine`, spec/22・D-119）。生産・閉店・EV には触れない。timing は 'now'（休業中に買えばその休業で選べる） | machine はノードをまたいで重複不可 |
 
 生産の式（spec/23・spec/24 に足す）:
 ```
@@ -286,7 +289,7 @@ r = close.regular_mult（1.0）+ Σregular_add
 }
 ```
 読み込み時の検証（エラー）: id 重複／req が未知・自分以降の添字・自分より上の段／tier が 1〜5 の外・`tier_unlock` の長さ違い・非減少でない／cost が 1 未満・非整数／
-未知の k・keep の targets・unlock の key 重複／「1 個まで」の k が2つ以上／上の表の合計の上限を超える／`prod_add_machine` の machine が機種一覧に無い（警告のみ。遠征で開ける前の店も買える）。
+未知の k・keep の targets・unlock の key・unlock_machine の machine の重複／「1 個まで」の k が2つ以上／上の表の合計の上限を超える／`prod_add_machine`・`unlock_machine` の machine が機種一覧に無い（警告のみ）。
 `tree` が無い JSON は空のツリーで、常連P は貯まるが使えない（試算の比較用 `--economy` もこれで作れる）。
 
 ## Engine・Action・イベント・Projection（spec/22 に追加）

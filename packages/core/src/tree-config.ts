@@ -67,7 +67,9 @@ export type TreeEffect =
   | { readonly k: 'prod_min_add'; readonly add: number }
   | { readonly k: 'points_add'; readonly add: number }
   | { readonly k: 'bantou' }
-  | { readonly k: 'unlock'; readonly key: string };
+  | { readonly k: 'unlock'; readonly key: string }
+  /** 休業中に選べる台を増やす（spec/25・spec/22 の pickMachine）。生産・閉店・EV には触れない。 */
+  | { readonly k: 'unlock_machine'; readonly machine: string };
 
 /** ノード1件（name・desc は画面用で Core は計算に使わない）。 */
 export interface TreeNodeSpec {
@@ -216,6 +218,8 @@ function parseEffect(value: unknown, what: string, ctx: TreeParseContext): TreeE
       return { k };
     case 'unlock':
       return { k, key: asString(r['key'], what + '.key') };
+    case 'unlock_machine':
+      return { k, machine: asString(r['machine'], what + '.machine') };
     default:
       return fail(what + '.k unknown');
   }
@@ -228,6 +232,7 @@ function checkTotals(nodes: readonly TreeNodeSpec[], ctx: TreeParseContext): voi
   const machineSum: Record<string, number> = {};
   const keepSeen: Record<string, boolean> = {};
   const unlockSeen: Record<string, boolean> = {};
+  const machineSeen: Record<string, boolean> = {};
   let openBoostMs = 0;
   let openBoostMult = 1;
   for (let i = 0; i < nodes.length; i = i + 1) {
@@ -249,6 +254,11 @@ function checkTotals(nodes: readonly TreeNodeSpec[], ctx: TreeParseContext): voi
           fail(what + '.key duplicated: ' + e.key);
         }
         unlockSeen[e.key] = true;
+      } else if (e.k === 'unlock_machine') {
+        if (machineSeen[e.machine] === true) {
+          fail(what + '.machine duplicated: ' + e.machine);
+        }
+        machineSeen[e.machine] = true;
       } else if (e.k === 'prod_add_machine') {
         machineSum[e.machine] = (machineSum[e.machine] ?? 0) + e.add;
         if ((machineSum[e.machine] ?? 0) > 0.3 + EPS) {
@@ -404,14 +414,14 @@ export function parseTree(value: unknown, ctx: TreeParseContext): TreeSpec {
   return { pointsPerRank, runBonusAt, tierUnlock, bantou: { share, maxPerRun }, nodes };
 }
 
-/** `prod_add_machine` の machine のうち、機種一覧に無いもの（警告用。遠征で開ける前の店も買えるのでエラーにしない）。 */
+/** `prod_add_machine`・`unlock_machine` の machine のうち、機種一覧に無いもの（警告用。開ける前の店も買えるのでエラーにしない）。 */
 export function treeUnknownMachines(tree: TreeSpec, machineIds: readonly string[]): readonly string[] {
   const out: string[] = [];
   for (let i = 0; i < tree.nodes.length; i = i + 1) {
     const effect = (tree.nodes[i] as TreeNodeSpec).effect;
     for (let j = 0; j < effect.length; j = j + 1) {
       const e = effect[j] as TreeEffect;
-      if (e.k === 'prod_add_machine' && machineIds.indexOf(e.machine) < 0 && out.indexOf(e.machine) < 0) {
+      if ((e.k === 'prod_add_machine' || e.k === 'unlock_machine') && machineIds.indexOf(e.machine) < 0 && out.indexOf(e.machine) < 0) {
         out.push(e.machine);
       }
     }

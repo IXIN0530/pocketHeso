@@ -21,6 +21,8 @@ const LINES: Readonly<Record<string, string>> = {
   notice_call1: '予告',
   idle_keep: '放置',
   sashiire1: '行動',
+  shop_kokudo_open: '機種',
+  shop_minato_open: '機種',
   nail_keep: '台',
   lcd_sakura: '見た目',
   fever_long1: '予告',

@@ -23,8 +23,8 @@ import {
 
 const node = (id: string, tier: number, state: TreeNodeView['state'], cost = 3): TreeNodeView => ({ id, tier, cost, req: [], state, timing: 'now' });
 
-test('名前と系統は JSON から引き当てる（55個すべて系統あり）', () => {
-  expect(Object.keys(TREE_NODE_TEXT).length).toBe(55);
+test('名前と系統は JSON から引き当てる（57個すべて系統あり）', () => {
+  expect(Object.keys(TREE_NODE_TEXT).length).toBe(57);
   expect(TREE_NODE_TEXT['kanban']).toMatchObject({ name: '常連の看板', line: '生産' });
   expect(Object.values(TREE_NODE_TEXT).every((t) => t.line !== 'その他')).toBe(true);
 });

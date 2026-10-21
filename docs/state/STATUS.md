@@ -3,9 +3,9 @@
 
 - Current phase: P14（v1.5 店の開放を常連ツリーに・休業中の台選び・台のスペック → `docs/plan/P14-shops-spec.md`）。P11-T6 の本番確認は Blockers。P8-T7（任意）と P7 再開は人間の指示待ち
 - Parallel: P13（`docs/plan/P13-feedback-1-3.md`）→ Next: P13-T9（実機・人間。手順は T8c の報告で渡した）→ T10 は人間の「リリースしてよい」待ち
-- Last done: P13-T8c（ST・LT もカスタムの占有率どおり。白以外を先に使い、足りない分だけ白の保留にも先バレ → 割れて色が出る。見せる色は色の信頼度を変えない重み, D-117）
-- Next: P14-T1（Core: ツリーの `unlock_machine`・休業中の `pickMachine`）→ T2 → T3 → T4（実機）→ T5 は人間の指示時
-- Owner hint: Claude Code（Opus）（T1）。P13-T9 は人間
+- Last done: P14-T1（Core: ツリー段1に `shop_kokudo_open`・`shop_minato_open`（各5P, `unlock_machine`）、休業中の `pickMachine` → 開店（手動・自動）で台を切り替え, D-119。golden 不変）
+- Next: P14-T2（web: 3台を渡す・休業のシートに「次に打つ台」）→ T3 → T4（実機）→ T5 は人間の指示時
+- Owner hint: Claude Code（Sonnet）（T2）。P13-T9 は人間
 - Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T2 は人間の指示で再開（T12 遠征は取り下げ D-118、T13 は P14 に置き換え）
 
 ## Blockers
@@ -18,6 +18,6 @@
 - 既定機種の人間確認待ち（light/rush/ltのどれを既定にするか。P3バランスに影響）
 
 ## Notes（最新3件まで）
+- [P14-T1]: Engine に `machines`・`pickMachine`、Projection に `machineId`・`restMachineId`・`machinesOpen`、`opened.machineId`。切り替えは保留・変動中・電サポ／大当たりを捨て normal から（RUSH 中なら `modeChanged` normal を `opened` の直後）。`--tree greedy`（standard 84日・3機種）は閉店日・判定が不変、新ノードを3〜4週目に買うぶん4週目の最高到達役物が light 837→818 等わずかに下がる（D-119）。web は `tree-defs.ts` の系統に2行足しただけ（表示は T2）。全部 Opus
 - [P13-T8c]: 通常・時短は T8b と同値。ST・LT の sb40 は白の当たり 87%・白のハズレ 0.6%、sb90 は白の当たり 75% に先バレ（表 `docs/state/sakibare-occ-20261021.md`）。sb90 の白の先バレは全部金で見せる（金の信頼度 95→98%、RUSH で金が約3倍出る）。見た目の熱さと Core の熱さ（白）が合わない保留あり。`tree-engine.test.ts` の時間比較が全体実行で1回不安定（今回は無関係・再実行で通過）。Opus が fx、Sonnet が web テスト・spec・DECISIONS
-- [P13-T8b]: 実効 o は通常/時短がカスタムの値、ST/LT は 3 カスタムとも 60%（白の当たり 40% に先バレできない）。表は `docs/state/sakibare-occ-20261021.md`。`LOTTERY_HOLD_COLORS` は白が最後。`sakibare-timing.test.ts` の件数下限を 20→10（白に先バレしなくなり件数が減った。時刻の確認は不変）。Opus が fx、Sonnet が web・spec・DECISIONS
 - [P13-T9 補修]: 等倍で Grant 注入できなかったので `?debug=1&sandbox=1`（x1 のまま別 DB `pocketheso-debug`）を追加。Debug 画面に「x1（別セーブ）」リンク。本番ビルドでは無効

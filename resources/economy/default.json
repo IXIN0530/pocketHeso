@@ -105,6 +105,8 @@
       { "id": "notice_call1", "name": "呼び込み", "desc": "予告の間隔 −10%", "tier": 1, "cost": 6, "req": ["auto_keep"], "effect": [{"k": "notice_interval_sub", "sub": 0.1}] },
       { "id": "idle_keep", "name": "指定席", "desc": "放置効率の段を保持", "tier": 1, "cost": 6, "req": ["tank_keep"], "effect": [{"k": "keep", "targets": ["idle"]}] },
       { "id": "sashiire1", "name": "差し入れ", "desc": "行動の即時の玉 +10%", "tier": 1, "cost": 8, "req": ["kanban"], "effect": [{"k": "prod_min_add", "add": 0.1}] },
+      { "id": "shop_kokudo_open", "name": "国道店 開店", "desc": "休業中に国道店の台を選べる", "tier": 1, "cost": 5, "req": [], "effect": [{"k": "unlock_machine", "machine": "rush-middle-01"}] },
+      { "id": "shop_minato_open", "name": "港町店 開店", "desc": "休業中に港町店の台を選べる", "tier": 1, "cost": 5, "req": [], "effect": [{"k": "unlock_machine", "machine": "lt-middle-01"}] },
       { "id": "nail_keep", "name": "釘師の顔なじみ", "desc": "釘調整・変動短縮の段を保持", "tier": 2, "cost": 8, "req": ["auto_keep"], "effect": [{"k": "keep", "targets": ["nail", "shorten"]}] },
       { "id": "lcd_sakura", "name": "液晶「夜桜」", "desc": "液晶の背景テーマ「夜桜」", "tier": 2, "cost": 8, "req": [], "effect": [{"k": "unlock", "key": "lcd_sakura"}] },
       { "id": "fever_long1", "name": "確変延長", "desc": "確変フィーバー +15秒", "tier": 2, "cost": 10, "req": ["notice_call1"], "effect": [{"k": "fever_ms_add", "add": 15000}] },

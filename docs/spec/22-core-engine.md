@@ -20,8 +20,9 @@ type Action  =
   | { t: SimTime; k: 'bantou'; on: boolean }                      // 番頭さんの ON/OFF（未所持は rejected 'not-owned'）
   | { t: SimTime; k: 'noticeTap'; noticeId: number }
   | { t: SimTime; k: 'boost'; on: boolean }
-  | { t: SimTime; k: 'close'; machineId?: string }                // 閉店（周回）。machineId で次の周回の機種（新台入替, D-082）
+  | { t: SimTime; k: 'close' }                                    // 閉店（周回）。休業に入る（D-107）
   | { t: SimTime; k: 'open' }                                     // 開店（休業を終えてリセット。休業中でなければ rejected 'not-resting', D-107）
+  | { t: SimTime; k: 'pickMachine'; machineId: string }           // 次の開店で打つ台（休業中だけ。rejected 'not-resting'・'machine', D-119）
 ```
 - 検証に失敗した Action（残高不足・期限切れの予告等）は `rejected` イベントを出して無視する（状態は変えない）。
 - 背面にいる間は `shoot` を自動で off 扱い（手動打ちは前面限定）。
@@ -41,8 +42,8 @@ type SimEvent =
   | { k: 'noticeSpawned' | 'noticeExpired'; id: number; at: SimTime; effect: NoticeEffect }
   | { k: 'granted'; claimId: string; at: SimTime; fuelMs: number; medals: number; balls?: number; bonusHolds?: number } // balls=即時の玉
   | { k: 'fuelEmpty' | 'fuelRefilled'; at: SimTime }
-  | { k: 'closed'; at: SimTime; regularPoints: number; points?: number; machineId?: string }  // 機種を変えた時だけ
-  | { k: 'opened'; at: SimTime; auto: boolean }   // 開店（auto は restAt + rest_max_ms の自動開店, D-107）
+  | { k: 'closed'; at: SimTime; regularPoints: number; points?: number }
+  | { k: 'opened'; at: SimTime; auto: boolean; machineId?: string }   // 開店（auto は restAt + rest_max_ms の自動開店, D-107。machineId は台を切り替えた時だけ）
   | { k: 'rejected'; at: SimTime; action: Action['k']; reason: string }
   | { k: 'achieved'; id: string; at: SimTime }   // 実績の達成（spec/24, D-095）
 type HoldEntry = { serial: number; hit: boolean; kind?: JackpotKind; pattern: PatternId; color: HoldColor; hot: number; unit?: number } // unit は取得時の単価（無い旧セーブは rate, D-090）
@@ -67,9 +68,12 @@ export class Engine {
 - **特別保留**（D-081）: Grant.bonusHolds はストック（snapshot `bonusStock`）に足し、保留に空きがあれば1つずつ入れる（`holdAdded`）。
   抽選は `RNGStream(seed, 'grantHold', n)`（n はストックから出した通し番号, 0 始まり）、serial = `GRANT_HOLD_SERIAL_BASE`（1.5e9）+ n。
   当否・色は予告のボーナス保留（`drawBonusHold`）と同じ規則、rate1・賞球なし。取得時のモードで表を選ぶ。
-- **新台入替**（D-082）: `EngineConfig.machines`（MachineSpec の配列。id で引く。反復順に依存しない）があれば、close の machineId で次の周回の機種に切り替える。
-  大当たり中・電サポ中（jitan/st/lt）の close に machineId が付いていれば `rejected`（'busy'）。切り替える時は保留と変動中の結果を捨て（特別保留のストックは残す）、normal から始める。
-  machines に無い id は `rejected`（'machine'）。snapshot に今の機種 id を持つ。
+- **新台入替**（D-119。旧 close.machineId は未実装のまま廃止）: `EngineConfig.machines`（MachineSpec の配列。id で引く。反復順に依存しない）。
+  選べる台 = 最初の台（`cfg.spec`）＋ ツリーの `unlock_machine` を買った台 ∩ machines（spec/25）。
+  休業中に `pickMachine` で次の台を選ぶ（何度でも選び直せて最後の1つ。今の台の id は未選択に戻す）。休業中でなければ rejected 'not-resting'、選べない id は 'machine'。
+  **開店**（手の `open`・自動開店とも）で選んだ台に切り替える。保留・変動中の結果・電サポ／大当たりの残りを捨て normal から（RUSH 中なら `modeChanged` normal を `opened` の直後に出す）。
+  特別保留のストック・飛行中の玉は残す（玉は新しい台の表で引く）。閉店で選択は消える。
+  snapshot に `machineId`（最初の台なら省略）・`restMachineId`（未選択なら省略）。旧 snapshot は最初の台・未選択。知らない id の snapshot は restore でエラー。
 - 性能: 放置24時間分の `advance`（オート打ち込み）が iPhone で 300ms 以内。超える場合は Web Worker で実行し進捗表示。
 
 ## 決定論契約（テスト必須）
@@ -86,6 +90,7 @@ export interface HallProjection {
   holds: HoldColor[]; spin?: SpinView; jackpot?: JackpotView
   balls: number; medals: number; fuelMs: number; boostMs: number; perSec: number   // 現在の生産/秒（燃料・放置効率込み）
   refPerSec: number; bonusStock: number; machineId: string   // 基準生産（spec/23）・特別保留のストック・今の機種
+  restMachineId: string | null; machinesOpen: string[]        // 休業中に選んだ次の台・選べる台（machines の並び順, D-119）
   yakumono: YakumonoView[]            // Lv, 次の価格, 回転位相と実効周期 periodS（描画用）, 覚醒数
   notice?: NoticeView                 // 表示中の予告
   totals: Totals                      // 回転数, 当たり, 出玉, 発射数, 累計玉

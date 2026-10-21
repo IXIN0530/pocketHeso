@@ -32,26 +32,12 @@ type ClaimRecord = { claimId: string; receivedAt: SimTime; source: Source; kind:
 | flights | なし | なし | 30階まで | 10階ごと +1（3枚, D-083） | なし |
 - 即時の玉は Engine が受け取り時点の基準生産で玉にする（spec/23）。claims は「分」だけを決める。
 - メダルの入手元は行動だけ（大当たりでは出ない, D-049）。累計獲得メダルが閉店時の常連P の上限になる（spec/23）。
-  ほかに登録地点の初成立 +4（spec/32）、遠征の到達 +10（下記）。
+  ほかに登録地点の初成立 +4（spec/32）。（遠征の到達 +10 は取り下げ, D-118）
 - 最終的に `prodMin × trust`・`fuelMs × trust`。メダルと特別保留には trust を掛けない。
   自己申告（施設外・終了し忘れの checkin を含む, D-057）はメダル・特別保留・連続日数なし。
-- 距離は遠征と表示用（歩数と二重に数えない）。
+- 距離は表示用（歩数と二重に数えない。遠征は取り下げ, D-118。店は常連ツリーで開ける, spec/25）。
 - ショートカットからワークアウトは受け取らない（D-022）。運動時間（checkin 行）はチェックインだけから数える。
 - 既存の台帳の grant は書き換えない（D-081 より前の記録は旧換算のまま）。
-
-## 遠征（距離の累計, D-082）
-- 遠征距離 = 台帳の `distance` 記録（D-055）の全期間の合計（m）。`expedition.step_m`（42,195m）ごとに1回到達。
-- 到達した受け取りで、`expedition:<n>`（n は 1 始まり）の記録（source `pass`・kind `expedition`・燃料0・メダル `expedition.medals` = 10）を
-  その distance の記録の直後に出す。1回の受け取りで2回以上越えたらその数だけ出す。
-- 到達で店を順に開ける（`expedition.shops`、並び順が開く順）:
-  | n | 店 | 台 |
-  |---|---|---|
-  | 0（最初から） | 駅前店 | light-middle-01（既定機種が決まったらその台） |
-  | 1 | 国道店 | rush-middle-01 |
-  | 2 | 港町店 | lt-middle-01 |
-  | 3〜 | （新しい店なし。メダルだけ） | — |
-- 開けた店の台は閉店時に次の周回の機種に選べる（新台入替, spec/23）。どの店が開いたかは台帳から毎回計算する（保存しない）。
-- 受け取れるのは今日と過去2日だけなので、遠征距離は台帳にある分だけ（それより前の歩きは数えない）。
 
 ## 連続日数（streak）
 - その日の `health` か `checkin` で「歩数 ≥ 5,000 または 運動 ≥ 20分」を満たした日を達成日とする（self は数えない）。
@@ -68,6 +54,5 @@ type ClaimRecord = { claimId: string; receivedAt: SimTime; source: Source; kind:
 export function parseShortcutCode(text: string, pairingKey: string, now: SimTime): ParsedHealth | ClaimError
 export function planGrants(ledger: ClaimRecord[], input: ParsedHealth | CheckinResult | SelfReport, rules: ClaimRules): ClaimRecord[]
 export function streakOf(ledger: ClaimRecord[], today: string, rules: ClaimRules): number
-export function expeditionOf(ledger: ClaimRecord[], rules: ClaimRules): { meters: number; reached: number; nextAtM: number; shops: readonly Shop[] /*開いた店*/ }
 ```
 すべて純関数（時刻・鍵は引数）。UI は `planGrants` の結果を確認画面に出し、確定したら台帳と Engine に追記する。
