@@ -4,14 +4,14 @@ import { Engine, type Action, type EngineSnapshot } from '@ph/core';
 import { getSnapshot, loadActions, loadLedger, type Db, type GameMeta } from '../platform/storage.ts';
 import { engineConfig } from './game-config.ts';
 
-/** 7 = P12-T3（休業: IdleEconomy v8 の restAt・restPendingBalls, spec/25）。6 = P10-T4（常連ツリー: IdleEconomy v7 の points・tree・bantouOn 等, spec/25）。5 = P9-T3（実績, spec/24）。 */
-export const SNAPSHOT_VERSION = 7;
+/** 8 = P13-T6（覚醒 v2: IdleEconomy v9 の runMaxLv・prevMaxLv, spec/23）。7 = P12-T3（休業: IdleEconomy v8 の restAt・restPendingBalls, spec/25）。6 = P10-T4（常連ツリー: IdleEconomy v7 の points・tree・bantouOn 等, spec/25）。5 = P9-T3（実績, spec/24）。 */
+export const SNAPSHOT_VERSION = 8;
 
 /**
- * 読んでよい旧版（3 = P7-T7、4 = P8-T8 / v1.0.0、5 = P9 / v1.1.0、6 = P10 / v1.2.0。旧レート段・旧単価・実績なしは Core の restore が移行する。
+ * 読んでよい旧版（3 = P7-T7、4 = P8-T8 / v1.0.0、5 = P9 / v1.1.0、6 = P10 / v1.2.0、7 = P12 / v1.3.0。旧レート段・旧単価・実績なしは Core の restore が移行する。
  * 再計算だと新レート表で買い直しになるため, D-092）。
  */
-const LEGACY_SNAPSHOT_VERSIONS: readonly number[] = [3, 4, 5, 6];
+const LEGACY_SNAPSHOT_VERSIONS: readonly number[] = [3, 4, 5, 6, 7];
 
 export type RestoredFrom = 'snapshot' | 'recompute';
 

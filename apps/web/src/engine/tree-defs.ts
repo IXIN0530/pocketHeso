@@ -187,3 +187,42 @@ export function timingBadge(timing: TreeNodeView['timing'], resting: boolean): s
   if (timing !== 'open') return null;
   return resting ? '開店から' : '次の開店から';
 }
+
+/** 覚醒の予告の倍率の表記（×1.01 未満は「+1% 未満」、10 以上は整数、それ以外は小数 2 桁と +b%）。 */
+export function awakenGainText(g: number): string {
+  if (g < 1.01) return '+1% 未満';
+  if (g >= 10) return `×${Math.round(g)}`;
+  return `×${g.toFixed(2)}（+${Math.round((g - 1) * 100)}%）`;
+}
+
+/** 共鳴の今の倍率の1行（count は今の周回の覚醒の総数）。 */
+export function resonanceLine(r: { rate: number; count: number; mult: number }): string {
+  return `共鳴 ×${r.mult.toFixed(2)}（覚醒 ${r.count} 回 × ${Math.round(r.rate * 100)}%）`;
+}
+
+/** 閉店カードの「保持される覚醒」の1行（0 なら残らない）。 */
+export function keptAwakenLine(kept: number): string {
+  return kept > 0 ? `今閉店すると 覚醒 ${kept} 回が次の周回に残ります` : '覚醒は閉店で戻ります（ツリーの「台の癖」で残せます）';
+}
+
+const NODE_EFFECT = new Map(tree.nodes.map((n) => [n.id, n.effect as readonly { k: string; add?: number; targets?: readonly string[] }[]]));
+
+/** ツリーの詳細の「今の周回なら」（共鳴は生産の倍率、覚醒の保持は残る回数。該当しないノードは null）。 */
+export function treeNodeNow(
+  id: string,
+  shop: { resonance: { rate: number; count: number }; yakumono: readonly { awakened: number }[] },
+): string | null {
+  const fx = NODE_EFFECT.get(id) ?? [];
+  const add = fx.reduce((s, e) => s + (e.k === 'resonance_add' ? (e.add ?? 0) : 0), 0);
+  if (add > 0) {
+    const { rate, count } = shop.resonance;
+    return `今の周回なら 生産 ${awakenGainText((1 + (rate + add) * count) / (1 + rate * count))}`;
+  }
+  const keep = fx.find((e) => e.k === 'keep' && (e.targets ?? []).some((t) => t === 'awaken_low' || t === 'awaken_all'));
+  if (keep !== undefined) {
+    const all = (keep.targets ?? []).includes('awaken_all');
+    const n = shop.yakumono.slice(0, all ? 8 : 3).reduce((s, y) => s + y.awakened, 0);
+    return `今の周回なら 覚醒 ${n} 回が閉店後に残ります`;
+  }
+  return null;
+}

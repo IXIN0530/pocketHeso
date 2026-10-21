@@ -309,6 +309,15 @@
       ]
     },
     {
+      "pattern": "awakened",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "hold_up" },
+        { "at": 140, "kind": "sound", "bus": "se", "asset": "kime" },
+        { "at": 0, "kind": "flash", "style": "wash_gold", "ms": 700 },
+        { "at": 0, "kind": "haptic", "pattern": [30, 30, 60] }
+      ]
+    },
+    {
       "pattern": "tierOpened",
       "cues": [
         { "at": 0, "kind": "sound", "bus": "se", "asset": "hold_up" },

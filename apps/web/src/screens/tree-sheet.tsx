@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import type { RestView, TreeNodeView, TreeView } from '@ph/core';
+import type { RestView, ShopView, TreeNodeView, TreeView } from '@ph/core';
 import { HoldButton } from '../components/hold-button.tsx';
 import { Segmented } from '../components/segmented.tsx';
 import { Sheet } from '../components/sheet.tsx';
-import { groupTier, restHeaderText, stateMark, timingBadge, TREE_NODE_TEXT, TREE_TIER_NAMES, tierRemaining } from '../engine/tree-defs.ts';
+import { groupTier, restHeaderText, stateMark, treeNodeNow, timingBadge, TREE_NODE_TEXT, TREE_TIER_NAMES, tierRemaining } from '../engine/tree-defs.ts';
 import { playToastCue } from '../fx/fx-host.ts';
 import { act, useEngine } from '../stores/engine.ts';
 import { formatNum } from '../stores/format.ts';
@@ -27,7 +27,7 @@ export function rankText(t: TreeView): string {
  * 購入は返金なしのため長押し（HoldButton）。ランクは減らず、常連P だけが減る。
  * 休業中は上にカウントダウン・下に「開店する」（普通のボタン, P12-T3）。rest が null でない時だけ出す。
  */
-export function TreeSheet({ tree, rest, at, onDismiss }: { tree: TreeView; rest?: RestView | null; at?: number; onDismiss: () => void }) {
+export function TreeSheet({ tree, rest, at, shop, onDismiss }: { tree: TreeView; rest?: RestView | null; at?: number; shop?: ShopView; onDismiss: () => void }) {
   const firstOpen = Math.max(1, tree.tierOpen.findIndex((o, i) => o && tree.nodes.some((n) => n.tier === i + 1 && (n.state === 'buyable' || n.state === 'short'))) + 1);
   const [tier, setTier] = useState(firstOpen);
   const [picked, setPicked] = useState<string | null>(null);
@@ -109,6 +109,7 @@ export function TreeSheet({ tree, rest, at, onDismiss }: { tree: TreeView; rest?
           <p>
             <b>{selText?.name ?? sel.id}</b> {selText?.desc}
           </p>
+          {shop !== undefined && treeNodeNow(sel.id, shop) !== null && <p className={styles.sub}>{treeNodeNow(sel.id, shop)}</p>}
           <p className={styles.sub}>
             {selText?.line}・コスト {sel.cost}P{sel.req.length > 0 ? `・${reqText(sel)}` : ''}・{stateMark(sel.state).label}
             {timingBadge(sel.timing, resting) !== null ? `・${timingBadge(sel.timing, resting)}` : ''}

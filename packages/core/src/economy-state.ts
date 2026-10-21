@@ -171,6 +171,10 @@ export interface ShopView {
   readonly streakDays: number;
   readonly medalsEarned: number;
   readonly boostOn: boolean;
+  /** 共鳴（係数 = awaken.resonance + Σresonance_add、count = 今の周回の覚醒の総数、mult = 1 + 係数 × count）。 */
+  readonly resonance: { readonly rate: number; readonly count: number; readonly mult: number };
+  /** 今閉店したら次の周回に残る覚醒の総数（ツリーの keep。0 なら残らない）。 */
+  readonly keptAwakened: number;
 }
 
 /** buy の対象（役物8種＋強化8種）。 */
@@ -1566,6 +1570,12 @@ export class IdleEconomy implements EconomyPort {
       streakDays: this.streakDaysState,
       medalsEarned: this.medalsEarnedState,
       boostOn: this.boostOnState,
+      resonance: {
+        rate: this.resonanceRate(),
+        count: this.awakenedState.reduce((a, b) => a + b, 0),
+        mult: this.resonanceOf(this.awakenedState),
+      },
+      keptAwakened: this.openAwakened().reduce((a, b) => a + b, 0),
     };
   }
 

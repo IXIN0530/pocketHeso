@@ -5,8 +5,9 @@ import { CountUp } from '../components/count-up.tsx';
 import { HoldButton } from '../components/hold-button.tsx';
 import { Segmented } from '../components/segmented.tsx';
 import { Switch } from '../components/switch.tsx';
-import { closeBreakdown, closeExplain, restCloseText } from '../engine/tree-defs.ts';
+import { awakenGainText, closeBreakdown, closeExplain, keptAwakenLine, restCloseText, resonanceLine } from '../engine/tree-defs.ts';
 import { TreeSheet, rankText } from './tree-sheet.tsx';
+import { playToastCue } from '../fx/fx-host.ts';
 import { act, useEngine } from '../stores/engine.ts';
 import { formatNum } from '../stores/format.ts';
 import styles from './shop.module.css';
@@ -35,6 +36,7 @@ export function upgradeEffect(u: ShopUpgradeView): string {
   return u.next === null ? t.effect(u.value) : `${t.effect(u.value)} → ${t.effect(u.next)}`;
 }
 
+let cueSerial = 0;
 const report = (e: unknown) => useEngine.setState({ error: e instanceof Error ? e.message : String(e) });
 
 const fmtRate = (n: number) => formatNum(n, 1);
@@ -61,6 +63,14 @@ export function ShopScreen() {
       .finally(() => setBusy(false));
   };
   // 購入は HoldButton が1つずつ順に送る（長押しの連続でボタンを無効にしない）。
+  /** 覚醒を送り、成功したら短い演出を鳴らす。 */
+  const awaken = (yakumono: string) => {
+    setBusy(true);
+    act({ k: 'awaken', yakumono })
+      .then(() => playToastCue('awakened', useEngine.getState().seed, ++cueSerial))
+      .catch(report)
+      .finally(() => setBusy(false));
+  };
   const buy = (input: Parameters<typeof act>[0]) => act(input).catch(report);
 
   /** 閉店を確定し、休業のツリーシートを自動で開く（P12-T3）。 */
@@ -109,6 +119,7 @@ export function ShopScreen() {
           <h2>役物</h2>
           <Segmented label="まとめ買い" options={BULK_OPTIONS} value={bulk} onChange={setBulk} />
         </div>
+        {shop.resonance.count > 0 && <p className={styles.note}>{resonanceLine(shop.resonance)}</p>}
         <ul className={styles.list}>
           {shop.yakumono.map((y) => {
             const price = y.prices[bulk] ?? null;
@@ -126,9 +137,10 @@ export function ShopScreen() {
                     <button
                       className={styles.awakenBtn}
                       disabled={busy || p.medals < y.awakenCost}
-                      onClick={() => send({ k: 'awaken', yakumono: y.id })}
+                      onClick={() => awaken(y.id)}
                     >
                       覚醒 メダル{y.awakenCost}
+                      {y.awakenGain !== null && <small> 生産 {awakenGainText(y.awakenGain)}</small>}
                     </button>
                   )}
                   <HoldButton
@@ -143,7 +155,7 @@ export function ShopScreen() {
             );
           })}
         </ul>
-        <p className={styles.note}>購入ボタンは長押しで続けて買えます。覚醒は Lv{economyJson.awaken.min_lv} から。Lv が 0 に戻り、その役物の生産が ×{economyJson.awaken.mult} になります（メダルを使います）。</p>
+        <p className={styles.note}>購入ボタンは長押しで続けて買えます。覚醒は Lv{economyJson.awaken.min_lv} から。Lv は戻らず、その役物の生産が ×{economyJson.awaken.mult} になり、覚醒の数だけ全体も伸びます（メダルを使います）。</p>
       </section>
 
       <section className={styles.card}>
@@ -206,6 +218,7 @@ export function ShopScreen() {
         <p>
           今回 {formatNum(c.runTotal)} / {formatNum(c.required)}玉 ・ 獲得見込み ランク +{c.gain}・常連P +{c.points}
         </p>
+        <p className={styles.note}>{keptAwakenLine(shop.keptAwakened)}</p>
         <p className={styles.note}>
           ランクの上がり幅は「玉由来 {c.byBalls}」と「行動由来 {c.byMedals}」の小さい方（今 ランク{shop.regular}）。
         </p>
@@ -266,7 +279,7 @@ export function ShopScreen() {
           </>
         )}
       </section>
-      {treeOpen && tree !== undefined && <TreeSheet tree={tree} rest={p.rest} at={p.at} onDismiss={() => setTreeOpen(false)} />}
+      {treeOpen && tree !== undefined && <TreeSheet tree={tree} rest={p.rest} at={p.at} shop={shop} onDismiss={() => setTreeOpen(false)} />}
     </div>
   );
 }

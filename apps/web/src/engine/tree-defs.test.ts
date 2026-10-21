@@ -2,6 +2,10 @@ import type { TreeNodeView } from '@ph/core';
 import { expect, test } from 'vitest';
 import { formatClock } from '../stores/format.ts';
 import {
+  awakenGainText,
+  keptAwakenLine,
+  resonanceLine,
+  treeNodeNow,
   closeBreakdown,
   closeExplain,
   groupTier,
@@ -102,4 +106,24 @@ test('P12-T3: timing open の小札（休業中は「開店から」、それ以
   expect(timingBadge('now', false)).toBeNull();
   expect(timingBadge('open', true)).toBe('開店から');
   expect(timingBadge('open', false)).toBe('次の開店から');
+});
+
+test('覚醒の予告の倍率: ×1.01 未満は「+1% 未満」・10 以上は整数・それ以外は ×a（+b%）', () => {
+  expect(awakenGainText(1.004)).toBe('+1% 未満');
+  expect(awakenGainText(1.01)).toBe('×1.01（+1%）');
+  expect(awakenGainText(2.4)).toBe('×2.40（+140%）');
+  expect(awakenGainText(12.4)).toBe('×12');
+});
+
+test('共鳴の今の倍率と、保持される覚醒の1行', () => {
+  expect(resonanceLine({ rate: 0.15, count: 4, mult: 1.6 })).toBe('共鳴 ×1.60（覚醒 4 回 × 15%）');
+  expect(keptAwakenLine(3)).toContain('覚醒 3 回が次の周回に残ります');
+  expect(keptAwakenLine(0)).toContain('戻ります');
+});
+
+test('ツリーの「今の周回なら」: 共鳴は倍率・台の癖は風車〜クルーンの覚醒数', () => {
+  const shop = { resonance: { rate: 0.15, count: 4 }, yakumono: [2, 1, 0, 3, 0, 0, 0, 0].map((awakened) => ({ awakened })) };
+  expect(treeNodeNow('resonance1', shop)).toBe('今の周回なら 生産 ×1.13（+13%）');
+  expect(treeNodeNow('awaken_keep1', shop)).toBe('今の周回なら 覚醒 3 回が閉店後に残ります');
+  expect(treeNodeNow('kanban', shop)).toBeNull();
 });

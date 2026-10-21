@@ -116,7 +116,7 @@ test('旧版4（v1.0.0・IdleEconomy v5・実績なし）の snapshot から落�
   await host.presence(false, T0 + 5000);
   const at = T0 + 15 * MIN;
   const snap = (await getSnapshot(db, 'latest')) as { v: number; engine: Record<string, unknown> };
-  expect(snap.v).toBe(7);
+  expect(snap.v).toBe(8);
   const econ: Record<string, unknown> = { ...(snap.engine['economy'] as Record<string, unknown>), v: 5 };
   delete econ['achieved'];
   delete econ['awakenTotal'];
@@ -148,7 +148,7 @@ test('旧版5（v1.1.0・IdleEconomy v6）の snapshot は常連P が 10 × ラ�
   await host.presence(false, T0 + 5000);
   const at = T0 + 15 * MIN;
   const snap = (await getSnapshot(db, 'latest')) as { v: number; engine: Record<string, unknown> };
-  expect(snap.v).toBe(7);
+  expect(snap.v).toBe(8);
   const cur = snap.engine['economy'] as Record<string, unknown>;
   // 現行 v6 の往復: そのまま復元できる。
   const same = await EngineHost.open(db, ATLAS, at, seeds);
@@ -253,7 +253,7 @@ test('P12-T3: 旧版6（v1.2.0・IdleEconomy v7・休業なし）の snapshot �
   await EngineHost.open(db, ATLAS, T0, seeds);
   const at = T0 + 5 * MIN;
   const snap = (await getSnapshot(db, 'latest')) as { v: number; engine: Record<string, unknown> };
-  expect(snap.v).toBe(7);
+  expect(snap.v).toBe(8);
   const cur = snap.engine['economy'] as Record<string, unknown>;
   // v6（休業なし）にして読み直すと休業でない。
   const v6econ: Record<string, unknown> = { ...cur, v: 7 };
