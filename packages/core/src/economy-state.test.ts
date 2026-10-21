@@ -43,7 +43,8 @@ function loadEconomy(): IdleEconomy {
   for (let i = 0; i < yak.length; i = i + 1) {
     (yak[i] as Record<string, unknown>)['yield'] = SPEC_YIELDS[i];
   }
-  (json['awaken'] as Record<string, unknown>)['medal_base'] = 5;
+  // 覚醒は手計算シナリオの当時の値（P13-T7 より前: Lv100・×10・Lv を戻す・共鳴なし）
+  json['awaken'] = { ...(json['awaken'] as Record<string, unknown>), min_lv: 100, mult: 10, reset_lv: true, resonance: 0, medal_base: 5 };
   (json['factors'] as Record<string, unknown>)['closed'] = 0.1;
   (json['close'] as Record<string, unknown>)['required_run_total'] = 1000000000;
   (json['close'] as Record<string, unknown>)['divisor'] = 1000000000;

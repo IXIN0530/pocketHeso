@@ -226,15 +226,16 @@ test('keep: 対象の段だけ閉店で残り、他は 0 に戻る', () => {
   }
 });
 
-test('starter: 閉店後の Lv は各要素の最大・覚醒は 0', () => {
+test('開店祝い（starter_rel）: 前の周回の最高 Lv × 割合の最大（切り捨て）・覚醒は 0', () => {
   const e = made(['starter1', 'starter2'], { lv: [50, 50, 50, 50, 50, 50, 50, 50], awakened: [1, 1, 1, 1, 1, 1, 1, 1] });
   close(e);
   const s = e.snapshot();
-  expect(s.lv).toEqual([25, 10, 25, 10, 0, 0, 0, 0]);
+  // 50 × 0.25 = 12.5 → 12（starter1 の 0.10 より大きい方）
+  expect(s.lv).toEqual([12, 12, 12, 12, 12, 12, 12, 12]);
   expect(s.awakened).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
   const one = made(['starter1'], { lv: [50, 50, 50, 50, 50, 50, 50, 50] });
   close(one);
-  expect(one.snapshot().lv).toEqual([25, 10, 0, 0, 0, 0, 0, 0]);
+  expect(one.snapshot().lv).toEqual([5, 5, 5, 5, 5, 5, 5, 5]);
   const none = made([], { lv: [50, 50, 50, 50, 50, 50, 50, 50] });
   close(none);
   expect(none.snapshot().lv).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
@@ -251,7 +252,8 @@ test('open_boost: 閉店で入り、onTick で 1000ms ずつ減って切れる�
   expect(e.getOpenBoostMs()).toBe(14400000 - 1000);
   e.onTick(true, 50000);
   expect(e.getOpenBoostMs()).toBe(14400000 - 2000);
-  // 倍率: 1 + (2−1) + (1.5−1)= 2.5
+  // 倍率: 1 + (2−1) + (1.5−1)= 2.5（開店祝いは前の周回の割合なので、役物を置いてから比べる）
+  patch(e, { lv: LV });
   const withB = e.getPerSec(true, 1000);
   patch(e, { openBoostMs: 0 });
   expect(withB / e.getPerSec(true, 1000)).toBeCloseTo(2.5, 9);
@@ -406,10 +408,12 @@ test('全ノード所持の天井（spec/25）', () => {
   const regular = 0;
   void regular;
   expect(e.getRefPerSec()).toBeCloseTo(base * 1 * 2.5 * 1.016 * 2.0, 6);
-  // 全所持から閉店: 開店ダッシュ 4h・starter [25,10,25,10,0,0,0,0]
+  // 共鳴の係数 0.15 + 0.05 × 2 = 0.25
+  expect(t.resonanceAdd).toBeCloseTo(0.1, 12);
+  // 全所持から閉店: 開店ダッシュ 4h・開店祝い・上（前の周回の最高 Lv [10,5] × 0.25 の切り捨て）
   close(e);
   expect(e.getOpenBoostMs()).toBe(14400000);
-  expect(e.snapshot().lv).toEqual([25, 10, 25, 10, 0, 0, 0, 0]);
+  expect(e.snapshot().lv).toEqual([2, 1, 0, 0, 0, 0, 0, 0]);
   expect(e.getPerSec(true, 1000) / (e.getPerSec(true, 1000) / 2.5)).toBeCloseTo(2.5, 9);
 });
 

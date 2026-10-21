@@ -34,21 +34,21 @@ function smallTree(extra: RawNode[]): Record<string, unknown> {
   };
 }
 
-test('既定 JSON のツリーが通る（52 個・5 段・総 1,108 P・spec/25 の段ごとの数と合計）', () => {
+test('既定 JSON のツリーが通る（55 個・5 段・総 1,174 P・spec/25 の段ごとの数と合計）', () => {
   const tree = parseEconomy(defaultJson()).tree;
   expect(tree.pointsPerRank).toBe(10);
   expect(tree.runBonusAt).toEqual([1e11, 1e12, 1e13, 1e14, 1e15, 1e16]);
   expect(tree.tierUnlock).toEqual([0, 4, 12, 24, 36]);
   expect(tree.bantou).toEqual({ share: 0.5, maxPerRun: 100 });
-  expect(tree.nodes.length).toBe(52);
+  expect(tree.nodes.length).toBe(55);
   const count = [0, 0, 0, 0, 0];
   const cost = [0, 0, 0, 0, 0];
   for (const n of tree.nodes) {
     count[n.tier - 1] = (count[n.tier - 1] ?? 0) + 1;
     cost[n.tier - 1] = (cost[n.tier - 1] ?? 0) + n.cost;
   }
-  expect(count).toEqual([9, 14, 14, 11, 4]);
-  expect(cost).toEqual([44, 171, 253, 290, 350]);
+  expect(count).toEqual([9, 15, 15, 12, 4]);
+  expect(cost).toEqual([44, 187, 273, 320, 350]);
   const kanban = tree.nodes[0] as TreeNodeSpec;
   expect(kanban).toEqual({
     id: 'kanban',
@@ -59,7 +59,7 @@ test('既定 JSON のツリーが通る（52 個・5 段・総 1,108 P・spec/25
     req: [],
     effect: [{ k: 'prod_add', add: 0.1 }],
   });
-  const dendou = tree.nodes[51] as TreeNodeSpec;
+  const dendou = tree.nodes[54] as TreeNodeSpec;
   expect(dendou.id).toBe('dendou');
   expect(dendou.effect).toEqual([
     { k: 'unlock', key: 'dendou' },

@@ -12,8 +12,12 @@ const TEST_NODES: Json[] = [
   { id: 't_keep_all', name: 't', desc: 't', tier: 1, cost: 1, req: [], effect: [{ k: 'keep', targets: ['awaken_all'] }] },
   { id: 't_rel10', name: 't', desc: 't', tier: 1, cost: 1, req: [], effect: [{ k: 'starter_rel', ratio: 0.1 }] },
   { id: 't_rel25', name: 't', desc: 't', tier: 1, cost: 1, req: [], effect: [{ k: 'starter_rel', ratio: 0.25 }] },
+  { id: 't_starter', name: 't', desc: 't', tier: 1, cost: 1, req: [], effect: [{ k: 'starter', lv: [25, 10, 0, 0, 0, 0, 0, 0] }] },
   { id: 't_res', name: 't', desc: 't', tier: 1, cost: 1, req: [], effect: [{ k: 'resonance_add', add: 0.05 }] },
 ];
+
+/** P13-T7 より前の覚醒の値（reset_lv true・共鳴なし・Lv100・×10）。 */
+const AWAKEN_V1: Json = { min_lv: 100, mult: 10, reset_lv: true, resonance: 0 };
 
 function baseJson(awaken: Json = {}): Json {
   const json = JSON.parse(readFileSync('../../resources/economy/default.json', 'utf8')) as Json;
@@ -21,9 +25,13 @@ function baseJson(awaken: Json = {}): Json {
   close['required_run_total'] = 1000;
   close['divisor'] = 1000;
   close['medals_per_point'] = 7;
-  json['awaken'] = { ...(json['awaken'] as Json), ...awaken };
+  // 仕組みのテストなので覚醒は P13-T6 の値（v1 相当）を土台にする（既定値は P13-T7 で変わる）。
+  json['awaken'] = { ...(json['awaken'] as Json), ...AWAKEN_V1, ...awaken };
   const tree = json['tree'] as Json;
-  tree['nodes'] = [...(tree['nodes'] as Json[]), ...TEST_NODES];
+  // 既定の覚醒の保持・共鳴のノード（P13-T7）は keep の targets がテスト用ノードと重なるので外す。
+  const drop = ['awaken_keep1', 'awaken_keep2', 'resonance1', 'resonance2'];
+  const nodes = (tree['nodes'] as Json[]).filter((n) => !drop.includes(n['id'] as string));
+  tree['nodes'] = [...nodes, ...TEST_NODES];
   return json;
 }
 
@@ -161,7 +169,7 @@ test('starter_rel: 前の周回の最高 Lv × 割合（切り捨て・最大の
   expect(e.snapshot().runMaxLv).toEqual([27, 2, 0, 0, 0, 0, 0, 0]);
   // starter（絶対 Lv）と大きい方
   const s = make();
-  own(s, ['starter1', 't_rel10']);
+  own(s, ['t_starter', 't_rel10']);
   patch(s, { lv: [100, 300, 0, 0, 0, 0, 0, 0] });
   close(s);
   expect(s.snapshot().lv).toEqual([25, 30, 0, 0, 0, 0, 0, 0]);

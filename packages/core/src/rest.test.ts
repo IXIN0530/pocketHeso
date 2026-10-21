@@ -35,8 +35,14 @@ const REST_MAX = 1800000;
 /** 閉店の時刻（1000ms・600ms の両方の倍数。同じ t の economyTick・発射が開店の後に来る）。 */
 const T = 600000;
 
+/** 経済の定義。休業前（v1.2.1）の値と比べるため、開店祝いは当時の絶対 Lv（P13-T7 で starter_rel に置き換え）・覚醒も当時の値にする。 */
 function econJson(): Json {
-  return JSON.parse(readFileSync('../../resources/economy/default.json', 'utf8')) as Json;
+  const json = JSON.parse(readFileSync('../../resources/economy/default.json', 'utf8')) as Json;
+  json['awaken'] = { ...(json['awaken'] as Json), min_lv: 100, mult: 10, reset_lv: true, resonance: 0 };
+  const nodes = (json['tree'] as Json)['nodes'] as Json[];
+  const starter1 = nodes.find((n) => n['id'] === 'starter1') as Json;
+  starter1['effect'] = [{ k: 'starter', lv: [25, 10, 0, 0, 0, 0, 0, 0] }];
+  return json;
 }
 
 /** 閉店できる経済（常連P 100・今回の累計玉 2e10・役物と強化あり）。 */

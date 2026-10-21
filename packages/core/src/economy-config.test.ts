@@ -21,7 +21,7 @@ test('既定の経済定義が spec/23 の数値（P3-T4 調整 D-048 を含む�
   expect(spec.yakumono[2]).toMatchObject({ id: 'croon', periodS: 6, yield: 78, basePrice: 1100 });
   expect(spec.yakumono[7]).toMatchObject({ id: 'shima', periodS: 16, yield: 845000, basePrice: 330000000 });
   expect(spec.milestones).toEqual({ thresholds: [25, 50, 100], step: 50, stepFrom: 150 });
-  expect(spec.awaken).toEqual({ minLv: 100, mult: 10, resetLv: true, resonance: 0, medalBase: 20, medalGrowth: 2 });
+  expect(spec.awaken).toEqual({ minLv: 25, mult: 3, resetLv: false, resonance: 0.15, medalBase: 20, medalGrowth: 2 });
   expect(spec.factors).toEqual({ fg: 1.0, idleBase: 0.5, closed: 0.005, boostMult: 2.0 });
   expect(spec.notice.feverMult).toBe(7);
   expect(spec.notice.feverMs).toBe(77000);

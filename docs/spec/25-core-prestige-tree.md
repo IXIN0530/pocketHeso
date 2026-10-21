@@ -57,13 +57,13 @@ runBonus の実測（P10-T5, standard greedy 182日・3機種）: 初回閉店 0
 | 段 | 時期の目安（標準） | ノード | コスト | 合計 |
 |---|---|---|---|---|
 | 1 短期 | 1〜4週 | 9 | 3〜8 | 44 |
-| 2 中期 | 開くのは2週・買うのは4〜12週 | 14 | 8〜20 | 171 |
-| 3 長期 | 開くのは5週・買うのは10〜34週 | 14 | 12〜30 | 253 |
-| 4 超長期 | 開くのは13週・買うのは24〜39週 | 11 | 20〜38 | 290 |
+| 2 中期 | 開くのは2週・買うのは4〜14週 | 15 | 8〜20 | 187 |
+| 3 長期 | 開くのは5週・買うのは10〜34週 | 15 | 12〜30 | 273 |
+| 4 超長期 | 開くのは13週・買うのは24〜40週 | 12 | 20〜38 | 320 |
 | 5 遠い目標 | 開くのは24週・買うのは41〜52週 | 4 | 50〜120 | 350 |
-| 計 | | **52** | | **1,108** |
+| 計 | | **55** | | **1,174** |
 
-## ノード一覧（52 個）
+## ノード一覧（55 個。P13-T7 で 覚醒の保持・共鳴 2 を追加, D-114）
 `{ "id", "name", "desc", "tier", "cost", "req": [id...], "effect": [{ "k", ... }] }`（effect は配列。1ノードに複数の効果を持てる）。`name`・`desc` は画面用で Core は使わない。
 系統: 生産・放置・燃料・予告・台（大当たり/保留）・行動・開店・実績・機種・常連P・便利・見た目。
 
@@ -73,14 +73,14 @@ runBonus の実測（P10-T5, standard greedy 182日・3機種）: 初回閉店 0
 | `kanban` | 常連の看板 | 生産 | 3 | — | 生産 +10%（`prod_add` 0.10） |
 | `tank_keep` | 燃料庫の鍵 | 燃料 | 3 | kanban | 燃料タンクの段を閉店で保持（`keep` tank） |
 | `auto_keep` | いつもの台 | 台 | 4 | kanban | オート打ち・止め打ち・保留+1 の段を保持（`keep` auto, tomeuchi, hold） |
-| `starter1` | 開店祝い | 開店 | 4 | kanban | 閉店後 風車 Lv25・回転体 Lv10 から（`starter` [25,10,0,0,0,0,0,0]） |
+| `starter1` | 開店祝い | 開店 | 4 | kanban | 開店時 前の周回の各役物の最高 Lv の 10% から（`starter_rel` 0.10） |
 | `lamp_gold` | 金のランプ | 見た目 | 5 | — | 筐体の LED に「金」を選べる（`unlock` lamp_gold） |
 | `open_dash1` | 開店ダッシュ | 開店 | 5 | starter1 | 閉店から 2時間 生産 ×2（`open_boost` ms +7200000・mult 2） |
 | `notice_call1` | 呼び込み | 予告 | 6 | auto_keep | 予告の間隔 −10%（`notice_interval_sub` 0.10） |
 | `idle_keep` | 指定席 | 放置 | 6 | tank_keep | 放置効率の段を保持（`keep` idle） |
 | `sashiire1` | 差し入れ | 行動 | 8 | kanban | 行動の即時の玉 +10%（`prod_min_add` 0.10） |
 
-### 段2 中期（14 個・8〜20 P。段1を4つで開く）
+### 段2 中期（15 個・8〜20 P。段1を4つで開く）
 | id | 名前 | 系統 | コスト | 前提 | 効果 |
 |---|---|---|---|---|---|
 | `nail_keep` | 釘師の顔なじみ | 台 | 8 | auto_keep | 釘調整・変動短縮の段を保持（`keep` nail, shorten） |
@@ -93,12 +93,13 @@ runBonus の実測（P10-T5, standard greedy 182日・3機種）: 初回閉店 0
 | `tank_big1` | 大型燃料庫 | 燃料 | 12 | tank_keep | タンク上限 全段 +6h（`tank_add_h` 6） |
 | `night_light1` | 常夜灯 | 放置 | 12 | idle_keep | 燃料切れの状態係数 +0.005（0.005 → 0.01。`closed_add` 0.005） |
 | `awaken_disc` | 覚醒の割引 | 台 | 14 | — | 覚醒のメダル `20×2^n` → `15×2^n`（`awaken_medal_base` 15） |
-| `starter2` | 開店祝い・上 | 開店 | 14 | starter1 | クルーン Lv25・液晶リール Lv10 も（`starter` [25,10,25,10,0,0,0,0]） |
+| `awaken_keep1` | 台の癖 | 台 | 16 | awaken_disc | 風車・回転体・クルーンの覚醒を閉店で保持（`keep` awaken_low） |
+| `starter2` | 開店祝い・上 | 開店 | 14 | starter1 | 開店時 前の周回の最高 Lv の 25% から（`starter_rel` 0.25） |
 | `notice_auto` | 看板娘 | 便利 | 15 | notice_call1 | 前面で出た予告を 3秒後に自動で受け取る（`notice_auto` 3000） |
 | `manin` | 満員御礼 | 生産 | 18 | kanban | 生産 +15% |
 | `kuchikomi1` | 口コミ | 常連P | 20 | — | 閉店の常連P +1（`points_add` 1） |
 
-### 段3 長期（14 個・12〜30 P。段1〜2で12個）
+### 段3 長期（15 個・12〜30 P。段1〜2で12個）
 | id | 名前 | 系統 | コスト | 前提 | 効果 |
 |---|---|---|---|---|---|
 | `cab_chrome` | クロームの筐体 | 見た目 | 12 | — | 筐体の色「クローム」（`unlock` cab_chrome） |
@@ -115,8 +116,9 @@ runBonus の実測（P10-T5, standard greedy 182日・3機種）: 初回閉店 0
 | `hanjou` | 繁盛店 | 生産 | 22 | manin | 生産 +20% |
 | `kuchikomi2` | 口コミ・二 | 常連P | 24 | kuchikomi1 | 閉店の常連P さらに +1 |
 | `bantou` | 番頭さん | 便利 | 30 | auto_keep | 役物の自動購入（下記）。強化タブで ON/OFF |
+| `resonance1` | 共鳴 | 台 | 20 | awaken_keep1 | 共鳴の係数 +0.05（0.15 → 0.20。`resonance_add` 0.05） |
 
-### 段4 超長期（11 個・20〜38 P。段1〜3で24個）
+### 段4 超長期（12 個・20〜38 P。段1〜3で24個）
 | id | 名前 | 系統 | コスト | 前提 | 効果 |
 |---|---|---|---|---|---|
 | `night_light2` | 常夜灯・二 | 放置 | 20 | night_light1 | 燃料切れの状態係数 さらに +0.01（→ 0.02） |
@@ -130,6 +132,7 @@ runBonus の実測（P10-T5, standard greedy 182日・3機種）: 初回閉店 0
 | `ach_link2` | 記念品棚・二 | 実績 | 30 | ach_link1 | 実績1個あたり さらに +0.2% |
 | `regular_up1` | 常連の格 | 生産 | 32 | — | 常連ランクの係数 +0.1（`1 + 1.1×ランク`。`regular_add` 0.1） |
 | `meiten` | 名店 | 生産 | 38 | hanjou | 生産 +25% |
+| `resonance2` | 共鳴・二 | 台 | 30 | resonance1 | 共鳴の係数 さらに +0.05（→ 0.25） |
 
 ### 段5 遠い目標（4 個・50〜120 P。段1〜4で36個）
 | id | 名前 | 系統 | コスト | 前提 | 効果 |
@@ -151,8 +154,10 @@ runBonus の実測（P10-T5, standard greedy 182日・3機種）: 初回閉店 0
 | `ach_per_add` | add | `achMult = 1 + (mult_per + Σ) × 達成数` | Σ ≤ 0.006 |
 | `streak_max_add` | add（日） | streakMult の上限日数 = `streak_max_days + Σ` | Σ ≤ 10 |
 | `price_sub` | sub | 役物の価格 = 既存の価格 × `(1 − Σ)` | Σ ≤ 0.10 |
-| `keep` | targets（idle tank nail shorten hold auto tomeuchi） | 閉店のリセットでその強化の段を戻さない | — |
-| `starter` | lv（8 要素） | 閉店のリセット後に役物 Lv = 各要素の最大（覚醒は 0）。`lv[i]>0` なら `lv[i−1]>0` | 各 ≤ 100 |
+| `keep` | targets（idle tank nail shorten hold auto tomeuchi awaken_low awaken_all） | 閉店のリセットでその強化の段を戻さない。awaken_low は風車〜クルーン・awaken_all は全役物の覚醒数を戻さない（保持した覚醒は値段と共鳴の総数にも数える） | targets はノードをまたいで重複不可 |
+| `starter` | lv（8 要素） | 閉店のリセット後に役物 Lv = 各要素の最大（覚醒は 0）。`lv[i]>0` なら `lv[i−1]>0`（既定のノードでは未使用） | 各 ≤ 100 |
+| `starter_rel` | ratio | 開店時の役物 Lv = `floor(前の周回の最高 Lv × ratio の最大)`（starter と大きい方。前の役物が 0 なら 0。前の周回の最高 Lv は IdleEconomy v9 の `prevMaxLv`） | 各 ≤ 0.5 |
+| `resonance_add` | add | 共鳴の係数 = `awaken.resonance + Σ`（spec/23） | Σ ≤ 0.25 |
 | `open_boost` | ms, mult | 閉店時 `openBoostMs = Σms`。tick ごとに燃料・前面背面を問わず実時間で減る。残りがある間 perSec × `(1 + Σ(mult−1))` | Σms ≤ 8h・倍率 ≤ 3 |
 | `closed_add` | add | 燃料切れの状態係数 = `factors.closed + Σ` | 合計 ≤ 0.05 |
 | `tank_add_h` / `boost_cap_add_h` | add | タンク上限 = `(tank_hours[段] + Σ) h`、ブースト上限 = `(boost_cap_hours + Σ) h` | 各 ≤ 24 |
@@ -171,8 +176,8 @@ runBonus の実測（P10-T5, standard greedy 182日・3機種）: 初回閉店 0
 
 生産の式（spec/23・spec/24 に足す）:
 ```
-perSec    = Σ役物 × (1 + r×ランク) × streakMult × achMult × treeMult × boost × 予告フィーバー × openBoost × 状態係数
-refPerSec = max(Σ役物 × (1 + r×ランク) × streakMult × achMult × treeMult, prod_ref.min_per_sec)
+perSec    = Σ役物 × 共鳴 × (1 + r×ランク) × streakMult × achMult × treeMult × boost × 予告フィーバー × openBoost × 状態係数
+refPerSec = max(Σ役物 × 共鳴 × (1 + r×ランク) × streakMult × achMult × treeMult, prod_ref.min_per_sec)
 r = close.regular_mult（1.0）+ Σregular_add
 ```
 - treeMult は refPerSec にも掛ける（行動の即時報酬・玉の単価の単位も一緒に伸びる。spec/23 の「基準生産で量る」を保つ）。
@@ -190,7 +195,7 @@ r = close.regular_mult（1.0）+ Σregular_add
 - **自動の開店**: 休業が `close.rest_max_ms`（初期 1,800,000 = 30分）続くと、`restAt + rest_max_ms` の時刻にその時のツリーで開店する（留守中・lookahead でも同じ。前面/背面に依らない）。開店を忘れても失う生産は最大30分。
 - 休業中でも閉店の条件・実績の判定・セーブは今までどおり（`close` は休業中は rejected `'resting'`）。
 - イベント: `closed` は今のまま（閉店の時刻）。開店で `{ k: 'opened'; at; auto: boolean }`。
-- Projection: `rest: { since: SimTime; autoOpenAt: SimTime; pendingBalls: number } | null`。`tree.nodes` の各行に `timing: 'now' | 'open'`（`keep`・`starter`・`open_boost` だけを持つノードは `'open'`）。
+- Projection: `rest: { since: SimTime; autoOpenAt: SimTime; pendingBalls: number } | null`。`tree.nodes` の各行に `timing: 'now' | 'open'`（`keep`・`starter`・`starter_rel`・`open_boost` だけを持つノードは `'open'`）。
 - 保存: IdleEconomy v8 に `restAt: number | null`・`restPendingBalls: number`（v7 以前は null・0）。web の `SNAPSHOT_VERSION` +1。
 - 決定論・試算: `close` と `open` を**同じ t**で続けて出し、間に何も買わなければ、今の `close` と玉・役物・イベント（`opened` を除く）が完全に一致する（テストで確認）。
   pachisim の greedy は「閉店 → 買える物を買う → 同じ t で開店」。starter・keep・openBoost が1周早く効くので検証 3・5・6 は測り直す（閉店日と gain は不変条件1で変わらない）。
@@ -209,7 +214,8 @@ r = close.regular_mult（1.0）+ Σregular_add
 2. **パチンコの期待値の上限を上げない**: 釘・変動短縮・保留+1 は段の保持だけ。予告・フィーバー・開店ダッシュは生産倍率で、EV（出玉だけ）に入らない。
    特別保留の 1/8 は無料の保留だけ（rate1、EV の計測外。1日最大3つ）。
 3. **初閉店まで何も変わらない**: 1周目（打ち方 1〜3・玉の内訳 1〜7日目）は不変。
-4. **生産の天井**: 加算は各系統の合計に上限があり、全取得で `treeMult ≤ 2.3`・常連係数 1.2・実績 1個 1.6%・連続 30日。乗算で積み上がる系統の数を固定する（新しい乗算の系統は足さない）。
+4. **生産の天井**: 加算は各系統の合計に上限があり、全取得で `treeMult ≤ 2.3`・常連係数 1.2・実績 1個 1.6%・連続 30日・共鳴の係数 0.25。乗算で積み上がる系統の数を固定する。
+   例外は覚醒（D-114）: 覚醒の保持と共鳴は**メダル（行動）で買う**覚醒を周回をまたいで残すための系統で、天井は値段 `20×2^n` のメダル律速で決まる（下の「倍率の重なり」の実測）。常連P で直接生産を掛ける系統は足さない。
 
 ## 何週目に何が買えるか（標準・閉店ごとに「開いていて買える最も安いもの」から買う）
 | 期 | 週 | ランク | 買えた物（その週の閉店で） |
@@ -229,6 +235,8 @@ r = close.regular_mult（1.0）+ Σregular_add
 | | 48 / 52 | 68 / 74 | 伝説の常連 / **殿堂入り（全部そろう）** |
 - 26週までは P10-T5 の実測（standard greedy 182日・light。rush/lt は夜桜・確変延長の週が1週前後ずれるだけ）。以後は常連P 約22.5/週の外挿。
 - 買い物の間隔: 26週までの実測で最大 11日。標準の最大は段5 の貯金（伝説の常連 → 殿堂入り）で約29日。12週までに 24 個、26週までに 39 個。全取得の外挿は 52週（3機種とも）。
+- P13-T7（D-114）の測り直し（standard greedy 182日・light）: 26週の所持 40 個（変更前 39）・最大間隔 10日（11日）・全取得の外挿 約53週（56.5週）。
+  新ノードの購入日: 開店祝い・上 68日目・台の癖 98日目（14週）・共鳴 152日目（22週）・共鳴・二は 182日までに未購入（段4, 推計 27週以降）。
 - 全部そろうまで: 標準 **約12か月（52週）**・多め 約8か月（37週）・上限 約5か月（23週）・少なめ 約24か月。
 - 全部買った後も常連P は貯まるが使い道は無い（ランクの倍率は効き続ける）。未決事項 3。
 
@@ -242,6 +250,7 @@ r = close.regular_mult（1.0）+ Σregular_add
 | 39 | 55 | 148 | 445 | ×3.01 | +8.6 Lv |
 | 52 | 74 | 204 | 814 | ×3.99 | +10.7 Lv |
 - 実測（P10-T5 検証 5・6, 開店ダッシュを割り戻し）: 週の最高 perSec の比は 3.7〜5.4 が中心。役物 Lv の段（マイルストーン）を片方だけ越えた週は 6〜7 になる（一時的）。
+- P13-T7（D-114, 人間判断待ち）: 覚醒 v2（Lv25・×3・共鳴 0.15）で検証5の4週目 rush/lt が 12〜13・検証6 が 9〜13（1〜3週と light の5は基準内）。ツリーで上位の役物の Lv25 に早く届き ×3 の覚醒も先に入るための段差（覚醒を旧値に戻すと 4.2）。全役物の覚醒の保持（awaken_all）は ×3 の複利で4週 56〜133 になるので既定のノードに入れない。
 - 天井は全取得で **×約4.0**（treeMult 2.3 × 常連係数 約1.2 × 実績 約1.18 × 連続 1.25）＋前面だけのブースト・予告・閉店直後の開店ダッシュ。
 - 役物の価格は 1.15^Lv なので ×4（値下げ込み ×4.4）は各役物 +10.7 Lv ぶん。値段が絶対値の項目（役物・強化・閉店条件・実績のしきい値）が早く届くだけで、
   行動の即時報酬・玉の単価・大当たりは refPerSec 基準なので相対の重みは変わらない（D-080・D-090）。
