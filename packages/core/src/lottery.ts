@@ -292,6 +292,36 @@ export function drawGrantHold(
   return withUpper({ serial, modeAtDraw: mode, isHit, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0 }, loops);
 }
 
+/** Debug の金保留1件（必ず当たり・色は金。枝・パターンは serial の各ストリーム。賞球なし・無料は1パチ単価, D-122）。 */
+export function drawGoldHold(
+  spec: MachineSpec,
+  patterns: PatternTable,
+  seed: number,
+  mode: LotteryMode,
+  serial: number,
+  unit?: number,
+): HoldEntry {
+  modeOf(spec, mode);
+  assertSerial(serial);
+  if (patterns.length === 0) {
+    throw new Error('invalid lottery: patterns must not be empty');
+  }
+  const branchIndex = new RNGStream(seed, 'split', serial).pick(splitWeights(spec, mode));
+  const patternIndex = new RNGStream(seed, 'pattern', serial).pick(patternWeights(patterns, true));
+  const patternRow = patterns[patternIndex];
+  if (patternRow === undefined) {
+    throw new Error('invalid lottery: pattern index out of range');
+  }
+  const color: LotteryHoldColor = 'gold';
+  const hot = holdHot(patternRow.hot, color);
+  const loops = drawUpperLoops(spec, seed, serial, branchIndex);
+  if (unit !== undefined) {
+    assertUnit(unit);
+    return withUpper({ serial, modeAtDraw: mode, isHit: true, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0, unit }, loops);
+  }
+  return withUpper({ serial, modeAtDraw: mode, isHit: true, branchIndex, patternIndex, color, hot, hesoPayoutBalls: 0 }, loops);
+}
+
 /** ヘソ入賞時の取得時判定（当否・振分け・パターン・色を全部確定。賞球と出玉は取得時の unit, D-090）。 */
 export function drawHold(
   spec: MachineSpec,

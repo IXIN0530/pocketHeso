@@ -5,12 +5,13 @@ import { formatNum } from '../stores/format.ts';
 import styles from './activity.module.css';
 
 /** 1行の内訳（即時の玉・燃料・メダル・特別保留）。 */
-function grantText(g: { fuelMs: number; medals: number; prodMin?: number | undefined; bonusHolds?: number | undefined }): string {
+function grantText(g: { fuelMs: number; medals: number; prodMin?: number | undefined; bonusHolds?: number | undefined; goldHolds?: number | undefined }): string {
   const parts: string[] = [];
   if ((g.prodMin ?? 0) > 0) parts.push(`玉 生産${formatProd(g.prodMin ?? 0)}ぶん`);
   if (g.fuelMs > 0) parts.push(`燃料 +${formatFuel(g.fuelMs)}`);
   if (g.medals > 0) parts.push(`メダル +${g.medals}`);
   if ((g.bonusHolds ?? 0) > 0) parts.push(`特別保留 +${g.bonusHolds}`);
+  if ((g.goldHolds ?? 0) > 0) parts.push(`金保留 +${g.goldHolds}（Debug）`);
   return parts.length === 0 ? '' : ` ${parts.join(' ')}`;
 }
 

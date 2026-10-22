@@ -1,7 +1,7 @@
 /** Engine（パチンコ部。発射600ms・Atlas参照・変動・snapshot/lookahead/project。経済は委譲）。 */
 import type { JackpotKind, MachineSpec, PatternTable } from './machine.ts';
 import type { HoldEntry, LotteryHoldColor, LotteryMode } from './lottery.ts';
-import { drawBonusHold, drawGrantHold, drawHold } from './lottery.ts';
+import { drawBonusHold, drawGoldHold, drawGrantHold, drawHold } from './lottery.ts';
 import { HoldQueue } from './hold-queue.ts';
 import { SpinMachine, type SpinSnapshot } from './spin.ts';
 import type { SimTime } from './spin.ts';
@@ -83,6 +83,8 @@ export interface Grant {
   readonly prodMin?: number | undefined;
   /** 特別保留の数（整数。省略は0, D-081）。 */
   readonly bonusHolds?: number | undefined;
+  /** Debug の金保留の数（必ず当たり。整数。省略は0, D-122）。 */
+  readonly goldHolds?: number | undefined;
 }
 
 /** 入力（shoot/autoのrateは解放済みのみ・autoは解放後のみshare>0可・noticeTapは表示中のみ）。 */
@@ -204,6 +206,8 @@ export interface EngineSnapshot {
   readonly bonusStock?: number | undefined;
   /** 特別保留の通し番号n（次に出すn。古い複写には無い。無い時は0, D-081）。 */
   readonly grantHoldSeq?: number | undefined;
+  /** Debug の金保留のストック数（0 は省略, D-122）。 */
+  readonly goldStock?: number | undefined;
   /** オート打ちの投入額の蓄積（生産×share を unit で割る余り。無い旧複写は0, D-090）。 */
   readonly autoAcc?: number | undefined;
   /** 今の台の id（最初の台 cfg.spec のままなら省略。旧複写も最初の台, spec/22）。 */
@@ -473,7 +477,7 @@ export function projectSnapshot(
     perSec: 0,
     refPerSec: 0,
     shotS: 8,
-    bonusStock: snap.bonusStock === undefined ? 0 : snap.bonusStock,
+    bonusStock: (snap.bonusStock === undefined ? 0 : snap.bonusStock) + (snap.goldStock === undefined ? 0 : snap.goldStock),
     yakumono: [],
     notice,
     nextHot,
@@ -621,6 +625,7 @@ export class Engine {
   private autoAccState: number;
   private bonusStockState: number;
   private grantHoldSeqState: number;
+  private goldStockState: number;
 
   constructor(cfg: EngineConfig, grants: readonly Grant[], actions: readonly Action[]) {
     if (typeof cfg.seed !== 'number' || !Number.isFinite(cfg.seed) || Math.floor(cfg.seed) !== cfg.seed || cfg.seed < 0) {
@@ -689,6 +694,7 @@ export class Engine {
     this.autoAccState = 0;
     this.bonusStockState = 0;
     this.grantHoldSeqState = 0;
+    this.goldStockState = 0;
     this.noticeCfgCache = this.readNoticeConfig();
     this.nailQCache = null;
     if (this.noticeCfgCache === null) {
@@ -747,6 +753,10 @@ export class Engine {
     if (Math.floor(bonusHolds) !== bonusHolds || bonusHolds < 0) {
       throw new Error('invalid engine: grant.bonusHolds must be a non-negative int');
     }
+    const goldHolds = g.goldHolds === undefined ? 0 : g.goldHolds;
+    if (Math.floor(goldHolds) !== goldHolds || goldHolds < 0) {
+      throw new Error('invalid engine: grant.goldHolds must be a non-negative int');
+    }
     if (g.at < this.nowMsState) {
       throw new Error('invalid engine: grant.at must be >= now');
     }
@@ -756,7 +766,8 @@ export class Engine {
     }
     const base: Grant = { claimId: g.claimId, at: g.at, fuelMs: g.fuelMs, medals: g.medals };
     const withProd: Grant = prodMin > 0 ? { ...base, prodMin } : base;
-    const withBonus: Grant = bonusHolds > 0 ? { ...withProd, bonusHolds } : withProd;
+    const withHolds: Grant = bonusHolds > 0 ? { ...withProd, bonusHolds } : withProd;
+    const withBonus: Grant = goldHolds > 0 ? { ...withHolds, goldHolds } : withHolds;
     if (g.streakDay === undefined) {
       this.grantsState.push(withBonus);
     } else {
@@ -1189,6 +1200,9 @@ export class Engine {
       }
       if (bonusHolds > 0) {
         this.bonusStockState = this.bonusStockState + bonusHolds;
+      }
+      if (g.goldHolds !== undefined && g.goldHolds > 0) {
+        this.goldStockState = this.goldStockState + g.goldHolds;
       }
       const grantedBase = { k: 'granted', claimId: g.claimId, at, fuelMs: g.fuelMs, medals: g.medals } as const;
       const withBalls = prodMin > 0 ? { ...grantedBase, balls } : grantedBase;
@@ -1974,10 +1988,27 @@ export class Engine {
 
   /** 特別保留の投入（ストックから保留の空きへ。自動補充より先。満タン・大当たり中も失われない, D-081）。 */
   private fillGrantHolds(at: SimTime, out: SimEvent[]): void {
-    if (this.bonusStockState <= 0) {
+    if (this.bonusStockState <= 0 && this.goldStockState <= 0) {
       return;
     }
     this.syncHoldMax();
+    // Debug の金保留が先（通し番号は特別保留と同じ列, D-122）。
+    while (this.goldStockState > 0 && !this.queue.isFull()) {
+      const n = this.grantHoldSeqState;
+      const serial = GRANT_HOLD_SERIAL_BASE + n;
+      if (serial >= MAX_SAFE_MS) {
+        throw new Error('invalid engine: grant hold serial out of range');
+      }
+      this.grantHoldSeqState = n + 1;
+      this.goldStockState = this.goldStockState - 1;
+      const entry = drawGoldHold(this.spec, this.patterns, this.seed, this.spins.mode, serial, this.readFreeUnit());
+      this.noteAwayHot(entry.serial, entry.hot);
+      if (this.queue.tryAdd(entry)) {
+        out.push({ k: 'holdAdded', entry, at });
+      } else {
+        break;
+      }
+    }
     while (this.bonusStockState > 0 && !this.queue.isFull()) {
       const n = this.grantHoldSeqState;
       const serial = GRANT_HOLD_SERIAL_BASE + n;
@@ -2172,6 +2203,7 @@ export class Engine {
       nextReserve: this.nextReserveState,
       bonusStock: this.bonusStockState,
       grantHoldSeq: this.grantHoldSeqState,
+      ...(this.goldStockState > 0 ? { goldStock: this.goldStockState } : {}),
       autoAcc: this.autoAccState,
       away: {
         awayFrom: this.awayFromState,
@@ -2359,6 +2391,14 @@ export class Engine {
         throw new Error('invalid engine: snap.grantHoldSeq must be a non-negative int in range');
       }
       eng.grantHoldSeqState = snap.grantHoldSeq;
+    }
+    if (snap.goldStock === undefined) {
+      eng.goldStockState = 0;
+    } else {
+      if (Math.floor(snap.goldStock) !== snap.goldStock || snap.goldStock < 0) {
+        throw new Error('invalid engine: snap.goldStock must be a non-negative int');
+      }
+      eng.goldStockState = snap.goldStock;
     }
     if (snap.autoAcc === undefined) {
       eng.autoAccState = 0;

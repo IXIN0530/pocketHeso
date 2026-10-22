@@ -19,6 +19,6 @@
 - 既定機種の人間確認待ち（light/rush/ltのどれを既定にするか。P3バランスに影響）
 
 ## Notes（最新3件まで）
+- [P15-T6 補助]: Debug の Grant 注入に「金保留 +1」（必ず当たり・金。振分けは取得時のモードの通常抽選なので RUSH 中に入れれば RUSH の当たり）。Core の Grant に `goldHolds`・snapshot に `goldStock`（D-122）。x60・x3600・別セーブの時だけ
 - [P15-T6]: `dev`（44c6ea1）は push 済み。手順 1〜5 を人間に渡した。結果待ち。
 - [P15-T5]: `modeLabel` が `rushUpper` で「上位RUSH 残りN回」。記録に大当たり履歴は無いので「上位 +n」は出していない（出すなら履歴の新設が要る）。国道店の blurb は仮文。Sonnet 全部
-- [P15-T4]: 白黒は液晶シェーダーの `uGray`（図柄）＋ `HudCanvas.tone()`（HUD の色を同じ度合いで落とす）。ひび・破片・告知は `hud-canvas.ts`（`ctx.filter` 不使用）。音は `board-scene.noteUpper` が HUD の `upper` の変わり目で鳴らす（`UPPER_CUES`）。Debug プレビューは `UPPER_PREVIEWS`（変動を省いて ST 中の大当たりから。ガセは `gaseSerial` で該当する通し番号を選ぶ）。**D-121: Core の `AwayReplay` に `upper`・`loops` を足した**（リプレイを上位で通して見せる）。全 shake キューを reduced-motion で止めた。**実機は T6**: 破片・ひびの見た目、虹の wash、白黒の戻りを要確認。Sonnet 全部

@@ -85,6 +85,7 @@ export {
   LOTTERY_HOLD_COLORS,
   LOTTERY_MODES,
   drawBonusHold,
+  drawGoldHold,
   drawGrantHold,
   drawHold,
   drawUpperLoops,

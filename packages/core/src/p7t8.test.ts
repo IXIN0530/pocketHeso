@@ -148,6 +148,37 @@ test('特別保留: ストック→保留の空きへ・serialは1.5e9台・賞�
   expect(eng.project().bonusStock).toBe(0);
 });
 
+test('Debug の金保留: 必ず当たり・金・特別保留より先・同じ通し番号の列・snapshot に goldStock（D-122）', () => {
+  const { spec, patterns } = loadMachine();
+  const atlas = loadAtlas();
+  const mk = (): Engine =>
+    new Engine(
+      { seed: 22, spec, patterns, atlas, initialBalls: 100000, economy: loadEconomy() },
+      [{ claimId: 'g', at: 0, fuelMs: 0, medals: 0, bonusHolds: 1, goldHolds: 6 }],
+      [{ t: 0, k: 'shoot', on: false, rate: 1 }],
+    );
+  const eng = mk();
+  const evs = eng.advance(1000);
+  const holds = evs.filter((e) => e.k === 'holdAdded').map((e) => (e as { entry: { serial: number; isHit: boolean; color: string } }).entry);
+  expect(holds.length).toBeGreaterThan(0);
+  expect(holds[0]?.serial).toBe(GRANT_HOLD_SERIAL_BASE);
+  for (const h of holds) {
+    expect(h.isHit).toBe(true);
+    expect(h.color).toBe('gold');
+  }
+  // 満タン分は goldStock に残り、Projection の待機数に含まれる。
+  const snap = eng.snapshot();
+  expect(snap.goldStock).toBe(6 - holds.length);
+  expect(eng.project().bonusStock).toBe(7 - holds.length);
+  // restore を挟んでも同じ列。
+  const b = Engine.restore(snap, { seed: 22, spec, patterns, atlas, economy: loadEconomy() });
+  const tail = b.advance(4 * H);
+  const ref = mk();
+  ref.advance(1000);
+  expect(ref.advance(4 * H)).toEqual(tail);
+  expect(b.snapshot().goldStock).toBeUndefined();
+});
+
 test('特別保留: 保留満タンでも失われず空きに入る', () => {
   const { spec, patterns } = loadMachine();
   const atlas = loadAtlas();

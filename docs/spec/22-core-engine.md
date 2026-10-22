@@ -9,7 +9,8 @@
 ```ts
 type Grant   = { claimId: string; at: SimTime; fuelMs: number; medals: number; streakDay?: string   // spec/30 が生成
                  prodMin?: number     // 即時の玉 = refPerSec × prodMin × 60（spec/23, D-081。省略は0）
-                 bonusHolds?: number } // 特別保留の数（整数。省略は0）
+                 bonusHolds?: number   // 特別保留の数（整数。省略は0）
+                 goldHolds?: number }  // Debug の金保留の数（必ず当たり。省略は0, D-122）
 type Action  =
   | { t: SimTime; k: 'buy'; target: UpgradeId; count: number }
   | { t: SimTime; k: 'awaken'; yakumono: YakumonoId }
@@ -69,6 +70,7 @@ export class Engine {
 - 常連ツリー（詳細は spec/25）: closed.points は今回得た常連P（0 は省略）。notice_auto は前面で出た予告を出現+ms に手のタップと同じ経路で受け取る（背面なら受け取らず、期限内に前面へ戻ればその時刻）。grant_hold_1_in は行動の特別保留だけが 1/value で当たり。番頭さんは 60,000ms の倍数の economyTick の直後に自動購入（イベントなし）。treeBuy 成功後に予告設定を読み直す。
 - **特別保留**（D-081）: Grant.bonusHolds はストック（snapshot `bonusStock`）に足し、保留に空きがあれば1つずつ入れる（`holdAdded`）。
   抽選は `RNGStream(seed, 'grantHold', n)`（n はストックから出した通し番号, 0 始まり）、serial = `GRANT_HOLD_SERIAL_BASE`（1.5e9）+ n。
+  Debug の金保留（D-122）: Grant.goldHolds はストック（snapshot `goldStock`、0 は省略）に足し、特別保留より先に入れる。必ず当たり・色は金、枝・パターンは serial の各ストリーム、n は特別保留と同じ列。
   当否・色は予告のボーナス保留（`drawBonusHold`）と同じ規則、rate1・賞球なし。取得時のモードで表を選ぶ。
 - **新台入替**（D-119。旧 close.machineId は未実装のまま廃止）: `EngineConfig.machines`（MachineSpec の配列。id で引く。反復順に依存しない）。
   選べる台 = 最初の台（`cfg.spec`）＋ ツリーの `unlock_machine` を買った台 ∩ machines（spec/25）。
