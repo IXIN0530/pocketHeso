@@ -19,6 +19,6 @@
 - 既定機種の人間確認待ち（light/rush/ltのどれを既定にするか。P3バランスに影響）
 
 ## Notes（最新3件まで）
+- [P15-T6 調整]: 人間の要望でハズレ時のリーチ出現率を半分・SPSP を 35 秒に（D-123）。golden 2件（p3t3・rest）を取り直し。実機で頻度・SPSP の流れを見てもらう
 - [P15-T6 補助]: Debug の Grant 注入に「金保留 +1」（必ず当たり・金。振分けは取得時のモードの通常抽選なので RUSH 中に入れれば RUSH の当たり）。Core の Grant に `goldHolds`・snapshot に `goldStock`（D-122）。x60・x3600・別セーブの時だけ
 - [P15-T6]: `dev`（44c6ea1）は push 済み。手順 1〜5 を人間に渡した。結果待ち。
-- [P15-T5]: `modeLabel` が `rushUpper` で「上位RUSH 残りN回」。記録に大当たり履歴は無いので「上位 +n」は出していない（出すなら履歴の新設が要る）。国道店の blurb は仮文。Sonnet 全部

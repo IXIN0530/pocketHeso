@@ -52,10 +52,10 @@
 
 ## 変動パターン（`resources/machines/patterns.json`）
 ```json
-[{"id": "normal_short", "ms": 5000,  "hit_w": 0,  "miss_w": 600, "hot": 0},
+[{"id": "normal_short", "ms": 5000,  "hit_w": 0,  "miss_w": 1395, "hot": 0},
  {"id": "reach_n",      "ms": 20000, "hit_w": 5,  "miss_w": 150, "hot": 1},
  {"id": "sp_reach",     "ms": 45000, "hit_w": 30, "miss_w": 40,  "hot": 3, "climax_ms": 38000},
- {"id": "spsp_gekiatsu","ms": 70000, "hit_w": 55, "miss_w": 5,   "hot": 4, "climax_ms": 62000},
+ {"id": "spsp_gekiatsu","ms": 35000, "hit_w": 55, "miss_w": 5,   "hot": 4, "climax_ms": 31000},
  {"id": "kakutei",      "ms": 60000, "hit_w": 10, "miss_w": 0,   "hot": 5, "climax_ms": 50000}]
 ```
 - 保留3〜4で `normal_short` を 2,000ms に短縮（`ms_by_hold` で拡張可）。変動短縮は経済の強化でも倍率がかかる。

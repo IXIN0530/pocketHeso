@@ -100,21 +100,21 @@
       "cues": [
         { "at": 2600, "kind": "lcd", "scene": "pseudo", "ms": 900, "text": "×2", "color": "#ffd23f" },
         { "at": 2600, "kind": "sound", "bus": "se", "asset": "pseudo" },
-        { "at": 8000, "kind": "lcd", "scene": "reach", "ms": 62000 },
+        { "at": 8000, "kind": "lcd", "scene": "reach", "ms": 27000 },
         { "at": 8000, "kind": "lcd", "scene": "telop", "ms": 1400, "text": "リーチ", "color": "#ffffff" },
         { "at": 8000, "kind": "sound", "bus": "se", "asset": "reach" },
         { "at": 8000, "kind": "camera", "shot": "lcd", "ms": 1600 },
-        { "at": 12000, "kind": "lcd", "scene": "sp", "ms": 50000 },
-        { "at": 12000, "kind": "lcd", "scene": "cutin", "ms": 2000, "text": "SPSPリーチ", "color": "#ff3040" },
-        { "at": 12000, "kind": "sound", "bus": "se", "asset": "cutin" },
-        { "at": 30000, "kind": "lcd", "scene": "telop", "ms": 2200, "text": "激アツ!!", "color": "#ff3040" },
-        { "at": 30000, "kind": "sound", "bus": "se", "asset": "kyuin" },
-        { "at": 30000, "kind": "bloom", "ms": 2000, "strength": 0.5, "min_intensity": 3 },
-        { "at": 62000, "kind": "lcd", "scene": "climax", "ms": 8000 },
-        { "at": 62000, "kind": "sound", "bus": "se", "asset": "kime" },
-        { "at": 62000, "kind": "flash", "style": "white", "ms": 300, "min_intensity": 2 },
-        { "at": 62000, "kind": "haptic", "pattern": [60] },
-        { "at": 62000, "kind": "camera", "shot": "lcd", "ms": 8000 }
+        { "at": 10000, "kind": "lcd", "scene": "sp", "ms": 21000 },
+        { "at": 10000, "kind": "lcd", "scene": "cutin", "ms": 2000, "text": "SPSPリーチ", "color": "#ff3040" },
+        { "at": 10000, "kind": "sound", "bus": "se", "asset": "cutin" },
+        { "at": 18000, "kind": "lcd", "scene": "telop", "ms": 2200, "text": "激アツ!!", "color": "#ff3040" },
+        { "at": 18000, "kind": "sound", "bus": "se", "asset": "kyuin" },
+        { "at": 18000, "kind": "bloom", "ms": 2000, "strength": 0.5, "min_intensity": 3 },
+        { "at": 31000, "kind": "lcd", "scene": "climax", "ms": 4000 },
+        { "at": 31000, "kind": "sound", "bus": "se", "asset": "kime" },
+        { "at": 31000, "kind": "flash", "style": "white", "ms": 300, "min_intensity": 2 },
+        { "at": 31000, "kind": "haptic", "pattern": [60] },
+        { "at": 31000, "kind": "camera", "shot": "lcd", "ms": 4000 }
       ],
       "branches": [
         {
