@@ -71,6 +71,8 @@ export interface LcdJackpot {
   readonly unit?: number;
   /** 上乗せ（LT）の時刻と足したラウンド数。 */
   readonly bonus?: { readonly at: number; readonly add: number } | null;
+  /** 上位の当たり（rounds は上乗せ込みの合計。見せる全ラウンドは jackpotHud が時刻表で決める, D-120）。loops は Core の上乗せ回数 K。 */
+  readonly upper?: { readonly loops: number };
 }
 
 /** RUSH の連チャン（chain は RUSH に入った当たりを1と数えた当たりの数、balls はその出玉の合計）。 */
@@ -98,6 +100,8 @@ export interface LcdResult {
   readonly spins: number;
   /** 大当たりの終わりで決めた結果（同じ時刻のモード変更で決め直す）。 */
   readonly from: LcdRush | null;
+  /** 上位の当たりの終わり（「上位RUSH継続」, D-120）。 */
+  readonly upper?: true;
 }
 
 export interface LcdState {
@@ -179,6 +183,7 @@ export function stateFromProjection(p: HallProjection): LcdState {
           endsAt: p.jackpot.endsAt,
           ...(p.jackpot.hiddenRounds !== undefined ? { hiddenRounds: p.jackpot.hiddenRounds } : {}),
           ...(p.jackpot.unit !== undefined ? { unit: p.jackpot.unit } : {}),
+          ...(p.jackpot.upper === true ? { upper: { loops: p.jackpot.loops ?? 0 } } : {}),
         }
       : null,
     // Core の chain は RUSH に入った当たりを 0 と数える。chainBalls は RUSH に入った当たりの出玉を含まない（目安）。
@@ -251,12 +256,14 @@ export function applyLcdEventWith(s: LcdState, e: LcdEvent, custom: SakibareCust
         jackpot: {
           entry: e.entry,
           kind: e.kind,
-          rounds: e.rounds,
+          // 上位は上乗せを告知しない（uwanose が来ない）ので合計で持つ。LT の上乗せは告知まで基本ラウンド。
+          rounds: e.upper === true ? e.rounds + (e.bonusRounds ?? 0) : e.rounds,
           startAt: e.at,
           endsAt: null,
           rate,
           unit,
           bonus: null,
+          ...(e.upper === true ? { upper: { loops: e.loops ?? 0 } } : {}),
         },
         result: null,
       };
@@ -273,14 +280,14 @@ export function applyLcdEventWith(s: LcdState, e: LcdEvent, custom: SakibareCust
       const got = e.payout;
       const from = s.rush ?? NORMAL;
       const { rush, result } = settle(from, from.mode, got, e.at, 0);
-      return { ...s, jackpot: null, rush, result };
+      return { ...s, jackpot: null, rush, result: s.jackpot?.upper ? { ...result, upper: true } : result };
     }
     case 'modeChanged': {
       const r = s.result;
       // 大当たりの終わりと同じ時刻: 次のモードで結果を決め直す。
       if (r && r.at === e.at && r.from) {
         const { rush, result } = settle(r.from, e.to, r.payout, e.at, e.stRemaining);
-        return { ...s, rush, result };
+        return { ...s, rush, result: r.upper ? { ...result, upper: true } : result };
       }
       const from = s.rush ?? NORMAL;
       if (isRush(from.mode) && !isRush(e.to)) {

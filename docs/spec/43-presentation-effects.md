@@ -61,6 +61,31 @@
   RUSH突入（回数・出玉）/ LT突入 / RUSH継続（n連・RUSH の出玉の合計）/ RUSH終了（n連・合計）/ 時短突入 / 大当たり終了（出玉）。音は `rush_in`・`rush_on`・`rush_end`・`bonus_end`。
 - 連チャンは RUSH に入った当たりを1連と数える（Projection に揃えた時は Core の chain + 1、出玉の合計は chainBalls の目安）。倍速では液晶だけ（音は鳴らさない）。
 
+## 上位RUSH・上乗せ（rush-middle-01, D-120）
+- Core が当否・上位・上乗せ回数 K を決める（HoldEntry / `jackpotStarted` の `upper`・`loops`）。見せ方は `planUpperRush`（@ph/fx）。乱数は `RNGStream(seed, 'presentation', serial)` の 64 番目以降で、当否には触れない。機種の枝は `upperRushSpec`。
+- ガセ: 上位でない ST 中の当たりに `UPPER_GASE_RATE` = 10%（初当たり・light・lt には出さない）。白黒になった時の上位の信頼度は約77%。
+- 当たる数字 3/2/1/0 の重み q(1−q)^i（q = 1 − (1 − 1/loop_1_in)^(1/4)）= 27.8/25.8/24.0/22.4%。K < loop_max なら最後の回は外れ（4つ全部見せて「上乗せ終了」）、K = loop_max は最後の当たりの後に「上乗せ MAX」。
+- 時刻表（大当たり開始からの ms）:
+
+| 時刻 | 内容 |
+|---|---|
+| `UPPER_FREEZE_MS` 5000 | フリーズ。300ms（`UPPER_GRAY_IN_MS`）で白黒 |
+| `UPPER_CRACK_STEPS_MS` 6000, 6840, 7550, 8060, 8450, 8770, 9000 | ガラスのひびの各段 |
+| `UPPER_GASE_BACK_MS` 7000 | ガセはここから 600ms（`UPPER_GRAY_OUT_MS`）で色が戻る |
+| `UPPER_BREAK_MS` 9600 | 割れて「上位RUSH突入！」「+10R」を虹で 3500ms（`UPPER_IN_SHOW_MS`）。全ラウンド 10R→20R、出玉の横に「+1,500」 |
+| `UWANOSE_START_MS` 13100 | 「上乗せスタート！」1500ms |
+| 14600 + 5000×i（`UWANOSE_SLOT_MS`） | i 番目の数字 |
+| 当たりの数字の +2000 | 割れて「上乗せ +10R！」3000ms。全ラウンド +10。その 1000ms 後に次の「上乗せスタート！」 |
+| 外れの「0」の +5000 | 「上乗せ終了」1500ms → 600ms で色が戻る |
+| K = 4: 最後の当たりの告知の +1000 | 「上乗せ MAX 60R」3000ms → 色が戻る |
+
+- 白黒は液晶だけ（盤面・HUD の外・ボタンは色のまま）。白黒の間は図柄・大当たり中の表示とも彩度0。HUD の数字はフリーズ時刻の値で止まり、ラウンドは Core の時刻どおり裏で進み、色が戻ると追いつく。見せる全ラウンドはいつも今のラウンド＋1 以上（最後のラウンドを除く。合計で頭打ち）。
+- 縮め方: 色が戻りきる時刻が「大当たりの長さ − 結果表示 4,500ms」を超える時は、導入（`UPPER_INTRO_MS` 2600ms）より後を一様に縮める（下限 `UPPER_MIN_SCALE` 0.25）。それでも足りなければ数字のカウントダウンを省き、当たりだけ順に見せる（`upperTimeline`）。見え方は `upperViewAt`（gray・frozen・crack・shatter・banner・addedRounds）で、`jackpotHud` の round の `upper` に入る。
+- 結果表示: 上位の当たりの終わりは「上位RUSH継続」（n連・合計, `LcdResult.upper`）。上位の後の ST 中の残り回数の表示を「上位RUSH」にするのは Projection の `rushUpper`（画面は P15-T5）。
+- キュー（`UPPER_CUES` / `upperCues`。中身は P15-T4）: `upper_freeze`・`upper_crack`（ひびの各段）・`upper_in`（割れて突入。虹の wash・振動・揺れ）・`uwanose_start`・`uwanose_tick`（数字ごと）・`uwanose_hit`（虹の wash・振動）・`uwanose_end`（終了・MAX）。ガセは `upper_freeze` だけ。倍速では液晶だけ（音は鳴らさない）。
+- reduced-motion: 揺れ・破片・虹のきらめきを止める（白黒・ひび・文字の流れは残す）。フラッシュは 1秒に3回以下（光過敏の安全策）。
+- 用語: 港町店（lt）の「上位 RUSH（ラッキートリガー）」とは別物。モードは増やさず、枝の印 `upper` で持つ。
+
 ## レンダラ（`packages/fx`）
 | 型 | 役割 |
 |---|---|

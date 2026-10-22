@@ -41,3 +41,22 @@ export { EMPTY_SPIN_PLAN, activeScenes, planSpin } from './spin-plan.ts';
 export type { VolumeKey } from './sound-bus.ts';
 export { SoundBus } from './sound-bus.ts';
 export { renderSynth } from './synth.ts';
+export type { UpperBannerKind, UpperJackpot, UpperPlan, UpperRushSpec, UpperStep, UpperStepKind, UpperTimeline, UpperView } from './upper-rush.ts';
+export {
+  UPPER_BREAK_MS,
+  UPPER_CRACK_STEPS_MS,
+  UPPER_CUES,
+  UPPER_FREEZE_MS,
+  UPPER_GASE_BACK_MS,
+  UPPER_GASE_RATE,
+  UPPER_INTRO_MS,
+  UPPER_MIN_SCALE,
+  UWANOSE_SLOT_MS,
+  UWANOSE_START_MS,
+  planUpperRush,
+  upperCues,
+  upperRushSpec,
+  upperTimeline,
+  upperViewAt,
+  uwanoseDigitWeights,
+} from './upper-rush.ts';

@@ -1,7 +1,9 @@
 import type { EngineSimEvent, HoldEntry, JackpotKind, LotteryMode } from '@ph/core';
 import { expect, test } from 'vitest';
 import packJson from '../../../../resources/packs/default/pack.json';
-import { DEFAULT_ROUND, HUD_RESULT_MS, HUD_START_MS, jackpotHud, resultCue } from './jackpot-hud.ts';
+import { planUpperRush } from '@ph/fx';
+import { machineRound } from '../engine/game-config.ts';
+import { DEFAULT_ROUND, HUD_RESULT_MS, HUD_START_MS, jackpotHud, resultCue, type HudView } from './jackpot-hud.ts';
 import { LcdTimeline, applyLcdEvent, stateFromProjection, type LcdState } from './lcd-timeline.ts';
 
 const R = DEFAULT_ROUND;
@@ -153,4 +155,119 @@ test('パックに大当たり中の表示の演出がある', () => {
   for (const k of ['rushIn', 'ltIn', 'rushOn', 'rushEnd', 'jitanIn', 'end'] as const) expect(names).toContain(resultCue(k));
   expect(names).toContain('round');
   expect(names).toContain('uwanose');
+});
+
+// 上位RUSH・上乗せ（P15-T3, D-120）。国道店の round と上位の枝。
+const RU = machineRound('rush-middle-01')!;
+const SEED = 5;
+const IN_ST: LcdState = { ...EMPTY, rush: { mode: 'st', chain: 2, balls: 3000 } };
+
+/** ST 中の当たり（上位なら loops 付き）を時刻 0 に始める。 */
+function stJackpot(serial: number, upper: number | null, base: LcdState = IN_ST): LcdState {
+  return run(base, [
+    { k: 'holdAdded', entry: hold(serial), at: -5000 },
+    { k: 'spinStarted', entry: serial, at: -5000, pattern: 'normal_short', endsAt: 0 },
+    { k: 'spinResolved', entry: serial, at: 0, hit: true },
+    upper === null
+      ? { k: 'jackpotStarted', entry: serial, at: 0, kind: 'kakuhen', rounds: 10 }
+      : { k: 'jackpotStarted', entry: serial, at: 0, kind: 'kakuhen', rounds: 10, bonusRounds: 10 + 10 * upper, upper: true, loops: upper },
+  ]);
+}
+const roundView = (v: HudView | null) => {
+  if (v?.k !== 'round') throw new Error('not round');
+  return v;
+};
+
+test('上位 K = 0: 導入は 10R、白黒の間は HUD が止まり、割れて 20R・「+1,500」、色が戻ると追いつく', () => {
+  const s = stJackpot(1, 0);
+  expect(s.jackpot).toMatchObject({ rounds: 20, upper: { loops: 0 } });
+  const at = (t: number) => roundView(jackpotHud(s, t, RU, SEED));
+  expect(at(1000)).toMatchObject({ rounds: 10, upper: { gray: 0, frozen: false } });
+  expect(at(4000)).toMatchObject({ round: 1, rounds: 10 });
+  // 5,000 でフリーズ（その時の値のまま）。
+  expect(at(8000)).toMatchObject({ round: 2, inRound: 0, balls: 150, rounds: 10, upper: { gray: 1, frozen: true, crack: 3 } });
+  expect(at(10000)).toMatchObject({ round: 2, inRound: 0, rounds: 20, upper: { banner: { k: 'upperIn', add: 10 }, addBalls: 1500 } });
+  expect(at(30000)).toMatchObject({ round: 2, rounds: 20, upper: { banner: { k: 'digit', digit: 0 }, addBalls: 0 } });
+  // 36,100 から色が戻り、HUD は実際の値へ。
+  expect(at(37000)).toMatchObject({ round: 8, rounds: 20, upper: { gray: 0, frozen: false } });
+});
+
+test('上位 K = 4: 上乗せごとに全ラウンド +10、最後は「上乗せ MAX」で 60R', () => {
+  const s = stJackpot(2, 4);
+  expect(s.jackpot!.rounds).toBe(60);
+  const plan = planUpperRush({ serial: 2, st: true, upper: true, loops: 4 }, RU.upper, SEED);
+  if (plan.k !== 'upper') throw new Error('not upper');
+  expect(plan.max).toBe(true);
+  const seen: number[] = [];
+  let maxAt = -1;
+  for (let t = 0; t < 60 * 5000; t += 100) {
+    const v = roundView(jackpotHud(s, t, RU, SEED));
+    if (seen.at(-1) !== v.rounds) seen.push(v.rounds);
+    if (v.upper?.banner?.k === 'uwanoseMax' && maxAt < 0) maxAt = t;
+  }
+  expect(seen.slice(0, 6)).toEqual([10, 20, 30, 40, 50, 60]);
+  expect(maxAt).toBeGreaterThan(0);
+});
+
+test('上位: どの K・seed でも見せる全ラウンドは今のラウンドより先（最後のラウンドを除く）', () => {
+  for (let k = 0; k <= 4; k++) {
+    for (let serial = 10; serial < 30; serial++) {
+      const s = stJackpot(serial, k);
+      const total = 20 + 10 * k;
+      for (let t = 0; t < total * 5000; t += 250) {
+        const live = Math.floor(t / 5000) + 1;
+        const v = roundView(jackpotHud(s, t, RU, SEED));
+        expect(v.rounds).toBeGreaterThanOrEqual(Math.min(total, live + 1));
+        expect(v.rounds).toBeLessThanOrEqual(total);
+      }
+      // 終わりでは全部。
+      expect(roundView(jackpotHud(s, total * 5000 - 1, RU, SEED)).rounds).toBe(total);
+    }
+  }
+  // ラウンドが短い（Debug）: 縮めても全ラウンドは先を見せる。
+  const fast = { ...RU, msPerRound: 1000 };
+  const s = stJackpot(3, 4);
+  for (let t = 0; t < 60000; t += 50) {
+    const v = roundView(jackpotHud(s, t, fast, SEED));
+    expect(v.rounds).toBeGreaterThanOrEqual(Math.min(60, Math.floor(t / 1000) + 2));
+  }
+});
+
+test('ガセ: RUSH 中の上位でない当たりの一部で白黒・フリーズして割れずに戻る、初当たり・light・lt には出ない', () => {
+  let serial = 100;
+  while (planUpperRush({ serial, st: true, upper: false, loops: 0 }, RU.upper, SEED).k !== 'gase') serial++;
+  const s = stJackpot(serial, null);
+  const at = (t: number) => roundView(jackpotHud(s, t, RU, SEED));
+  expect(at(6000)).toMatchObject({ round: 2, inRound: 0, rounds: 10, upper: { gray: 1, frozen: true, crack: 0, banner: null } });
+  expect(at(8000)).toMatchObject({ round: 2, inRound: 7, upper: { gray: 0, frozen: false } });
+  // 同じ当たりでも初当たり（通常中）・上位の枝の無い機種では何も出ない。
+  const first = stJackpot(serial, null, EMPTY);
+  expect(roundView(jackpotHud(first, 6000, RU, SEED)).upper).toBeNull();
+  expect(roundView(jackpotHud(s, 6000, machineRound('light-middle-01')!, SEED)).upper).toBeNull();
+  expect(roundView(jackpotHud(s, 6000, machineRound('lt-middle-01')!, SEED)).upper).toBeNull();
+  expect(roundView(jackpotHud(s, 6000, R, SEED)).upper).toBeNull();
+});
+
+test('上位の終わりは「上位RUSH継続」、Projection から作った上位は合計から逆算する', () => {
+  let s = stJackpot(4, 1);
+  s = run(s, [
+    { k: 'jackpotEnded', entry: 4, at: 150000, payout: 4500 } as never,
+    { k: 'modeChanged', to: 'st', at: 150000, stRemaining: 66 } as never,
+  ]);
+  expect(jackpotHud(s, 150100, RU, SEED)).toMatchObject({ k: 'result', kind: 'rushOn', upper: true, chain: 3 });
+  const plain = run(stJackpot(5, null), [
+    { k: 'jackpotEnded', entry: 5, at: 50000, payout: 1500 } as never,
+    { k: 'modeChanged', to: 'st', at: 50000, stRemaining: 66 } as never,
+  ]);
+  expect(jackpotHud(plain, 50100, RU, SEED)).toMatchObject({ k: 'result', upper: false });
+  const p = stateFromProjection({
+    holds: [],
+    mode: 'st',
+    chain: 1,
+    chainBalls: 1500,
+    jackpot: { entry: 4, kind: 'kakuhen', rounds: 30, endsAt: 150000, upper: true, loops: 1 },
+  } as never);
+  expect(p.jackpot).toMatchObject({ rounds: 30, upper: { loops: 1 } });
+  // 開始は 0。37,000ms は K = 1 の数字の途中（白黒・フリーズ中）。
+  expect(jackpotHud(p, 37000, RU, SEED)).toMatchObject({ k: 'round', round: 2, upper: { frozen: true } });
 });

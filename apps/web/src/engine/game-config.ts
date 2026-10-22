@@ -1,5 +1,5 @@
 // meta（seed・機種・開始時刻）と Atlas から EngineConfig を作る。経済は Engine ごとに新しく作る。
-import { sakibareOdds, type SakibareOdds } from '@ph/fx';
+import { sakibareOdds, upperRushSpec, type SakibareOdds, type UpperRushSpec } from '@ph/fx';
 import { IdleEconomy, parseEconomy, parseMachine, parsePatterns, type EngineConfig, type LotteryMode, type MachineSpec } from '@ph/core';
 import economyJson from '../../../../resources/economy/default.json';
 import lightMiddle from '../../../../resources/machines/light-middle-01.json';
@@ -18,16 +18,17 @@ const MACHINES: Readonly<Record<string, unknown>> = {
 const MACHINE_IDS = ['light-middle-01', 'rush-middle-01', 'lt-middle-01'] as const;
 
 const ECONOMY = parseEconomy(economyJson);
-const rounds = new Map<string, { count: number; payoutPerBall: number; msPerRound: number }>();
+type MachineRound = { count: number; payoutPerBall: number; msPerRound: number; upper: UpperRushSpec | null };
+const rounds = new Map<string, MachineRound>();
 
-/** 機種のラウンドの中身（大当たり中の液晶の表示, D-077）。知らない機種は null。 */
-export function machineRound(machineId: string): { count: number; payoutPerBall: number; msPerRound: number } | null {
+/** 機種のラウンドの中身と上位の枝（大当たり中の液晶の表示, D-077・D-120）。知らない機種は null。 */
+export function machineRound(machineId: string): MachineRound | null {
   const machine = MACHINES[machineId];
   if (machine === undefined) return null;
   let r = rounds.get(machineId);
   if (!r) {
     const spec = parseMachine(machine);
-    r = { count: spec.roundCount, payoutPerBall: spec.payoutPerBall, msPerRound: spec.msPerRound };
+    r = { count: spec.roundCount, payoutPerBall: spec.payoutPerBall, msPerRound: spec.msPerRound, upper: upperRushSpec(spec) };
     rounds.set(machineId, r);
   }
   return r;

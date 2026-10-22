@@ -522,7 +522,7 @@ export class BoardScene {
     this.noteSakibare(lcdState, lcdNow, lcdScale);
     this.noteHoldChanges(shown, lcdScale);
     this.lcd.reducedMotion = this.flashLayer.reducedMotion;
-    const hud = jackpotHud(lcdState, lcdNow, this.round);
+    const hud = jackpotHud(lcdState, lcdNow, this.round, this.seed);
     this.noteHud(lcdState, hud, lcdScale);
     this.lcd.update(dt, lcdNow, lcdScale, shown, (e) => this.lcdTimeline.peekResult(e), winLevel, this.show, hud);
     this.updateLamps(sec, winLevel, white);
