@@ -5,6 +5,8 @@ body {
   -webkit-text-size-adjust: 100%;
   /* 端でのバウンドと引っぱって再読み込みを止める（アプリの画面として振る舞う）。 */
   overscroll-behavior: none;
+  /* 横にはみ出した行があっても Safari がページを縮小しない。 */
+  overflow-x: clip;
 }
 
 /* iOS アプリの操作感（ダブルタップ拡大・タップの灰色・長押しのメニューと文字選択を出さない）。 */
