@@ -208,6 +208,8 @@ export interface EngineSnapshot {
   readonly grantHoldSeq?: number | undefined;
   /** Debug の金保留のストック数（0 は省略, D-122）。 */
   readonly goldStock?: number | undefined;
+  /** RUSH（電サポ）の自動保留の単価＝直近の大当たりの単価（無い旧複写は大当たり中ならその単価・他は1パチ, D-125）。 */
+  readonly rushUnit?: number | undefined;
   /** オート打ちの投入額の蓄積（生産×share を unit で割る余り。無い旧複写は0, D-090）。 */
   readonly autoAcc?: number | undefined;
   /** 今の台の id（最初の台 cfg.spec のままなら省略。旧複写も最初の台, spec/22）。 */
@@ -626,6 +628,7 @@ export class Engine {
   private bonusStockState: number;
   private grantHoldSeqState: number;
   private goldStockState: number;
+  private rushUnitState: number | null;
 
   constructor(cfg: EngineConfig, grants: readonly Grant[], actions: readonly Action[]) {
     if (typeof cfg.seed !== 'number' || !Number.isFinite(cfg.seed) || Math.floor(cfg.seed) !== cfg.seed || cfg.seed < 0) {
@@ -695,6 +698,7 @@ export class Engine {
     this.bonusStockState = 0;
     this.grantHoldSeqState = 0;
     this.goldStockState = 0;
+    this.rushUnitState = null;
     this.noticeCfgCache = this.readNoticeConfig();
     this.nailQCache = null;
     if (this.noticeCfgCache === null) {
@@ -1961,7 +1965,7 @@ export class Engine {
     return m === 'jitan' || m === 'st' || m === 'lt';
   }
 
-  /** 電サポ中の自動保留（玉を打たずに保留を上限まで足す。賞球なし・無料は1パチ単価, D-090）。 */
+  /** 電サポ中の自動保留（玉を打たずに保留を上限まで足す。賞球なし・単価は直近の大当たりの単価、不明なら1パチ, D-125）。 */
   private fillReserveHolds(at: SimTime, out: SimEvent[]): void {
     if (!this.isSupportMode()) {
       return;
@@ -1974,8 +1978,8 @@ export class Engine {
       }
       this.nextReserveState = serial + 1;
       const mode = this.spins.mode;
-      const freeUnit = this.readFreeUnit();
-      const drawn = drawHold(this.spec, this.patterns, this.seed, mode, serial, 1, freeUnit);
+      const unit = this.rushUnitState === null ? this.readFreeUnit() : this.rushUnitState;
+      const drawn = drawHold(this.spec, this.patterns, this.seed, mode, serial, 1, unit);
       const entry: HoldEntry = { ...drawn, hesoPayoutBalls: 0 };
       this.noteAwayHot(entry.serial, entry.hot);
       if (this.queue.tryAdd(entry)) {
@@ -2056,6 +2060,8 @@ export class Engine {
                 firstHits: this.totalsState.firstHits + (fromRush ? 0 : 1),
               };
               this.noteAwayReplay(e.entry, e.kind, e.rounds, e.upper, e.loops);
+              // この大当たりから入る RUSH の自動保留は同じ単価（D-125）。
+              this.rushUnitState = this.spins.jackpotUnit;
               out.push(e);
             } else {
               out.push(e);
@@ -2204,6 +2210,7 @@ export class Engine {
       bonusStock: this.bonusStockState,
       grantHoldSeq: this.grantHoldSeqState,
       ...(this.goldStockState > 0 ? { goldStock: this.goldStockState } : {}),
+      ...(this.rushUnitState === null ? {} : { rushUnit: this.rushUnitState }),
       autoAcc: this.autoAccState,
       away: {
         awayFrom: this.awayFromState,
@@ -2399,6 +2406,14 @@ export class Engine {
         throw new Error('invalid engine: snap.goldStock must be a non-negative int');
       }
       eng.goldStockState = snap.goldStock;
+    }
+    if (snap.rushUnit === undefined) {
+      eng.rushUnitState = eng.spins.jackpotUnit;
+    } else {
+      if (typeof snap.rushUnit !== 'number' || Math.floor(snap.rushUnit) !== snap.rushUnit || snap.rushUnit < 1) {
+        throw new Error('invalid engine: snap.rushUnit must be a positive int');
+      }
+      eng.rushUnitState = snap.rushUnit;
     }
     if (snap.autoAcc === undefined) {
       eng.autoAccState = 0;

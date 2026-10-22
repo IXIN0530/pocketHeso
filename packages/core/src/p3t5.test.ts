@@ -138,7 +138,7 @@ test('燃料0ではオートが発射せず、燃料が入れば再開し、手�
   expect(countIn(events, 'fired', 180000, 240000)).toBe(100);
 });
 
-test('レート4: 1発は unit（rate×ref×8）・出玉は取得時の unit・無料は1パチ単価（D-090）', () => {
+test('レート4: 1発は unit（rate×ref×8）・出玉は取得時の unit・RUSH の自動保留も同じ単価（D-090・D-125）', () => {
   const econ = loadEconomy();
   const initialBalls = 10000000;
   const eng = makeEngine(
@@ -151,11 +151,9 @@ test('レート4: 1発は unit（rate×ref×8）・出玉は取得時の unit・
     ],
     { seed: 3, balls: initialBalls },
   );
-  // 役物なし・ref=1なので unit4=32・無料 unit1=8
+  // 役物なし・ref=1なので unit4=32
   const unit4 = 4 * 1 * 8;
-  const freeUnit = 1 * 1 * 8;
   let rounds = 0;
-  let useUnit = unit4;
   let sawEnded = false;
   let sawReserveJackpot = false;
   const all: SimEvent[] = [];
@@ -164,14 +162,13 @@ test('レート4: 1発は unit（rate×ref×8）・出玉は取得時の unit・
       all.push(e);
       if (e.k === 'jackpotStarted') {
         rounds = e.rounds + (e.bonusRounds ?? 0);
-        // 自動保留（D-079）は無料のため 1パチ単価。
-        useUnit = e.entry >= RESERVE_SERIAL_BASE ? freeUnit : unit4;
-        if (useUnit === freeUnit) {
+        // 自動保留（D-079）は RUSH を始めた大当たりの単価を引き継ぐ（D-125）。
+        if (e.entry >= RESERVE_SERIAL_BASE) {
           sawReserveJackpot = true;
         }
         expect('roundBonus' in e).toBe(false);
       } else if (e.k === 'jackpotEnded') {
-        expect(e.payout).toBe(rounds * 10 * 15 * useUnit);
+        expect(e.payout).toBe(rounds * 10 * 15 * unit4);
         expect('bonus' in e).toBe(false);
         sawEnded = true;
       }

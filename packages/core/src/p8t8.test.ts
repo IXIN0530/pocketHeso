@@ -7,7 +7,7 @@ import { IdleEconomy } from './economy-state.ts';
 import { shotUnit } from './economy-math.ts';
 import { drawHold, jackpotPayoutBalls } from './lottery.ts';
 import type { HoldEntry } from './lottery.ts';
-import { Engine } from './engine.ts';
+import { Engine, RESERVE_SERIAL_BASE } from './engine.ts';
 import type { Action, SimEvent } from './engine.ts';
 
 const H = 3600000;
@@ -153,7 +153,7 @@ test('当たり保留の取得後に役物を買っても、大当たりの出�
   expect(endedB.payout).toBe(jackpotPayoutBalls(spec, held.entry.branchIndex as number, unit0));
 });
 
-test('無料の保留は1パチ単価、打った保留は打ったレートの単価（Engine）', () => {
+test('無料の保留は1パチ単価、打った保留は打ったレートの単価、RUSH の自動保留は直前の大当たりの単価（Engine, D-125）', () => {
   const { spec, patterns } = loadMachine();
   const atlas = loadAtlas();
   const econ = loadEconomy();
@@ -174,16 +174,73 @@ test('無料の保留は1パチ単価、打った保留は打ったレートの�
   const fired = new Set(evs.flatMap((e) => (e.k === 'fired' ? [e.ball] : [])));
   const added = heldEntries(evs).map((h) => h.entry);
   const heso = added.filter((e) => fired.has(e.serial));
-  const others = added.filter((e) => !fired.has(e.serial));
+  const grants = added.filter((e) => !fired.has(e.serial) && e.serial < RESERVE_SERIAL_BASE);
   expect(heso.length).toBeGreaterThan(0);
-  // 特別保留3つ＋（当たれば）電サポの自動保留。
-  expect(others.length).toBeGreaterThanOrEqual(3);
+  expect(grants.length).toBe(3);
   for (const e of heso) {
     expect(e.unit).toBe(paid);
   }
-  for (const e of others) {
+  for (const e of grants) {
     expect(e.unit).toBe(free);
   }
+  // 自動保留は直前に始まった大当たりの保留の単価。
+  const unitOf = new Map(added.map((e) => [e.serial, e.unit]));
+  let rushUnit: number | undefined;
+  let reserves = 0;
+  for (const e of evs) {
+    if (e.k === 'jackpotStarted') {
+      rushUnit = unitOf.get(e.entry);
+    } else if (e.k === 'holdAdded' && e.entry.serial >= RESERVE_SERIAL_BASE) {
+      expect(rushUnit).toBeDefined();
+      expect(e.entry.unit).toBe(rushUnit);
+      reserves = reserves + 1;
+    }
+  }
+  expect(reserves).toBeGreaterThan(0);
+});
+
+test('RUSH の単価は snapshot で続き、無い旧複写は1パチに戻る（D-125）', () => {
+  const { spec, patterns } = loadMachine();
+  const atlas = loadAtlas();
+  const mk = (): { eng: Engine; econ: IdleEconomy } => {
+    const econ = loadEconomy();
+    const eng = new Engine(
+      { seed: 11, spec, patterns, atlas, initialBalls: 10000000, initialMedals: 1000, economy: econ },
+      [{ claimId: 'fuel', at: 0, fuelMs: 12 * H, medals: 0 }],
+      [
+        { t: 0, k: 'buy', target: 'windmill', count: 10 },
+        { t: 0, k: 'buy', target: 'rate', count: 1 },
+        { t: 0, k: 'shoot', on: true, rate: 2 },
+      ],
+    );
+    return { eng, econ };
+  };
+  // 電サポ中（大当たり中でない）の時刻を探す。
+  const probe = mk();
+  let at = -1;
+  for (let t = 1000; t <= 3 * H && at < 0; t = t + 1000) {
+    probe.eng.advance(t);
+    const p = probe.eng.project();
+    if (p.mode !== 'normal' && p.jackpot === undefined) {
+      at = t;
+    }
+  }
+  expect(at).toBeGreaterThan(0);
+  const { eng, econ } = mk();
+  eng.advance(at);
+  const snap = eng.snapshot();
+  const paid = econ.getShotUnit(2);
+  expect(snap.rushUnit).toBe(paid);
+  const reserveUnits = (e: Engine): number[] =>
+    heldEntries(e.advance(at + 10 * 60 * 1000)).flatMap((h) => (h.entry.serial >= RESERVE_SERIAL_BASE ? [h.entry.unit as number] : []));
+  const a = reserveUnits(eng);
+  const b = reserveUnits(Engine.restore(snap, { seed: 11, spec, patterns, atlas, economy: loadEconomy() }));
+  expect(b).toEqual(a);
+  const old = { ...snap, rushUnit: undefined };
+  const c = reserveUnits(Engine.restore(old, { seed: 11, spec, patterns, atlas, economy: loadEconomy() }));
+  expect(c.length).toBeGreaterThan(0);
+  expect(c.every((u) => u === econ.getShotUnit(1) || u === paid)).toBe(true);
+  expect(c[0]).toBe(econ.getShotUnit(1));
 });
 
 test('オートの蓄積は1発分で頭打ち（溜まった分で連射しない）', () => {

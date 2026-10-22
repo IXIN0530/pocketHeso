@@ -72,6 +72,7 @@ export class Engine {
   抽選は `RNGStream(seed, 'grantHold', n)`（n はストックから出した通し番号, 0 始まり）、serial = `GRANT_HOLD_SERIAL_BASE`（1.5e9）+ n。
   Debug の金保留（D-122）: Grant.goldHolds はストック（snapshot `goldStock`、0 は省略）に足し、特別保留より先に入れる。必ず当たり・色は金、枝・パターンは serial の各ストリーム、n は特別保留と同じ列。
   当否・色は予告のボーナス保留（`drawBonusHold`）と同じ規則、rate1・賞球なし。取得時のモードで表を選ぶ。
+- **RUSH の単価**（D-125）: 電サポの自動保留の unit は直近の jackpotStarted の単価（snapshot `rushUnit`、未設定は省略）。無い旧複写は大当たり中ならその単価、他は1パチ。
 - **新台入替**（D-119。旧 close.machineId は未実装のまま廃止）: `EngineConfig.machines`（MachineSpec の配列。id で引く。反復順に依存しない）。
   選べる台 = 最初の台（`cfg.spec`）＋ ツリーの `unlock_machine` を買った台 ∩ machines（spec/25）。
   休業中に `pickMachine` で次の台を選ぶ（何度でも選び直せて最後の1つ。今の台の id は未選択に戻す）。休業中でなければ rejected 'not-resting'、選べない id は 'machine'。
