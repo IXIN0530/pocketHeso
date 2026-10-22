@@ -91,12 +91,12 @@ test('timing follows the actual spin length (pattern ms and shortened)', () => {
 });
 
 test('activeScenes returns scenes running at t in time order', () => {
-  const p = planSpin(sheet('sp_reach'), { seed: 1, serial: 1, intensity: 2, patternMs: 45000, durationMs: 45000 });
-  expect(activeScenes(p.lcd, 7000).map((s) => s.cue.scene)).toEqual(['reach', 'sp', 'cutin']);
-  const sp = activeScenes(p.lcd, 22000).find((s) => s.cue.scene === 'sp')!;
-  expect(sp.t).toBe(16000);
+  const p = planSpin(sheet('sp_reach'), { seed: 1, serial: 1, intensity: 2, patternMs: 22500, durationMs: 22500 });
+  expect(activeScenes(p.lcd, 6000).map((s) => s.cue.scene)).toEqual(['reach', 'sp', 'cutin']);
+  const sp = activeScenes(p.lcd, 12000).find((s) => s.cue.scene === 'sp')!;
+  expect(sp.t).toBe(7000);
   expect(sp.p).toBeCloseTo(0.5);
-  expect(activeScenes(p.lcd, 45000)).toEqual([]);
+  expect(activeScenes(p.lcd, 22500)).toEqual([]);
 });
 
 test('no sheet means no presentation', () => {

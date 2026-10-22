@@ -179,30 +179,30 @@ test('上位の大当たり: 出玉・時間が合計ラウンド分、uwanose �
   expect(() => jackpotTotalRounds(spec, 1, 1)).toThrow();
   const m = new SpinMachine(spec, patterns, { mode: 'st', stRemaining: 3 });
   m.startSpin({ ...makeEntry(10, 'st', kakutei, true, 2, 2), unit: 7 }, 0, 0);
-  const res = m.resolveSpin(60000);
-  expect(res[1]).toEqual({ k: 'jackpotStarted', entry: 10, at: 60000, kind: 'kakuhen', rounds: 10, bonusRounds: 30, upper: true, loops: 2 });
+  const res = m.resolveSpin(30000);
+  expect(res[1]).toEqual({ k: 'jackpotStarted', entry: 10, at: 30000, kind: 'kakuhen', rounds: 10, bonusRounds: 30, upper: true, loops: 2 });
   expect(m.uwanoseAt).toBeNull();
-  expect(m.jackpotEndsAt).toBe(60000 + 40 * 1000);
+  expect(m.jackpotEndsAt).toBe(30000 + 40 * 1000);
   expect(m.jackpotTotalRounds).toBe(40);
   expect(m.rushUpper).toBe(false);
   expect(m.snapshot().jackpot).toMatchObject({ upper: true, loops: 2, bonusRounds: 30 });
-  const ended = m.finishJackpot(100000, 7);
-  expect(ended[0]).toEqual({ k: 'jackpotEnded', entry: 10, at: 100000, payout: 40 * 10 * 15 * 7 });
+  const ended = m.finishJackpot(70000, 7);
+  expect(ended[0]).toEqual({ k: 'jackpotEnded', entry: 10, at: 70000, payout: 40 * 10 * 15 * 7 });
   expect(m.rushUpper).toBe(true);
   expect(m.snapshot().rushUpper).toBe(true);
   // restore しても残る
   const r = SpinMachine.restore(spec, patterns, m.snapshot());
   expect(r.rushUpper).toBe(true);
   // 次の当たり（上位でない）の jackpotStarted で下がる
-  m.startSpin(makeEntry(11, 'st', kakutei, true, 1), 100000, 0);
-  m.resolveSpin(160000);
+  m.startSpin(makeEntry(11, 'st', kakutei, true, 1), 70000, 0);
+  m.resolveSpin(100000);
   expect(m.rushUpper).toBe(false);
   expect('rushUpper' in m.snapshot()).toBe(false);
   // K = 0 の上位: bonusRounds は bonus_rounds だけ
   const m0 = new SpinMachine(spec, patterns, { mode: 'st', stRemaining: 3 });
   m0.startSpin(makeEntry(20, 'st', kakutei, true, 2, 0), 0, 0);
-  expect(m0.resolveSpin(60000)[1]).toEqual({ k: 'jackpotStarted', entry: 20, at: 60000, kind: 'kakuhen', rounds: 10, bonusRounds: 10, upper: true, loops: 0 });
-  m0.finishJackpot(80000, 1);
+  expect(m0.resolveSpin(30000)[1]).toEqual({ k: 'jackpotStarted', entry: 20, at: 30000, kind: 'kakuhen', rounds: 10, bonusRounds: 10, upper: true, loops: 0 });
+  m0.finishJackpot(50000, 1);
   expect(m0.rushUpper).toBe(true);
   // ST を抜けると下がる
   let t = 80000;

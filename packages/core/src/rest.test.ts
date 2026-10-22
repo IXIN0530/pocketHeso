@@ -105,8 +105,8 @@ test('close と open を同じ t で出すと、休業を入れる前の close �
   expect(events.filter((e) => e.k === 'closed').length).toBe(1);
   expect(events.filter((e) => e.k === 'opened')).toEqual([{ k: 'opened', at: T, auto: false }]);
   expect(eng.project().shop!.yakumono[0]!.lv).toBeGreaterThanOrEqual(25);
-  // 休業を入れる前（v1.2.1, 1d76727）の Engine で close だけを出した時の値（リーチ半減・SPSP 短縮後の patterns.json で取り直し）。
-  expect(digest(eng, events)).toBe('aedbf79077d29ebb');
+  // 休業を入れる前（v1.2.1, 1d76727）の Engine で close だけを出した時の値（リーチ半減・リーチ演出の短縮後の patterns.json で取り直し）。
+  expect(digest(eng, events)).toBe('89e039159f2bd2b7');
 });
 
 test('休業中に starter・keep・開店ダッシュを買うと、その周回から効く', () => {

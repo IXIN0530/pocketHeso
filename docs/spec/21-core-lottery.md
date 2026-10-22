@@ -53,10 +53,10 @@
 ## 変動パターン（`resources/machines/patterns.json`）
 ```json
 [{"id": "normal_short", "ms": 5000,  "hit_w": 0,  "miss_w": 1395, "hot": 0},
- {"id": "reach_n",      "ms": 20000, "hit_w": 5,  "miss_w": 150, "hot": 1},
- {"id": "sp_reach",     "ms": 45000, "hit_w": 30, "miss_w": 40,  "hot": 3, "climax_ms": 38000},
+ {"id": "reach_n",      "ms": 10000, "hit_w": 5,  "miss_w": 150, "hot": 1},
+ {"id": "sp_reach",     "ms": 22500, "hit_w": 30, "miss_w": 40,  "hot": 3, "climax_ms": 19000},
  {"id": "spsp_gekiatsu","ms": 35000, "hit_w": 55, "miss_w": 5,   "hot": 4, "climax_ms": 31000},
- {"id": "kakutei",      "ms": 60000, "hit_w": 10, "miss_w": 0,   "hot": 5, "climax_ms": 50000}]
+ {"id": "kakutei",      "ms": 30000, "hit_w": 10, "miss_w": 0,   "hot": 5, "climax_ms": 25000}]
 ```
 - 保留3〜4で `normal_short` を 2,000ms に短縮（`ms_by_hold` で拡張可）。変動短縮は経済の強化でも倍率がかかる。
 - 保留の最終色が白以外の変動は、短縮（保留数・変動短縮）の後に `max(時間, spin_min_colored_ms)`（機種 JSON。0〜120000、省略は 0。3機種 6600 = 割れる演出 5400＋図柄 1200, D-112）。

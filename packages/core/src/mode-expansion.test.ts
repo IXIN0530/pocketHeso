@@ -159,8 +159,8 @@ test('手書きシナリオ: 通常→通常当たり→時短→引き戻し→
   let cur = 0;
 
   run(m.startSpin(makeEntry(0, 'normal', kakuteiIdx, true, 0), cur, 1));
-  expect(all[0]).toEqual({ k: 'spinStarted', entry: 0, at: 0, pattern: 'kakutei', endsAt: 60000 });
-  cur = 60000;
+  expect(all[0]).toEqual({ k: 'spinStarted', entry: 0, at: 0, pattern: 'kakutei', endsAt: 30000 });
+  cur = 30000;
   run(m.resolveSpin(cur));
   expect(all[1]).toEqual({ k: 'spinResolved', entry: 0, at: cur, hit: true });
   expect(all[2]).toEqual({ k: 'jackpotStarted', entry: 0, at: cur, kind: 'tsujo', rounds: 3 });
@@ -179,7 +179,7 @@ test('手書きシナリオ: 通常→通常当たり→時短→引き戻し→
   expect(m.stRemaining).toBe(1);
 
   run(m.startSpin(makeEntry(2, 'jitan', kakuteiIdx, true, 1), cur, 0));
-  const hitAt = cur + 60000;
+  const hitAt = cur + 30000;
   run(m.resolveSpin(hitAt));
   expect(all[all.length - 2]).toEqual({ k: 'spinResolved', entry: 2, at: hitAt, hit: true });
   expect(all[all.length - 1]).toEqual({ k: 'jackpotStarted', entry: 2, at: hitAt, kind: 'kakuhen', rounds: 3 });
@@ -195,7 +195,7 @@ test('手書きシナリオ: 通常→通常当たり→時短→引き戻し→
   expect(m.stRemaining).toBe(2);
 
   run(m.startSpin(makeEntry(4, 'st', kakuteiIdx, true, 3), cur, 0));
-  const ltAt = cur + 60000;
+  const ltAt = cur + 30000;
   run(m.resolveSpin(ltAt));
   expect(all[all.length - 1]).toEqual({ k: 'jackpotStarted', entry: 4, at: ltAt, kind: 'kakuhen', rounds: 10 });
   cur = ltAt + 10 * 25000;
@@ -205,7 +205,7 @@ test('手書きシナリオ: 通常→通常当たり→時短→引き戻し→
   expect(m.mode).toBe('lt');
 
   run(m.startSpin(makeEntry(5, 'lt', kakuteiIdx, true, 3), cur, 0));
-  const lt2At = cur + 60000;
+  const lt2At = cur + 30000;
   run(m.resolveSpin(lt2At));
   cur = lt2At + 10 * 25000;
   run(m.finishJackpot(cur, 1));

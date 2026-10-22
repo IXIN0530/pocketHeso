@@ -34,11 +34,11 @@
     {
       "pattern": "reach_n",
       "cues": [
-        { "at": 1800, "kind": "lcd", "scene": "reach", "ms": 18200 },
+        { "at": 1800, "kind": "lcd", "scene": "reach", "ms": 8200 },
         { "at": 1800, "kind": "lcd", "scene": "telop", "ms": 1400, "text": "リーチ", "color": "#ffffff" },
         { "at": 1800, "kind": "sound", "bus": "se", "asset": "reach" },
         { "at": 1800, "kind": "camera", "shot": "lcd", "ms": 1600 },
-        { "at": 18500, "kind": "lcd", "scene": "climax", "ms": 1500 }
+        { "at": 8800, "kind": "lcd", "scene": "climax", "ms": 1200 }
       ],
       "branches": [
         {
@@ -46,8 +46,8 @@
           "options": [
             { "weight": 4, "cues": [] },
             { "weight": 1, "cues": [
-              { "at": 9000, "kind": "lcd", "scene": "telop", "ms": 1600, "text": "チャンス!", "color": "#ffd23f" },
-              { "at": 9000, "kind": "sound", "bus": "se", "asset": "pseudo" }
+              { "at": 4500, "kind": "lcd", "scene": "telop", "ms": 1600, "text": "チャンス!", "color": "#ffd23f" },
+              { "at": 4500, "kind": "sound", "bus": "se", "asset": "pseudo" }
             ] }
           ]
         }
@@ -56,18 +56,18 @@
     {
       "pattern": "sp_reach",
       "cues": [
-        { "at": 2000, "kind": "lcd", "scene": "reach", "ms": 43000 },
+        { "at": 2000, "kind": "lcd", "scene": "reach", "ms": 20500 },
         { "at": 2000, "kind": "lcd", "scene": "telop", "ms": 1400, "text": "リーチ", "color": "#ffffff" },
         { "at": 2000, "kind": "sound", "bus": "se", "asset": "reach" },
         { "at": 2000, "kind": "camera", "shot": "lcd", "ms": 1600 },
-        { "at": 6000, "kind": "lcd", "scene": "sp", "ms": 32000 },
-        { "at": 6000, "kind": "lcd", "scene": "cutin", "ms": 1800, "text": "SPリーチ", "color": "#ffd23f" },
-        { "at": 6000, "kind": "sound", "bus": "se", "asset": "cutin" },
-        { "at": 38000, "kind": "lcd", "scene": "climax", "ms": 7000 },
-        { "at": 38000, "kind": "sound", "bus": "se", "asset": "kime" },
-        { "at": 38000, "kind": "flash", "style": "white", "ms": 300, "min_intensity": 2 },
-        { "at": 38000, "kind": "haptic", "pattern": [60] },
-        { "at": 38000, "kind": "camera", "shot": "lcd", "ms": 7000 }
+        { "at": 5000, "kind": "lcd", "scene": "sp", "ms": 14000 },
+        { "at": 5000, "kind": "lcd", "scene": "cutin", "ms": 1800, "text": "SPリーチ", "color": "#ffd23f" },
+        { "at": 5000, "kind": "sound", "bus": "se", "asset": "cutin" },
+        { "at": 19000, "kind": "lcd", "scene": "climax", "ms": 3500 },
+        { "at": 19000, "kind": "sound", "bus": "se", "asset": "kime" },
+        { "at": 19000, "kind": "flash", "style": "white", "ms": 300, "min_intensity": 2 },
+        { "at": 19000, "kind": "haptic", "pattern": [60] },
+        { "at": 19000, "kind": "camera", "shot": "lcd", "ms": 3500 }
       ],
       "branches": [
         {
@@ -85,11 +85,11 @@
           "name": "telop",
           "options": [
             { "weight": 2, "cues": [
-              { "at": 20000, "kind": "lcd", "scene": "telop", "ms": 2000, "text": "チャンス!", "color": "#ffd23f" }
+              { "at": 11000, "kind": "lcd", "scene": "telop", "ms": 2000, "text": "チャンス!", "color": "#ffd23f" }
             ] },
             { "weight": 1, "cues": [
-              { "at": 20000, "kind": "lcd", "scene": "telop", "ms": 2000, "text": "激アツ!!", "color": "#ff3040" },
-              { "at": 20000, "kind": "sound", "bus": "se", "asset": "kyuin" }
+              { "at": 11000, "kind": "lcd", "scene": "telop", "ms": 2000, "text": "激アツ!!", "color": "#ff3040" },
+              { "at": 11000, "kind": "sound", "bus": "se", "asset": "kyuin" }
             ] }
           ]
         }
@@ -145,21 +145,21 @@
       "cues": [
         { "at": 0, "kind": "lcd", "scene": "blackout", "ms": 1500 },
         { "at": 0, "kind": "sound", "bus": "se", "asset": "black" },
-        { "at": 2500, "kind": "lcd", "scene": "reach", "ms": 57500 },
+        { "at": 2500, "kind": "lcd", "scene": "reach", "ms": 27500 },
         { "at": 2500, "kind": "lcd", "scene": "telop", "ms": 1400, "text": "リーチ", "color": "#ffffff" },
         { "at": 2500, "kind": "sound", "bus": "se", "asset": "reach" },
         { "at": 2500, "kind": "camera", "shot": "lcd", "ms": 1600 },
-        { "at": 6000, "kind": "lcd", "scene": "sp", "ms": 44000 },
-        { "at": 6000, "kind": "lcd", "scene": "cutin", "ms": 1800, "text": "SPリーチ", "color": "#ffd23f" },
-        { "at": 6000, "kind": "sound", "bus": "se", "asset": "cutin" },
-        { "at": 50000, "kind": "lcd", "scene": "kakutei", "ms": 10000 },
-        { "at": 50000, "kind": "lcd", "scene": "telop", "ms": 3000, "text": "確定!!", "color": "#ffe066" },
-        { "at": 50000, "kind": "sound", "bus": "se", "asset": "kyuin" },
-        { "at": 50700, "kind": "sound", "bus": "voice", "asset": "fanfare" },
-        { "at": 50000, "kind": "flash", "style": "rainbow", "ms": 600, "min_intensity": 2 },
-        { "at": 50000, "kind": "bloom", "ms": 3000, "strength": 0.7, "min_intensity": 2 },
-        { "at": 50000, "kind": "haptic", "pattern": [80, 40, 120] },
-        { "at": 50000, "kind": "camera", "shot": "lcd", "ms": 4000 }
+        { "at": 5000, "kind": "lcd", "scene": "sp", "ms": 20000 },
+        { "at": 5000, "kind": "lcd", "scene": "cutin", "ms": 1800, "text": "SPリーチ", "color": "#ffd23f" },
+        { "at": 5000, "kind": "sound", "bus": "se", "asset": "cutin" },
+        { "at": 25000, "kind": "lcd", "scene": "kakutei", "ms": 5000 },
+        { "at": 25000, "kind": "lcd", "scene": "telop", "ms": 3000, "text": "確定!!", "color": "#ffe066" },
+        { "at": 25000, "kind": "sound", "bus": "se", "asset": "kyuin" },
+        { "at": 25700, "kind": "sound", "bus": "voice", "asset": "fanfare" },
+        { "at": 25000, "kind": "flash", "style": "rainbow", "ms": 600, "min_intensity": 2 },
+        { "at": 25000, "kind": "bloom", "ms": 3000, "strength": 0.7, "min_intensity": 2 },
+        { "at": 25000, "kind": "haptic", "pattern": [80, 40, 120] },
+        { "at": 25000, "kind": "camera", "shot": "lcd", "ms": 4000 }
       ],
       "branches": [
         {

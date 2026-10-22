@@ -143,8 +143,8 @@ test('uwanoseが「開始+rounds×ms_per_round」に出て出玉が合計ラウ�
   const bonusBranch = 3;
   const startAt = 1000;
   const started = m.startSpin(makeEntry(10, 'st', kakuteiIdx, true, bonusBranch), startAt, 0);
-  expect(started[0]).toEqual({ k: 'spinStarted', entry: 10, at: startAt, pattern: 'kakutei', endsAt: startAt + 60000 });
-  const hitAt = startAt + 60000;
+  expect(started[0]).toEqual({ k: 'spinStarted', entry: 10, at: startAt, pattern: 'kakutei', endsAt: startAt + 30000 });
+  const hitAt = startAt + 30000;
   const resolved = m.resolveSpin(hitAt);
   expect(resolved).toEqual([
     { k: 'spinResolved', entry: 10, at: hitAt, hit: true },
@@ -163,9 +163,9 @@ test('uwanoseが「開始+rounds×ms_per_round」に出て出玉が合計ラウ�
   expect(() => m.emitUwanose(endAt)).toThrow();
   const noBonusM = new SpinMachine(spec, patterns);
   noBonusM.startSpin(makeEntry(11, 'normal', kakuteiIdx, true, 0), 0, 0);
-  noBonusM.resolveSpin(60000);
+  noBonusM.resolveSpin(30000);
   expect(noBonusM.uwanoseAt).toBeNull();
-  expect(() => noBonusM.emitUwanose(60000 + 3 * 25000)).toThrow();
+  expect(() => noBonusM.emitUwanose(30000 + 3 * 25000)).toThrow();
 });
 
 test('chain・chainBallsがRUSH入りで0から数え始め通常に戻るとリセットされる', () => {
@@ -178,7 +178,7 @@ test('chain・chainBallsがRUSH入りで0から数え始め通常に戻るとリ
   expect(m.chainBalls).toBe(0);
   let cur = 0;
   m.startSpin(makeEntry(0, 'normal', kakuteiIdx, true, 1), cur, 0);
-  cur = cur + 60000;
+  cur = cur + 30000;
   m.resolveSpin(cur);
   const jEnd = cur + 3 * 25000;
   const fin = m.finishJackpot(jEnd, 1);
@@ -188,7 +188,7 @@ test('chain・chainBallsがRUSH入りで0から数え始め通常に戻るとリ
   expect(m.chainBalls).toBe(0);
   cur = jEnd;
   m.startSpin(makeEntry(1, 'st', kakuteiIdx, true, 2), cur, 0);
-  cur = cur + 60000;
+  cur = cur + 30000;
   m.resolveSpin(cur);
   const e1 = cur + 10 * 25000;
   m.finishJackpot(e1, 1);
@@ -197,7 +197,7 @@ test('chain・chainBallsがRUSH入りで0から数え始め通常に戻るとリ
   expect(m.chainBalls).toBe(1500);
   cur = e1;
   m.startSpin(makeEntry(2, 'st', kakuteiIdx, true, 3), cur, 0);
-  cur = cur + 60000;
+  cur = cur + 30000;
   m.resolveSpin(cur);
   expect(m.uwanoseAt).toBe(cur + 10 * 25000);
   m.emitUwanose(cur + 10 * 25000);
