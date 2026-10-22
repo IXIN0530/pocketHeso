@@ -13,7 +13,7 @@ export interface MachineInfo {
 /** 店の並び順（Core の machinesOpen と同じ）。 */
 export const MACHINE_INFO: readonly MachineInfo[] = [
   { id: 'light-middle-01', shop: '駅前店', name: 'ライトミドル', blurb: '当たりやすく、ST も長い定番の台', node: null },
-  { id: 'rush-middle-01', shop: '国道店', name: 'ラッシュミドル', blurb: '通常は重いが RUSH が強い台', node: 'shop_kokudo_open' },
+  { id: 'rush-middle-01', shop: '国道店', name: 'ラッシュミドル', blurb: '通常は重いが RUSH が強く、RUSH 中の当たりは上位RUSH（上乗せ）になることも', node: 'shop_kokudo_open' },
   { id: 'lt-middle-01', shop: '港町店', name: 'LT ミドル', blurb: '時短から ST・LT へ続く台', node: 'shop_minato_open' },
 ];
 

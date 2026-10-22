@@ -44,7 +44,7 @@ function MachineToast({ machineId }: { machineId: string | undefined }) {
 }
 
 /** 抽選モードの表示（spec/21 モード拡張）。 */
-export function modeLabel(p: { mode: HallProjection['mode']; stRemaining: number | null }): string {
+export function modeLabel(p: { mode: HallProjection['mode']; stRemaining: number | null; rushUpper?: boolean }): string {
   const n = p.stRemaining === null ? '' : `残り${p.stRemaining}回`;
   switch (p.mode) {
     case 'normal':
@@ -52,6 +52,7 @@ export function modeLabel(p: { mode: HallProjection['mode']; stRemaining: number
     case 'jitan':
       return p.stRemaining === null ? '時短' : `時短 ${n}`;
     case 'st':
+      if (p.rushUpper === true) return p.stRemaining === null ? '上位RUSH' : `上位RUSH ${n}`;
       return p.stRemaining === null ? 'RUSH' : `RUSH ${n}`;
     case 'lt':
       return p.stRemaining === null ? 'LT' : `LT ${n}`;

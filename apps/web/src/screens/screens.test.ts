@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import { debugRecord } from './debug-screen.tsx';
+import { modeLabel } from './hall-screen.tsx';
 import { groupByDay } from './records-screen.tsx';
 import { upgradeEffect } from './shop-screen.tsx';
 import { dumpClaim, sumGranted } from '../stores/engine.ts';
@@ -38,4 +39,10 @@ test('受け取りで増えたものは今回の claimId の granted だけを�
     ({ k: 'granted', claimId, at: 0, fuelMs: 1000, medals: 1, ...(balls !== undefined ? { balls } : {}), ...(bonusHolds !== undefined ? { bonusHolds } : {}) }) as const;
   const r = sumGranted([g('a', 100.5), g('b', 50, 3), g('other', 999, 9), { k: 'fuelEmpty', at: 0 }], new Set(['a', 'b']));
   expect(r).toEqual({ balls: 150.5, bonusHolds: 3, medals: 2, fuelMs: 2000 });
+});
+
+test('modeLabel: 上位RUSH 中は「上位RUSH 残りN回」', () => {
+  expect(modeLabel({ mode: 'st', stRemaining: 40 })).toBe('RUSH 残り40回');
+  expect(modeLabel({ mode: 'st', stRemaining: 40, rushUpper: true })).toBe('上位RUSH 残り40回');
+  expect(modeLabel({ mode: 'normal', stRemaining: null, rushUpper: true })).toBe('通常');
 });
