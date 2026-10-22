@@ -4,7 +4,7 @@
 - Current phase: P15 → `docs/plan/P15-upper-rush.md`（国道店の上位RUSH・上乗せ）。v1.5.0 の本番確認が人間待ち。P8-T7（任意）と P7 再開は人間の指示待ち
 - Parallel: なし（P13-T9・P14-T4 の実機は人間 OK 済み。P13-T10 は v1.5.0 に統合）
 - Last done: P15-T5（web: ホールのモード表示を上位RUSH に、国道店の一言、spec/40）
-- Next: P15-T6（実機確認。`dev` を push して人間に手順を渡す）
+- Next: P15-T6（実機確認。`dev` は push 済み・人間の結果待ち。OK なら P15-T7 は「リリースしてよい」の指示待ち）
 - Owner hint: 人間（手順は Claude Code（Sonnet））
 - Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T2 は人間の指示で再開（T12 遠征は取り下げ D-118、T13 は P14 に置き換え）
 
@@ -19,6 +19,6 @@
 - 既定機種の人間確認待ち（light/rush/ltのどれを既定にするか。P3バランスに影響）
 
 ## Notes（最新3件まで）
+- [P15-T6]: `dev`（44c6ea1）は push 済み。手順 1〜5 を人間に渡した。結果待ち。
 - [P15-T5]: `modeLabel` が `rushUpper` で「上位RUSH 残りN回」。記録に大当たり履歴は無いので「上位 +n」は出していない（出すなら履歴の新設が要る）。国道店の blurb は仮文。Sonnet 全部
 - [P15-T4]: 白黒は液晶シェーダーの `uGray`（図柄）＋ `HudCanvas.tone()`（HUD の色を同じ度合いで落とす）。ひび・破片・告知は `hud-canvas.ts`（`ctx.filter` 不使用）。音は `board-scene.noteUpper` が HUD の `upper` の変わり目で鳴らす（`UPPER_CUES`）。Debug プレビューは `UPPER_PREVIEWS`（変動を省いて ST 中の大当たりから。ガセは `gaseSerial` で該当する通し番号を選ぶ）。**D-121: Core の `AwayReplay` に `upper`・`loops` を足した**（リプレイを上位で通して見せる）。全 shake キューを reduced-motion で止めた。**実機は T6**: 破片・ひびの見た目、虹の wash、白黒の戻りを要確認。Sonnet 全部
-- [P15-T2]: `docs/state/econ-20261022-p15.md`。pachisim の `sim run` は上位を E[K] で数え（理論 10.63）、実測に上位の割合・K の分布・最大出玉の行。EV 60 seed（1000h）: rush 1.126 / light 1.101 / lt 1.100（前の rush 1.096、差は seed のぶれ内）→ 66回のまま。週の伸び（検証5・6）の4週目 12〜13.6 は P13 の覚醒 v2 からの持ち越し（econ-20261021-p13 と同値、P15 の前後で同程度）。スペック画面: 上位の扇は別色・「20R＋上乗せ 約3,000〜9,000個」、表に上位RUSH・上乗せ・RUSH 中の当たりの平均 約2,000個、フローに注記。全部 Opus
