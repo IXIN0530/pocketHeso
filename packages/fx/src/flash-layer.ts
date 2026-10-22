@@ -23,6 +23,7 @@ const FRAG = /* glsl */ `
 uniform float uAlpha;
 uniform float uRainbow;
 uniform float uTime;
+uniform float uWashRainbow; // 1 は輪も虹色（wash_rainbow）
 uniform float uWash;     // 0 は全面、1 は起点から広がる輪（wash_<色>）
 uniform float uProg;     // 輪の進み具合（0〜1）
 uniform vec3 uWashColor;
@@ -46,7 +47,8 @@ void main() {
     vec2 h = hash2(floor(gp));
     float spark = exp(-length(fract(gp) - 0.2 - 0.6 * h) * 16.0) * step(0.6, h.x) * (0.5 + 0.5 * sin(uTime * 6.0 + h.y * 40.0));
     vec3 sc = mix(mix(uWashColor, vec3(1.0), 0.5), hue(h.y + uTime * 0.3), uRainbow);
-    c = uWashColor * (exp(-x * x) * 1.6 + inside * 0.5) + sc * spark * inside * 1.5;
+    vec3 wc = mix(uWashColor, hue(r * 1.2 - uTime * 0.4), uWashRainbow);
+    c = wc * (exp(-x * x) * 1.6 + inside * 0.5) + sc * spark * inside * 1.5;
   }
   gl_FragColor = vec4(c * uAlpha, 1.0);
 }`;
@@ -57,6 +59,7 @@ const WASH: Partial<Record<FlashStyle, readonly [number, number, number]>> = {
   wash_green: [0.2, 1.0, 0.45],
   wash_red: [1.0, 0.15, 0.2],
   wash_gold: [1.0, 0.78, 0.25],
+  wash_rainbow: [1.0, 1.0, 1.0],
 };
 
 interface Active {
@@ -92,6 +95,7 @@ export class FlashLayer {
         uRainbow: { value: 0 },
         uTime: { value: 0 },
         uWash: { value: 0 },
+        uWashRainbow: { value: 0 },
         uProg: { value: 0 },
         uWashColor: { value: new Vector3() },
         uOrigin: { value: this.origin },
@@ -141,7 +145,8 @@ export class FlashLayer {
     const u = this.material.uniforms;
     u.uAlpha!.value = alpha;
     const wash = WASH[a.style];
-    u.uRainbow!.value = a.style === 'rainbow' || a.style === 'wash_gold' ? 1 : 0;
+    u.uRainbow!.value = a.style === 'rainbow' || a.style === 'wash_gold' || a.style === 'wash_rainbow' ? 1 : 0;
+    u.uWashRainbow!.value = a.style === 'wash_rainbow' ? 1 : 0;
     u.uTime!.value = nowMs / 1000;
     u.uWash!.value = wash ? 1 : 0;
     if (wash) {

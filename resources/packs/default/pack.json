@@ -21,7 +21,14 @@
     "hold_morph": { "synth": { "wave": "triangle", "hz": [220, 660], "ms": 1300, "gain": 0.22 } },
     "crack": { "synth": { "wave": "square", "hz": [2600, 1400], "ms": 35, "gain": 0.16 } },
     "crack_big": { "synth": { "wave": "sawtooth", "hz": [1800, 500], "ms": 120, "gain": 0.22 } },
-    "shatter": { "synth": { "wave": "sawtooth", "hz": [3800, 700], "ms": 260, "gain": 0.3 } }
+    "shatter": { "synth": { "wave": "sawtooth", "hz": [3800, 700], "ms": 260, "gain": 0.3 } },
+    "freeze": { "synth": { "wave": "sine", "hz": [190, 38], "ms": 1100, "gain": 0.55 } },
+    "freeze_hi": { "synth": { "wave": "square", "hz": [90, 60], "ms": 300, "gain": 0.18 } },
+    "glass_crack": { "synth": { "wave": "sawtooth", "hz": [2400, 800], "ms": 90, "gain": 0.22 } },
+    "glass_break": { "synth": { "wave": "sawtooth", "hz": [4200, 500], "ms": 520, "gain": 0.34 } },
+    "uwa_open": { "synth": { "wave": "triangle", "hz": [440, 880], "ms": 420, "gain": 0.3 } },
+    "uwa_tick": { "synth": { "wave": "square", "hz": [1000, 900], "ms": 70, "gain": 0.2 } },
+    "uwa_close": { "synth": { "wave": "triangle", "hz": [660, 330], "ms": 500, "gain": 0.3 } }
   },
   "sheets": [
     {
@@ -256,6 +263,57 @@
         { "at": 0, "kind": "bloom", "ms": 3000, "strength": 0.7, "min_intensity": 2 },
         { "at": 700, "kind": "sound", "bus": "voice", "asset": "fanfare" }
       ]
+    },
+    {
+      "pattern": "upper_freeze",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "freeze" },
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "freeze_hi" },
+        { "at": 0, "kind": "haptic", "pattern": [60] }
+      ]
+    },
+    {
+      "pattern": "upper_crack",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "glass_crack" },
+        { "at": 0, "kind": "haptic", "pattern": [14] }
+      ]
+    },
+    {
+      "pattern": "upper_in",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "glass_break" },
+        { "at": 120, "kind": "sound", "bus": "se", "asset": "kime" },
+        { "at": 0, "kind": "flash", "style": "wash_rainbow", "ms": 1600 },
+        { "at": 0, "kind": "haptic", "pattern": [70, 30, 100] },
+        { "at": 0, "kind": "shake", "ms": 400, "amp": 0.3, "min_intensity": 2 },
+        { "at": 0, "kind": "bloom", "ms": 1500, "strength": 0.6, "min_intensity": 2 },
+        { "at": 400, "kind": "sound", "bus": "voice", "asset": "fanfare" }
+      ]
+    },
+    {
+      "pattern": "uwanose_start",
+      "cues": [{ "at": 0, "kind": "sound", "bus": "se", "asset": "uwa_open" }]
+    },
+    {
+      "pattern": "uwanose_tick",
+      "cues": [{ "at": 0, "kind": "sound", "bus": "se", "asset": "uwa_tick" }]
+    },
+    {
+      "pattern": "uwanose_hit",
+      "cues": [
+        { "at": 0, "kind": "sound", "bus": "se", "asset": "glass_break" },
+        { "at": 100, "kind": "sound", "bus": "se", "asset": "kyuin" },
+        { "at": 0, "kind": "flash", "style": "wash_rainbow", "ms": 1500 },
+        { "at": 0, "kind": "haptic", "pattern": [50, 30, 80] },
+        { "at": 0, "kind": "shake", "ms": 300, "amp": 0.25, "min_intensity": 2 },
+        { "at": 0, "kind": "bloom", "ms": 1200, "strength": 0.5, "min_intensity": 2 },
+        { "at": 350, "kind": "sound", "bus": "voice", "asset": "fanfare" }
+      ]
+    },
+    {
+      "pattern": "uwanose_end",
+      "cues": [{ "at": 0, "kind": "sound", "bus": "se", "asset": "uwa_close" }]
     },
     {
       "pattern": "round",

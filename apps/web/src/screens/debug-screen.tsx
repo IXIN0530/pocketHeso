@@ -8,7 +8,7 @@ import { describeReceived, localDay, type ClaimPlan } from '../stores/activity.t
 import { ConfirmModal } from './confirm-modal.tsx';
 import { DEBUG_SCALES, clock, isDebugDb, sandbox } from '../stores/clock.ts';
 import { debugInfo, receiveClaims, showLastAway, stateDump, useEngine, verifyAtlas } from '../stores/engine.ts';
-import { PREVIEWS, PREVIEW_SERIAL_BASE, requestPreview } from '../stores/preview.ts';
+import { PREVIEWS, PREVIEW_SERIAL_BASE, UPPER_PREVIEWS, gaseSerial, requestPreview } from '../stores/preview.ts';
 import { DEBUG_CLAIM_PREFIX } from './records-screen.tsx';
 import { MetricsPanel } from './metrics-panel.tsx';
 import { Switch } from '../components/switch.tsx';
@@ -205,6 +205,21 @@ export default function DebugScreen() {
                 const plan = planFor(p.pattern, seed, serial, 1, 1);
                 requestPreview({ pattern: p.pattern, hit: p.alwaysHit === true || previewHit, serial, color: p.color, breaks: previewBreak });
                 setMessage(`${p.label} #${serial - PREVIEW_SERIAL_BASE}: ${describePicks(p.pattern, plan.picks)}`);
+              }}
+            >
+              {p.label}
+            </button>
+          ))}
+          {UPPER_PREVIEWS.map((p) => (
+            <button
+              key={p.label}
+              className={styles.sub}
+              onClick={() => {
+                sound.unlock();
+                const serial = p.gase ? gaseSerial(PREVIEW_SERIAL_BASE + previewCount++, seed) : PREVIEW_SERIAL_BASE + previewCount++;
+                if (p.gase) previewCount = serial - PREVIEW_SERIAL_BASE + 1;
+                requestPreview({ pattern: '', hit: true, serial, color: 'white', ...(p.upper ? { upper: p.upper } : {}), ...(p.gase ? { gase: true } : {}) });
+                setMessage(`${p.label} #${serial - PREVIEW_SERIAL_BASE}`);
               }}
             >
               {p.label}

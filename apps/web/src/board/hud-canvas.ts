@@ -1,6 +1,7 @@
 // 大当たり中の液晶の表示（D-077）を 2D Canvas に描き、液晶のシェーダーへテクスチャで重ねる。
 // 描き直すのは中身（ラウンド・玉・出玉）が変わった時と、告知が動いている間（約30回/秒）だけ。
 import { CanvasTexture, SRGBColorSpace } from 'three';
+import { UPPER_CRACK_STEPS_MS } from '@ph/fx';
 import { HUD_BONUS_MS, HUD_RESULT_MS, HUD_START_MS, type HudView } from './jackpot-hud.ts';
 import type { LcdResultKind } from './lcd-timeline.ts';
 
@@ -51,6 +52,76 @@ function fadeOut(t: number, total: number): number {
   return Math.max(0, Math.min(1, (total - t) / OUT_MS));
 }
 
+/** 上位RUSH・上乗せ（D-120）: 告知が消えるまでの時間、割れた破片が飛ぶ時間。 */
+const BANNER_OUT_MS = 250;
+export const SHARD_MS = 1100;
+const CRACK_STAGES = UPPER_CRACK_STEPS_MS.length;
+const RAYS = 11;
+
+/** 決まった並びの擬似乱数（ひび・破片の形を毎回同じにする）。 */
+function lcg(seed: number): () => number {
+  let x = seed >>> 0;
+  return () => {
+    x = (Math.imul(x, 1664525) + 1013904223) >>> 0;
+    return x / 4294967296;
+  };
+}
+
+interface Crack {
+  /** 液晶の中央から外へ、段ごとの点（0 番目は中央）。 */
+  readonly pts: readonly (readonly [number, number])[];
+  /** この段から現れる。 */
+  readonly from: number;
+}
+
+/** ひびの網: 中央から放射状 + 段ごとの横のつなぎ。1段ごとに外へ一段伸びる。 */
+function buildCracks(): Crack[] {
+  const rnd = lcg(20261022);
+  const maxR = Math.hypot(W / 2, H / 2) * 1.02;
+  const out: Crack[] = [];
+  for (let i = 0; i < RAYS; i++) {
+    const a = ((i + (rnd() - 0.5) * 0.6) / RAYS) * Math.PI * 2;
+    const pts: [number, number][] = [[W / 2, H / 2]];
+    for (let j = 1; j <= CRACK_STAGES; j++) {
+      const r = (maxR * j) / CRACK_STAGES;
+      const off = (rnd() - 0.5) * r * 0.16;
+      pts.push([W / 2 + Math.cos(a) * r - Math.sin(a) * off, H / 2 + Math.sin(a) * r + Math.cos(a) * off]);
+    }
+    out.push({ pts, from: i % 3 === 0 ? 1 : i % 3 === 1 ? 2 : 3 });
+  }
+  return out;
+}
+const CRACKS = buildCracks();
+
+interface Shard {
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
+  readonly vy: number;
+  readonly spin: number;
+  readonly tri: readonly (readonly [number, number])[];
+}
+
+function buildShards(): Shard[] {
+  const rnd = lcg(77012);
+  const out: Shard[] = [];
+  for (let i = 0; i < 28; i++) {
+    const a = rnd() * Math.PI * 2;
+    const r0 = rnd() * 230;
+    const sp = 260 + rnd() * 760;
+    const size = 28 + rnd() * 62;
+    const t0 = rnd() * Math.PI * 2;
+    const tri = [0, 1, 2].map((k) => {
+      const ang = t0 + (k * Math.PI * 2) / 3 + (rnd() - 0.5) * 0.9;
+      const rr = size * (0.6 + rnd() * 0.6);
+      return [Math.cos(ang) * rr, Math.sin(ang) * rr] as const;
+    });
+    out.push({ x: W / 2 + Math.cos(a) * r0, y: H / 2 + Math.sin(a) * r0 * 0.7, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 160, spin: (rnd() - 0.5) * 9, tri });
+  }
+  return out;
+}
+const SHARDS = buildShards();
+
 export class HudCanvas {
   readonly texture: CanvasTexture;
   private readonly ctx: CanvasRenderingContext2D;
@@ -61,6 +132,8 @@ export class HudCanvas {
   visible = false;
   /** reduced-motion: 入りの拡大をしない。 */
   calm = false;
+  /** 液晶の白黒の度合い（0..1, 上位RUSH・上乗せ）。シェーダーの uGray。HUD の色もこの分だけ色を落として描く。 */
+  gray = 0;
   /** 液晶の隅に称号「殿堂入り」を常に出す（見た目の解放, spec/25）。 */
   title = false;
 
@@ -79,6 +152,7 @@ export class HudCanvas {
   update(v: HudView | null): void {
     const key = (v ? this.keyOf(v) : '') + (this.title ? '|t' : '');
     this.visible = v !== null || this.title;
+    this.gray = v?.k === 'round' && v.upper ? v.upper.gray : 0;
     this.dim = !v ? 0 : v.k === 'round' ? 0.75 : 0.6 * fadeOut(v.t, HUD_RESULT_MS);
     if (key === this.key) return;
     this.key = key;
@@ -94,29 +168,48 @@ export class HudCanvas {
     // 動いている間は約30回/秒で描き直す。
     const step = (t: number, until: number) => (t < until ? Math.floor(t / 33) : -1);
     if (v.k === 'round') {
-      return `r|${v.round}|${v.rounds}|${v.inRound}|${v.balls}|${v.chain}|${step(v.t, HUD_START_MS + 400)}|${v.bonus ? step(v.bonus.t, HUD_BONUS_MS) : -2}`;
+      const u = v.upper;
+      // 白黒の変わり目・告知・割れる破片が動いている間は約30回/秒。
+      const up = u
+        ? `|${Math.round(u.gray * 20)}|${u.crack}|${u.frozen ? 1 : 0}|${u.addBalls}|${u.shatter !== null ? step(u.shatter, SHARD_MS) : -2}|${u.banner ? `${u.banner.k}${u.banner.digit ?? ''}:${step(u.banner.t, u.banner.ms)}` : ''}`
+        : '';
+      return `r|${v.round}|${v.rounds}|${v.inRound}|${v.balls}|${v.chain}|${step(v.t, HUD_START_MS + 400)}|${v.bonus ? step(v.bonus.t, HUD_BONUS_MS) : -2}${up}`;
     }
-    return `x|${v.kind}|${v.payout}|${v.chain}|${v.balls}|${v.spins}|${step(v.t, HUD_RESULT_MS)}`;
+    return `x|${v.kind}|${v.payout}|${v.chain}|${v.balls}|${v.spins}|${v.upper ? 1 : 0}|${step(v.t, HUD_RESULT_MS)}`;
+  }
+
+  /** 白黒の度合い（gray）の分だけ色を落とした色。 */
+  private tone(hex: string): string {
+    const g = this.gray;
+    if (g <= 0) return hex;
+    const n = parseInt(hex.slice(1), 16);
+    const r = (n >> 16) & 255;
+    const gr = (n >> 8) & 255;
+    const b = n & 255;
+    const l = 0.3 * r + 0.59 * gr + 0.11 * b;
+    const m = (x: number) => Math.round(x + (l - x) * g);
+    return `rgb(${m(r)},${m(gr)},${m(b)})`;
   }
 
   private paint(kind: Paint, y0: number, y1: number): CanvasGradient | string {
     const g = this.ctx.createLinearGradient(0, y0, 0, y1);
+    const t = (c: string) => this.tone(c);
     switch (kind) {
       case 'gold':
-        g.addColorStop(0, '#fff7c2');
-        g.addColorStop(0.45, '#ffd23a');
-        g.addColorStop(0.55, '#e89a00');
-        g.addColorStop(1, '#fff0a0');
+        g.addColorStop(0, t('#fff7c2'));
+        g.addColorStop(0.45, t('#ffd23a'));
+        g.addColorStop(0.55, t('#e89a00'));
+        g.addColorStop(1, t('#fff0a0'));
         return g;
       case 'ice':
-        g.addColorStop(0, '#ffffff');
-        g.addColorStop(0.5, '#8fe6ff');
-        g.addColorStop(1, '#d8f6ff');
+        g.addColorStop(0, t('#ffffff'));
+        g.addColorStop(0.5, t('#8fe6ff'));
+        g.addColorStop(1, t('#d8f6ff'));
         return g;
       case 'green':
-        g.addColorStop(0, '#eaffd8');
-        g.addColorStop(0.5, '#4be07a');
-        g.addColorStop(1, '#c8ffd8');
+        g.addColorStop(0, t('#eaffd8'));
+        g.addColorStop(0.5, t('#4be07a'));
+        g.addColorStop(1, t('#c8ffd8'));
         return g;
       case 'rainbow': {
         const h = this.ctx.createLinearGradient(0, 0, W, 0);
@@ -165,6 +258,13 @@ export class HudCanvas {
   }
 
   private drawRound(v: Extract<HudView, { k: 'round' }>): void {
+    const kind = v.upper?.banner?.k;
+    // 「上乗せスタート！」・数字・「上乗せ終了」は液晶いっぱいに出すので、ラウンドの表示は隠す。
+    if (kind !== 'uwanoseStart' && kind !== 'digit' && kind !== 'uwanoseEnd') this.drawBase(v);
+    if (v.upper) this.drawUpper(v, v.upper);
+  }
+
+  private drawBase(v: Extract<HudView, { k: 'round' }>): void {
     // 始めは「大当たり nR」を大きく出し、ラウンドの表示へ切り替える。
     if (v.t < HUD_START_MS) {
       const a = fadeOut(v.t, HUD_START_MS);
@@ -201,10 +301,10 @@ export class HudCanvas {
       if (i < v.inRound) {
         const g = ctx.createRadialGradient(x - 4, y - 5, 2, x, y, 14);
         g.addColorStop(0, '#ffffff');
-        g.addColorStop(0.5, '#ffd23a');
-        g.addColorStop(1, '#c07000');
+        g.addColorStop(0.5, this.tone('#ffd23a'));
+        g.addColorStop(1, this.tone('#c07000'));
         ctx.fillStyle = g;
-        ctx.shadowColor = '#ffcc33';
+        ctx.shadowColor = this.tone('#ffcc33');
         ctx.shadowBlur = 14;
         ctx.fill();
         ctx.shadowBlur = 0;
@@ -227,6 +327,8 @@ export class HudCanvas {
       this.text(t, x, H * 0.77 + (px < 40 ? 6 : 0), px, paint, { align: 'left' });
       x += widths[i]!;
     });
+    // 上位RUSH・上乗せで足した出玉（告知の間だけ）。
+    if (v.upper && v.upper.addBalls > 0) this.text(`+${fmt(v.upper.addBalls)}`, W / 2, H * 0.91, 46, 'rainbow');
     ctx.restore();
     // 上乗せ（LT）。
     if (v.bonus) {
@@ -237,9 +339,112 @@ export class HudCanvas {
     }
   }
 
+  /** 液晶のガラス（ひび・破片）と液晶いっぱいの告知。 */
+  private drawUpper(v: Extract<HudView, { k: 'round' }>, u: NonNullable<Extract<HudView, { k: 'round' }>['upper']>): void {
+    if (u.crack > 0) this.drawCracks(u.crack);
+    if (u.shatter !== null && u.shatter < SHARD_MS && !this.calm) this.drawShards(u.shatter / 1000);
+    if (u.banner) this.drawBanner(u.banner, v.rounds);
+  }
+
+  /** ガラスのひび: 段ごとに中央から外へ一段伸びて網になる（保留が割れる演出と同じ考え方）。 */
+  private drawCracks(stage: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const lines = (to: number) => {
+      ctx.beginPath();
+      for (const c of CRACKS) {
+        for (let j = 1; j <= Math.min(to, CRACK_STAGES); j++) {
+          if (c.from > j) continue;
+          ctx.moveTo(c.pts[j - 1]![0], c.pts[j - 1]![1]);
+          ctx.lineTo(c.pts[j]![0], c.pts[j]![1]);
+        }
+      }
+      // 横のつなぎ（網の目）。
+      for (let j = 2; j <= to; j++) {
+        CRACKS.forEach((c, i) => {
+          if ((i + j) % 2 !== 0 || c.from > j - 1) return;
+          const n = CRACKS[(i + 1) % RAYS]!;
+          ctx.moveTo(c.pts[j - 1]![0], c.pts[j - 1]![1]);
+          ctx.lineTo(n.pts[j - 1]![0], n.pts[j - 1]![1]);
+        });
+      }
+    };
+    lines(stage);
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+    ctx.stroke();
+    lines(stage);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** 割れた破片が飛ぶ（reduced-motion では描かない）。 */
+  private drawShards(sec: number): void {
+    const ctx = this.ctx;
+    const alpha = Math.max(0, 1 - sec / (SHARD_MS / 1000));
+    ctx.save();
+    for (const s of SHARDS) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(s.x + s.vx * sec, s.y + s.vy * sec + 450 * sec * sec);
+      ctx.rotate(s.spin * sec);
+      ctx.beginPath();
+      s.tri.forEach(([px, py], k) => (k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)));
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(235,245,255,0.55)';
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  private drawBanner(b: NonNullable<NonNullable<Extract<HudView, { k: 'round' }>['upper']>['banner']>, rounds: number): void {
+    const a = Math.min(1, b.t / 150) * Math.max(0, Math.min(1, (b.ms - b.t) / BANNER_OUT_MS));
+    const pop = popScale(b.t);
+    const late = popScale(Math.max(0, b.t - 150));
+    switch (b.k) {
+      case 'upperIn':
+        this.band(H * 0.42, H * 0.7, a);
+        this.text('上位RUSH突入！', W / 2, H * 0.33, 96, 'rainbow', { scale: pop, alpha: a });
+        this.text(`+${b.add ?? 0}R`, W / 2, H * 0.6, 130, 'rainbow', { scale: late, alpha: a });
+        break;
+      case 'uwanoseStart':
+        this.band(H * 0.5, H * 0.6, a);
+        this.text('上乗せスタート！', W / 2, H * 0.5, 110, 'white', { scale: pop, alpha: a });
+        break;
+      case 'digit': {
+        // 液晶の高さの6割くらいの大きな数字。
+        const k = Math.min(1, b.t / 200);
+        this.text(String(b.digit ?? 0), W / 2, H * 0.52, 340, 'white', { scale: 1 + 0.25 * (1 - k) * (1 - k), alpha: a });
+        break;
+      }
+      case 'uwanoseHit':
+        this.band(H * 0.42, H * 0.7, a);
+        this.text(`上乗せ +${b.add ?? 0}R！`, W / 2, H * 0.36, 104, 'rainbow', { scale: pop, alpha: a });
+        this.text(`全${rounds}R`, W / 2, H * 0.62, 70, 'white', { alpha: a });
+        break;
+      case 'uwanoseEnd':
+        this.text('上乗せ終了', W / 2, H * 0.5, 112, 'white', { scale: pop, alpha: a });
+        break;
+      case 'uwanoseMax':
+        this.band(H * 0.45, H * 0.72, a);
+        this.text('上乗せ MAX', W / 2, H * 0.34, 104, 'rainbow', { scale: pop, alpha: a });
+        this.text(`${rounds}R`, W / 2, H * 0.62, 140, 'rainbow', { scale: late, alpha: a });
+        break;
+    }
+  }
+
   private drawResult(v: Extract<HudView, { k: 'result' }>): void {
     const a = Math.min(1, v.t / 150) * fadeOut(v.t, HUD_RESULT_MS);
-    const r = RESULT_TEXT[v.kind];
+    const upper = v.upper && v.kind === 'rushOn';
+    const r = upper ? { main: '上位RUSH継続', paint: 'rainbow' as Paint } : RESULT_TEXT[v.kind];
     this.band(H * 0.45, H * 0.56, a);
     this.text(r.main, W / 2, H * 0.4, 112, r.paint, { scale: popScale(v.t), alpha: a });
     this.text(resultSub(v), W / 2, H * 0.62, 46, 'white', { alpha: a * Math.min(1, Math.max(0, (v.t - 200) / 200)) });

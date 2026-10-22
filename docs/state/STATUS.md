@@ -3,8 +3,8 @@
 
 - Current phase: P15 → `docs/plan/P15-upper-rush.md`（国道店の上位RUSH・上乗せ）。v1.5.0 の本番確認が人間待ち。P8-T7（任意）と P7 再開は人間の指示待ち
 - Parallel: なし（P13-T9・P14-T4 の実機は人間 OK 済み。P13-T10 は v1.5.0 に統合）
-- Last done: P15-T3（fx: planUpperRush・液晶の時刻表 upperTimeline/upperViewAt、jackpotHud に upper、spec/43 に上位RUSH・上乗せの節）
-- Next: P15-T4（web: 白黒・ひび・割れ・数字の描画と音、Debug のプレビュー）
+- Last done: P15-T4（web: 液晶の白黒・ひび・破片・告知・数字の描画、パックに音7つ、`wash_rainbow`、Debug のプレビュー4つ、留守中リプレイの上位）
+- Next: P15-T5（文言と画面の残り: ホールの「上位RUSH」・machine-info）
 - Owner hint: Claude Code（Sonnet）
 - Paused: P7 → `docs/plan/P7-soak-tune.md` / T11 → T2 は人間の指示で再開（T12 遠征は取り下げ D-118、T13 は P14 に置き換え）
 
@@ -19,6 +19,6 @@
 - 既定機種の人間確認待ち（light/rush/ltのどれを既定にするか。P3バランスに影響）
 
 ## Notes（最新3件まで）
-- [P15-T3]: `packages/fx/src/upper-rush.ts`。`planUpperRush(jackpot, spec, seed)` は機種の枝 `upperRushSpec(spec)`（無い機種は null → 何も出さない）も受け取る（計画の2引数から変更）。乱数は 'presentation' の 64 番目以降。web は `machineRound` に `upper`、`jackpotHud(st, now, round, seed)` の round に `upper`（gray・frozen・crack・shatter・banner・addedRounds・addBalls）、result に `upper`（上位RUSH継続）。LcdJackpot の上位は rounds を合計で持ち、見せる全ラウンドは時刻表と「今のラウンド＋1」の大きい方（短いラウンドで縮めた時も守る）。**T4 へ**: 描画・音（`upperCues` の時刻で鳴らす）は未接続。Projection の `rushUpper` の表示は T5。Opus: fx・jackpot-hud・テスト / Sonnet: spec/43
+- [P15-T4]: 白黒は液晶シェーダーの `uGray`（図柄）＋ `HudCanvas.tone()`（HUD の色を同じ度合いで落とす）。ひび・破片・告知は `hud-canvas.ts`（`ctx.filter` 不使用）。音は `board-scene.noteUpper` が HUD の `upper` の変わり目で鳴らす（`UPPER_CUES`）。Debug プレビューは `UPPER_PREVIEWS`（変動を省いて ST 中の大当たりから。ガセは `gaseSerial` で該当する通し番号を選ぶ）。**D-121: Core の `AwayReplay` に `upper`・`loops` を足した**（リプレイを上位で通して見せる）。全 shake キューを reduced-motion で止めた。**実機は T6**: 破片・ひびの見た目、虹の wash、白黒の戻りを要確認。Sonnet 全部
 - [P15-T2]: `docs/state/econ-20261022-p15.md`。pachisim の `sim run` は上位を E[K] で数え（理論 10.63）、実測に上位の割合・K の分布・最大出玉の行。EV 60 seed（1000h）: rush 1.126 / light 1.101 / lt 1.100（前の rush 1.096、差は seed のぶれ内）→ 66回のまま。週の伸び（検証5・6）の4週目 12〜13.6 は P13 の覚醒 v2 からの持ち越し（econ-20261021-p13 と同値、P15 の前後で同程度）。スペック画面: 上位の扇は別色・「20R＋上乗せ 約3,000〜9,000個」、表に上位RUSH・上乗せ・RUSH 中の当たりの平均 約2,000個、フローに注記。全部 Opus
 - [P15-T1]: 上位の枝は `bonusRounds` に K 込みの上乗せ合計（jackpotStarted・snapshot とも）、`JackpotView.rounds` も合計で upper・loops を付ける（白黒中に 10R→20R と見せるのは fx, T3）。`jackpotPayoutBalls/TotalRounds/BonusRounds/jackpotDurationMs` に任意の `loops`。golden 不変。**web の `machine-spec-view.test.ts`（国道店）が 66回・上位の扇で落ちたまま = T2 で表示ごと直す**。新テスト1本で core 全体実行時に p3t3 の時間計測（150ms）が競合で落ちやすくなったため、測り直しを 5→10 回に（基準は不変。単独では変更前後とも約105ms）

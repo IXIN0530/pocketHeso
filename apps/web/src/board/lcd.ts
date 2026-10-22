@@ -190,6 +190,7 @@ export class LcdReels {
     this.hud.update(hud);
     u.uHudOn!.value = this.hud.visible ? 1 : 0;
     u.uHudDim!.value = this.hud.dim;
+    u.uGray!.value = this.hud.gray;
   }
 
   private begin(spin: LcdSpin, now: number, show: SpinShow | null): void {
@@ -386,6 +387,7 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: 
       uHud: { value: hud },
       uHudOn: { value: 0 },
       uHudDim: { value: 0 },
+      uGray: { value: 0 },
     },
     vertexShader: /* glsl */ `
       varying vec2 vUv;
@@ -395,6 +397,7 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: 
       uniform sampler2D uText;
       uniform sampler2D uHud;       // 大当たり中の表示（D-077, hud-canvas.ts）
       uniform float uHudOn, uHudDim;
+      uniform float uGray;          // 液晶の白黒（上位RUSH・上乗せ, D-120）
       uniform float uTextRows, uTextRow;
       uniform vec3 uTextAnim; // mode, 秒, 進み具合
       uniform vec3 uTextColor;
@@ -758,6 +761,8 @@ function lcdMaterial(atlas: Texture, textAtlas: Texture, textRows: number, hud: 
         // ブラックアウト（テロップだけ残す）。
         col *= 1.0 - 0.96 * uScene.z;
         col = drawText(col);
+        // 上位RUSH・上乗せの白黒（図柄を彩度0に。HUD は hud-canvas.ts が色を落として描く）。
+        col = mix(col, vec3(dot(col, vec3(0.3, 0.59, 0.11))), uGray);
         // 大当たり中のラウンド・出玉と結果の告知（図柄を暗くして重ねる）。
         if (uHudOn > 0.5) {
           vec4 hud = texture2D(uHud, vUv);

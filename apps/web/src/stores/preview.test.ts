@@ -32,3 +32,9 @@ test('留守中リプレイは Engine の保留の番号・パターン・実際
 test('留守中に当たりが無ければリプレイしない', () => {
   expect(replayRequest({ ...away, jackpots: 0, replay: null })).toBeNull();
 });
+
+test('上位の当たりのリプレイは上乗せの回数ぶん上位の流れで見せる（D-120）', () => {
+  const upper = { ...away.replay!, upper: true as const, loops: 2 };
+  expect(replayRequest({ ...away, replay: upper })).toMatchObject({ upper: { loops: 2 }, rounds: 10 });
+  expect(replayRequest(away)).not.toHaveProperty('upper');
+});

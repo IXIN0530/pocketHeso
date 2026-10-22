@@ -47,6 +47,9 @@ export interface AwayReplay {
   readonly endsAt: SimTime;
   readonly kind: JackpotKind;
   readonly rounds: number;
+  /** 上位の当たり（上位RUSH, D-120。上位でなければ省略）と上乗せの回数 K。リプレイも同じ流れで見せる。 */
+  readonly upper?: true | undefined;
+  readonly loops?: number | undefined;
 }
 
 /** 変動を始めた当たり（大当たり開始でリプレイ候補に上げる）。 */
@@ -1475,14 +1478,14 @@ export class Engine {
   }
 
   /** 留守中の大当たり開始で、候補が今までより熱ければリプレイに上げる。 */
-  private noteAwayReplay(entry: number, kind: JackpotKind, rounds: number): void {
+  private noteAwayReplay(entry: number, kind: JackpotKind, rounds: number, upper?: true, loops?: number): void {
     const cand = this.awaySpinCandState;
     if (this.awayFromState === null || cand === null || cand.entry !== entry) {
       return;
     }
     const best = this.awayReplayState;
     if (best === null || cand.hot > best.hot) {
-      this.awayReplayState = { ...cand, kind, rounds };
+      this.awayReplayState = { ...cand, kind, rounds, ...(upper === true ? { upper, loops: loops ?? 0 } : {}) };
     }
     this.awaySpinCandState = null;
   }
@@ -2021,7 +2024,7 @@ export class Engine {
                 payoutBalls: this.totalsState.payoutBalls,
                 firstHits: this.totalsState.firstHits + (fromRush ? 0 : 1),
               };
-              this.noteAwayReplay(e.entry, e.kind, e.rounds);
+              this.noteAwayReplay(e.entry, e.kind, e.rounds, e.upper, e.loops);
               out.push(e);
             } else {
               out.push(e);

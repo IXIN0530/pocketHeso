@@ -38,7 +38,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FlashLayer, HOLD_BREAK_MS, HOLD_CRACK_CUE, SAKIBARE_CUE, holdBreakScale, holdChangeCue, holdRank, type SakibareCustom, type SceneCue } from '@ph/fx';
+import { FlashLayer, HOLD_BREAK_MS, HOLD_CRACK_CUE, SAKIBARE_CUE, UPPER_CUES, holdBreakScale, holdChangeCue, holdRank, type SakibareCustom, type SceneCue, type UpperBannerKind } from '@ph/fx';
 import {
   BALL_RADIUS_MM,
   type Board,
@@ -61,7 +61,7 @@ import {
   setFlashTarget,
   setSceneTarget,
 } from '../fx/fx-host.ts';
-import { PREVIEW_TAIL_MS, type PreviewRequest } from '../stores/preview.ts';
+import { PREVIEW_TAIL_MS, PREVIEW_UPPER_SPEC, upperPreviewRounds, upperPreviewState, type PreviewRequest } from '../stores/preview.ts';
 import { LCD_RECT, bakeBoard, bakeGlare, bakeHall, bakeSoftDot, bakeSymbolAtlas, bakeTextAtlas } from './art.ts';
 import { BallTracks, DISPLAY_LAG_MS, MAX_BALLS, PREROLL_MS } from './ball-tracks.ts';
 import { DEFAULT_ROUND, jackpotHud, resultCue, type HudView, type JackpotRound } from './jackpot-hud.ts';
@@ -93,6 +93,16 @@ export interface PatternInfo {
 
 /** 演出プレビュー（Debug の4本と留守中リプレイ。Engine の液晶を止めて1変動を流す）。 */
 export type PreviewSpin = PreviewRequest;
+
+/** 上位RUSH・上乗せの告知が出た時に鳴らすパックの演出（fx の UPPER_CUES と同じ）。 */
+const UPPER_BANNER_CUES: Record<UpperBannerKind, string> = {
+  upperIn: UPPER_CUES.break,
+  uwanoseStart: UPPER_CUES.uwanoseStart,
+  digit: UPPER_CUES.digit,
+  uwanoseHit: UPPER_CUES.uwanoseHit,
+  uwanoseEnd: UPPER_CUES.uwanoseEnd,
+  uwanoseMax: UPPER_CUES.uwanoseMax,
+};
 
 // 奥行き（spec/50）: 盤面板 0 → 液晶 +3 → 玉・釘 +7 → 役物 +8 → ガラス +16 → 枠 +10〜+55（cabinet.ts）。
 const Z_LCD = 3;
@@ -156,6 +166,8 @@ export class BoardScene {
   private lastJackpot = -1;
   /** 大当たり中の表示で鳴らした音（ラウンド・上乗せ・結果の告知, D-077）。 */
   private hudHeard = { round: '', bonus: -1, result: -1 };
+  /** 上位RUSH・上乗せで鳴らし済みの段（D-120）。 */
+  private upperHeard = { entry: -1, crack: 0, frozen: false, banner: '' };
   private round: JackpotRound = DEFAULT_ROUND;
   /** 前のフレームで見せた保留の色（番号ごと。保留変化の音・光を鳴らす判定, P7-T4）。 */
   private shownColors = new Map<number, LotteryHoldColor>();
@@ -350,14 +362,38 @@ export class BoardScene {
     const resultAt = hud?.k === 'result' ? st.result!.at : -1;
     const newResult = resultAt >= 0 && resultAt !== heard.result;
     if (resultAt >= 0) heard.result = resultAt;
+    const upperCue = j && hud?.k === 'round' ? this.noteUpper(j.entry, hud) : null;
     if (scale !== 1 || !hud) return;
     const serial = j?.entry ?? 0;
-    if (newBonus) playHudCue('uwanose', this.seed, serial);
-    else if (newRound) playHudCue('round', this.seed, serial);
+    if (upperCue) playHudCue(upperCue, this.seed, serial);
+    else if (newBonus) playHudCue('uwanose', this.seed, serial);
+    else if (newRound && !(hud.k === 'round' && hud.upper?.frozen)) playHudCue('round', this.seed, serial);
     if (newResult && hud.k === 'result' && hud.t < 1000) {
       this.lcd.pulse();
       playHudCue(resultCue(hud.kind), this.seed, 0);
     }
+  }
+
+  /**
+   * 上位RUSH・上乗せの時刻表（hud.upper）が進んだら鳴らすパックの演出を返す: フリーズ・ひびの各段・割れる・数字・終了（D-120）。
+   * 途中から開いた時（背面から戻った時など）は、過ぎた段は鳴らさず、出たばかりの告知だけ鳴らす。
+   */
+  private noteUpper(entry: number, hud: Extract<HudView, { k: 'round' }>): string | null {
+    const h = this.upperHeard;
+    const u = hud.upper;
+    const first = h.entry !== entry;
+    if (first) Object.assign(h, { entry, crack: u?.crack ?? 0, frozen: u?.frozen ?? false, banner: '' });
+    if (!u) return null;
+    let cue: string | null = null;
+    if (u.frozen && !h.frozen) cue = UPPER_CUES.freeze;
+    h.frozen = u.frozen;
+    if (u.crack > h.crack) cue = UPPER_CUES.crack;
+    h.crack = u.crack;
+    const b = u.banner;
+    const key = b ? `${b.k}:${b.digit ?? ''}:${Math.round(hud.t - b.t)}` : '';
+    if (b && key !== h.banner && (!first || b.t < 600)) cue = UPPER_BANNER_CUES[b.k];
+    h.banner = key;
+    return cue;
   }
 
   /** 演出の分岐に使う seed（Engine の GameMeta, spec/43）。 */
@@ -522,7 +558,10 @@ export class BoardScene {
     this.noteSakibare(lcdState, lcdNow, lcdScale);
     this.noteHoldChanges(shown, lcdScale);
     this.lcd.reducedMotion = this.flashLayer.reducedMotion;
-    const hud = jackpotHud(lcdState, lcdNow, this.round, this.seed);
+    // 上位RUSH・ガセのプレビューは、上位の枝の無い機種でも流す。
+    const req = pv ? this.preview : null;
+    const round = req && (req.upper || req.gase) && !this.round.upper ? { ...this.round, upper: PREVIEW_UPPER_SPEC } : this.round;
+    const hud = jackpotHud(lcdState, lcdNow, round, this.seed);
     this.noteHud(lcdState, hud, lcdScale);
     this.lcd.update(dt, lcdNow, lcdScale, shown, (e) => this.lcdTimeline.peekResult(e), winLevel, this.show, hud);
     this.updateLamps(sec, winLevel, white);
@@ -556,8 +595,17 @@ export class BoardScene {
     const pv = this.preview;
     if (!pv) return null;
     if (pv.start < 0) pv.start = now;
-    const ms = pv.durationMs ?? this.patterns(pv.pattern)?.ms ?? 20000;
     const t = now - pv.start;
+    if ((pv.upper || pv.gase) && pv.pattern === '') {
+      // 上位RUSH・ガセ（Debug）: 変動は省いて大当たりから流す（ST 中の当たり）。
+      const rounds = upperPreviewRounds(pv);
+      if (t >= rounds * this.round.msPerRound + PREVIEW_TAIL_MS) {
+        this.preview = null;
+        return null;
+      }
+      return upperPreviewState(pv, pv.start);
+    }
+    const ms = pv.durationMs ?? this.patterns(pv.pattern)?.ms ?? 20000;
     if (t < ms) {
       const spin = {
         entry: pv.serial,
@@ -571,9 +619,13 @@ export class BoardScene {
       };
       return { holds: [], spin, resolved: null, jackpot: null };
     }
-    if (t < ms + PREVIEW_TAIL_MS) {
-      const jackpot = pv.hit ? { entry: pv.serial, kind: pv.kind ?? 'kakuhen', rounds: pv.rounds ?? 10, startAt: pv.start + ms } : null;
-      return { holds: [], spin: null, resolved: { entry: pv.serial, hit: pv.hit }, jackpot };
+    // 上位の当たりのリプレイ（留守中）は、上乗せまで通して見せる。
+    const tail = pv.upper ? upperPreviewRounds(pv) * this.round.msPerRound : PREVIEW_TAIL_MS;
+    if (t < ms + tail) {
+      const jackpot = pv.hit
+        ? { entry: pv.serial, kind: pv.kind ?? 'kakuhen', rounds: pv.upper ? upperPreviewRounds(pv) : (pv.rounds ?? 10), startAt: pv.start + ms, ...(pv.upper ? { upper: pv.upper } : {}) }
+        : null;
+      return { holds: [], spin: null, resolved: { entry: pv.serial, hit: pv.hit }, jackpot, ...(pv.upper ? { rush: { mode: 'st' as const, chain: 1, balls: 0 } } : {}) };
     }
     this.preview = null;
     return null;
@@ -699,7 +751,7 @@ export class BoardScene {
     }
     // shake キュー（amp 1 ≒ 5mm。終わりに向けて弱める）。
     const sk = this.cueShake;
-    if (nowMs < sk.until) shake = Math.max(shake, sk.amp * 5 * Math.min(1, (sk.until - nowMs) / 300));
+    if (nowMs < sk.until && !this.flashLayer.reducedMotion) shake = Math.max(shake, sk.amp * 5 * Math.min(1, (sk.until - nowMs) / 300));
     // camera キュー（液晶へ寄る）。入り・抜けは 400ms、終わったら必ず定位置（spec/50）。
     const ct = nowMs - this.cueCam.from;
     const lcd = ct >= 0 && ct < this.cueCam.ms ? ease(Math.min(1, ct / 400, (this.cueCam.ms - ct) / 400)) : 0;

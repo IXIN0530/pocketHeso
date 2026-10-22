@@ -82,8 +82,10 @@
 - 白黒は液晶だけ（盤面・HUD の外・ボタンは色のまま）。白黒の間は図柄・大当たり中の表示とも彩度0。HUD の数字はフリーズ時刻の値で止まり、ラウンドは Core の時刻どおり裏で進み、色が戻ると追いつく。見せる全ラウンドはいつも今のラウンド＋1 以上（最後のラウンドを除く。合計で頭打ち）。
 - 縮め方: 色が戻りきる時刻が「大当たりの長さ − 結果表示 4,500ms」を超える時は、導入（`UPPER_INTRO_MS` 2600ms）より後を一様に縮める（下限 `UPPER_MIN_SCALE` 0.25）。それでも足りなければ数字のカウントダウンを省き、当たりだけ順に見せる（`upperTimeline`）。見え方は `upperViewAt`（gray・frozen・crack・shatter・banner・addedRounds）で、`jackpotHud` の round の `upper` に入る。
 - 結果表示: 上位の当たりの終わりは「上位RUSH継続」（n連・合計, `LcdResult.upper`）。上位の後の ST 中の残り回数の表示を「上位RUSH」にするのは Projection の `rushUpper`（画面は P15-T5）。
-- キュー（`UPPER_CUES` / `upperCues`。中身は P15-T4）: `upper_freeze`・`upper_crack`（ひびの各段）・`upper_in`（割れて突入。虹の wash・振動・揺れ）・`uwanose_start`・`uwanose_tick`（数字ごと）・`uwanose_hit`（虹の wash・振動）・`uwanose_end`（終了・MAX）。ガセは `upper_freeze` だけ。倍速では液晶だけ（音は鳴らさない）。
-- reduced-motion: 揺れ・破片・虹のきらめきを止める（白黒・ひび・文字の流れは残す）。フラッシュは 1秒に3回以下（光過敏の安全策）。
+- キュー（`UPPER_CUES` / `upperCues`。パック `default` に自作の合成音で入っている, P15-T4）: `upper_freeze`・`upper_crack`（ひびの各段）・`upper_in`（割れて突入。虹の wash・振動・揺れ）・`uwanose_start`・`uwanose_tick`（数字ごと）・`uwanose_hit`（虹の wash・振動）・`uwanose_end`（終了・MAX）。ガセは `upper_freeze` だけ。倍速では液晶だけ（音は鳴らさない）。
+- 鳴らし方（P15-T4）: 盤面が HUD の `upper` の変わり目を見て鳴らす（フリーズ・ひびの各段・告知の出始め。途中から開いた時は出たばかりの告知だけ）。フリーズの間は `round` の音を止める。割れる（`upper_in`・`uwanose_hit`）は虹の `wash_rainbow`（FlashLayer, 起点は画面上の液晶の中心）・振動・揺れ・ブルーム。
+- Debug の演出プレビュー: 「上位RUSH（上乗せ 0/1/4 回）」「ガセ」（変動は省いて ST 中の大当たりから流す。ガセは見せ方がガセになる通し番号を選ぶ `gaseSerial`。上位の枝の無い機種でも `PREVIEW_UPPER_SPEC` で流す）。留守中リプレイは AwayReplay の `upper`・`loops` で上位の流れを通して見せる。
+- reduced-motion: 揺れ・破片・虹のきらめきを止める（白黒・ひび・文字の流れは残す。揺れはすべての shake キューで止まる）。フラッシュは 1秒に3回以下（光過敏の安全策）。
 - 用語: 港町店（lt）の「上位 RUSH（ラッキートリガー）」とは別物。モードは増やさず、枝の印 `upper` で持つ。
 
 ## レンダラ（`packages/fx`）

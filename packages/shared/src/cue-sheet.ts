@@ -4,8 +4,8 @@
 export type CueBus = 'bgm' | 'se' | 'voice';
 export const CUE_BUSES: readonly CueBus[] = ['bgm', 'se', 'voice'];
 
-/** wash_<色> は保留の色が画面の起点（液晶の中心）から輪になって広がる光（保留が割れた時, D-075）。 */
-export type FlashStyle = 'rainbow' | 'white' | 'wash_blue' | 'wash_green' | 'wash_red' | 'wash_gold';
+/** wash_<色> は保留の色が画面の起点（液晶の中心）から輪になって広がる光（保留が割れた時, D-075）。wash_rainbow は上位RUSH・上乗せで割れた時の虹（D-120）。 */
+export type FlashStyle = 'rainbow' | 'white' | 'wash_blue' | 'wash_green' | 'wash_red' | 'wash_gold' | 'wash_rainbow';
 
 interface CueCommon {
   /** 演出開始からの時刻（ms）。 */
@@ -108,7 +108,7 @@ export interface CuePack {
 }
 
 const WAVES: readonly SynthSpec['wave'][] = ['sine', 'square', 'triangle', 'sawtooth'];
-const FLASH_STYLES: readonly FlashStyle[] = ['rainbow', 'white', 'wash_blue', 'wash_green', 'wash_red', 'wash_gold'];
+const FLASH_STYLES: readonly FlashStyle[] = ['rainbow', 'white', 'wash_blue', 'wash_green', 'wash_red', 'wash_gold', 'wash_rainbow'];
 
 type Obj = Record<string, unknown>;
 
